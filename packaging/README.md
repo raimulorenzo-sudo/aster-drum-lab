@@ -53,3 +53,12 @@ For local installer testing only:
 ```powershell
 .\packaging\windows\build-installer.ps1 -Unsigned
 ```
+
+## GitHub Actions
+
+The `Build Windows Installer` workflow builds the unsigned Windows x64 VST3
+installer on GitHub's Windows runner. It runs after relevant changes reach
+`main`, and it can also be started manually from the repository's Actions tab.
+
+The downloadable artifact is named `ASTER-Drum-Lab-Windows-x64` and contains
+the installer plus its SHA-256 checksum. GitHub retains it for 14 days.

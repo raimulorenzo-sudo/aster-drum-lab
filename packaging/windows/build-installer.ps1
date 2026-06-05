@@ -5,9 +5,13 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $CMakeFile = Get-Content (Join-Path $Root "CMakeLists.txt") -Raw
 $Version = [regex]::Match($CMakeFile, 'project\(AsterDrumLab VERSION ([0-9.]+)\)').Groups[1].Value
+if (-not $Version) { throw "Could not read the project version from CMakeLists.txt." }
 $BuildDir = Join-Path $Root "build-release-windows"
 $Artefacts = Join-Path $BuildDir "DrumSampler_artefacts\Release"
 $DistDir = Join-Path $Root "dist"
@@ -97,7 +101,12 @@ $Installer = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-Setup.exe"
 if (-not (Test-Path $Installer)) { throw "Installer was not created: $Installer" }
 Sign-File $Installer
 
+$HashFile = "$Installer.sha256"
+$Hash = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLowerInvariant()
+"$Hash  $([System.IO.Path]::GetFileName($Installer))" | Set-Content -Encoding ascii $HashFile
+
 Write-Host "Created: $Installer"
+Write-Host "Checksum: $HashFile"
 if ($Unsigned) {
     Write-Warning "This installer is unsigned and is only suitable for local testing."
 }

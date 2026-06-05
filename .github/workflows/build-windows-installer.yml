@@ -1,0 +1,77 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-windows-installer.yml"
+      - "CMakeLists.txt"
+      - "Source/**"
+      - "packaging/windows/**"
+      - "ui-prototype/package.json"
+      - "ui-prototype/package-lock.json"
+      - "ui-prototype/src/**"
+      - "ui-prototype/index.html"
+      - "ui-prototype/tsconfig*.json"
+      - "ui-prototype/vite.config.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows x64 VST3 installer
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui-prototype/package-lock.json
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          cmake --version
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress --yes
+          }
+
+      - name: Build unsigned Windows installer
+        shell: pwsh
+        run: ./packaging/windows/build-installer.ps1 -Unsigned
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe)
+          if ($installers.Count -ne 1) {
+            throw "Expected one installer, found $($installers.Count)."
+          }
+          $installer = $installers[0]
+          if ($installer.Length -lt 1MB) {
+            throw "Installer is unexpectedly small: $($installer.Length) bytes."
+          }
+          Get-FileHash -Algorithm SHA256 $installer.FullName
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ASTER-Drum-Lab-Windows-x64
+          path: |
+            dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe
+            dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
