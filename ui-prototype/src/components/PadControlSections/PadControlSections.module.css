@@ -1,0 +1,349 @@
+.sections {
+  min-height: 0;
+  display: grid;
+  /* 内容量ベースで再配分:
+     SAMPLE TRIM(4 knob横並び) > PLAYBACK/TRIGGER(Mode+Choke+VelRange) > MIXER > DYNAMICS。 */
+  grid-template-columns:
+    minmax(0, 1.30fr)
+    minmax(0, 1.00fr)
+    minmax(0, 1.05fr)
+    minmax(0, 1.35fr);
+  grid-template-rows: 1fr;
+  gap: 6px;
+}
+
+/* Velocity Auto Split メニュー展開中: DYNAMICS section を隣接 section より上に */
+.sections :global(.vel-auto-open) {
+  z-index: 30;
+}
+
+.section {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 9px 11px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-section-bg);
+  background-size: 200px 200px, auto, auto;
+  background-blend-mode: soft-light, normal, normal;
+  box-shadow: var(--panel-shadow-section);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-11);
+  letter-spacing: 0.14em;
+  font-weight: 650;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.title span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--platinum-gold-soft);
+  box-shadow: 0 0 2px rgba(191, 163, 106, 0.16);
+  opacity: 0.68;
+}
+
+/* Layer プレフィックス: "L2" を gold で強調しつつ、全体のトーンは保つ */
+.layerLabel {
+  font-family: var(--font-mono, monospace);
+  font-style: normal;
+  font-size: var(--fs-10, 10px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--platinum-gold, #c9ad78);
+  padding: 1px 4px;
+  background: rgba(201, 173, 120, 0.10);
+  border: 1px solid rgba(201, 173, 120, 0.32);
+  border-radius: 2px;
+  margin-right: 2px;
+  line-height: 1;
+}
+
+.knobGrid4 {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  align-items: center;
+  justify-items: center;
+}
+
+.knobGrid2 {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  align-items: center;
+  justify-items: center;
+}
+
+/* DYNAMICS 用: 2 列 × 2 行に 4 ノブを並べる */
+.knobGrid2x2 {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 4px 6px;
+  align-items: center;
+  justify-items: center;
+}
+
+/* Pad 段（VOLUME/PAN/PITCH の上位）。MIXER の上端に小さく配置。 */
+.padStageRow {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+
+.stageLabel {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: var(--text-sub, #6f747b);
+  opacity: 0.7;
+}
+
+.layerStageDivider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 4px;
+  border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.05));
+}
+
+.layerStageDivider span {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: var(--text-sub, #6f747b);
+  opacity: 0.7;
+}
+
+/* PLAYBACK / TRIGGER 内 — Choke Group の下に置く Velocity Range */
+.velocityRangeBlock {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.05));
+}
+
+.mixerContent {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-items: center;
+  justify-items: center;
+  gap: 6px 8px;
+}
+
+.outputAssign {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-faint);
+}
+
+.outputAssign span,
+.fieldLabel {
+  color: var(--text-sub);
+  font-size: var(--fs-10);
+  letter-spacing: var(--ls-wide);
+  font-weight: 600;
+}
+
+/* OUTPUT 行末: Output Name 表示（Pad Name に追従） */
+.outputNameDisplay {
+  justify-self: end;
+  color: var(--text-soft);
+  font-size: var(--fs-9);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 100%;
+  opacity: 0.72;
+}
+
+.playContent {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* PLAYBACK の MODE / CHOKE GROUP 行:
+   ラベルを上、ボタン群を下に縦並びにして、ONE SHOT/GATE/OFF 1 2 3 4 が
+   見切れないようにする。横幅の狭いコラムでも全文表示できる。 */
+.modeBlock,
+.chokeBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.modeBlock .fieldLabel,
+.chokeBlock .fieldLabel {
+  white-space: nowrap;
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.14em;
+  opacity: 0.78;
+}
+
+.modeButtons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stateButtons {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-faint);
+}
+
+.bigButton,
+.chokeButton {
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-soft);
+  font-size: var(--fs-10);
+  letter-spacing: 0.04em;
+  font-weight: 650;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.14);
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
+}
+
+.bigButton {
+  min-width: 0;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stateButtons .bigButton {
+  flex: 0 1 auto;
+  min-width: 44px;
+  padding: 0 6px;
+}
+
+.chokeButtons {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(4, 1fr);
+}
+
+.chokeButton {
+  border-radius: 0;
+  border-left-width: 0;
+}
+
+.chokeButton:first-child {
+  border-left-width: 1px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.chokeButton:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.activeBlue {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.48);
+  background:
+    linear-gradient(180deg, rgba(82, 200, 232, 0.08), rgba(82, 200, 232, 0.02));
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 216, 240, 0.06),
+    0 0 6px var(--accent-blue-glow-soft);
+}
+
+/* MUTE active: Red */
+.activeRed {
+  color: var(--mute-color);
+  border-color: rgba(237, 87, 87, 0.52);
+  background:
+    linear-gradient(180deg, rgba(237, 87, 87, 0.12), rgba(180, 50, 50, 0.04));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.06),
+    0 0 6px var(--mute-color-soft);
+}
+
+.activeRed:hover {
+  color: #f08080;
+  border-color: rgba(237, 87, 87, 0.80);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.12),
+    0 0 10px rgba(237, 87, 87, 0.55);
+}
+
+/* SOLO active: Yellow */
+.activeYellow {
+  color: var(--solo-color);
+  border-color: rgba(243, 197, 68, 0.52);
+  background:
+    linear-gradient(180deg, rgba(243, 197, 68, 0.12), rgba(180, 140, 30, 0.04));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.06),
+    0 0 6px var(--solo-color-soft);
+}
+
+.activeYellow:hover {
+  color: #f7d98a;
+  border-color: rgba(243, 197, 68, 0.80);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.12),
+    0 0 10px rgba(243, 197, 68, 0.55);
+}
+
+/* PLAYBACK セクション：MUTE/SOLO を除去してコンパクト化。
+   MODE / CHOKE GROUP のラベル省略を防ぐためボタン幅は確保する。 */
+.playback {
+  padding: 9px 10px 10px;
+  gap: 7px;
+}
+
+.playback .playContent {
+  gap: 8px;
+}
+
+.playback .bigButton,
+.playback .chokeButton {
+  height: 24px;
+  font-size: var(--fs-10, 10px);
+}

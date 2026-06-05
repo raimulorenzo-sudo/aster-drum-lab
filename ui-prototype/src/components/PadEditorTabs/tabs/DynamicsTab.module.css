@@ -1,0 +1,32 @@
+.root {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-height: 0;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+/* ── 左側: ATTACK / RELEASE / HUMANIZE を残り幅いっぱいに均等配置 ─── */
+.knobCluster {
+  flex: 1 1 auto;            /* 残り幅を埋める */
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-around;
+}
+
+/* ── 右側: VELOCITY ノブ + VEL CURVE グラフ 1 ブロック扱い ─── */
+.velGroup {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding-left: 18px;
+  border-left: 1px solid var(--border-faint, rgba(255, 255, 255, 0.05));
+  min-width: 0;
+}
+
+.curveSlot {
+  min-width: 0;
+}

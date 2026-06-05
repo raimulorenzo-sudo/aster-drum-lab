@@ -1,0 +1,283 @@
+/* ─────────────────────────────────────────────────────────────────────
+   LayerTabs — コンパクト固定幅タブ + 横スクロール対応。
+   タブ: [ L1  M  S  × ]。Layer 名はタブには出さず、セクションタイトル側で表示。
+   アクティブはゴールドアクセント、Mute/Solo は既存パッド M/S と同色系。
+   ─────────────────────────────────────────────────────────────────── */
+.bar {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--surface-tab-bg, rgba(255, 255, 255, 0.02));
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  min-width: 0;
+}
+
+/* タブ列本体 — 横スクロールはここ */
+.strip {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar { display: none; }
+
+/* ── タブ本体 ───────────────────────────────────────────────────── */
+.tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 28px;
+  padding: 0 4px 0 6px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--radius-sm, 3px);
+  color: var(--text-sub, #8a8f96);
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+/* 選択中 = ゴールド: 既存セクションタイトルのドットと同系統で「編集対象」を示す */
+.tabActive {
+  background: linear-gradient(180deg,
+    rgba(201, 173, 120, 0.10),
+    rgba(201, 173, 120, 0.04));
+  border-color: rgba(201, 173, 120, 0.55);
+  color: var(--platinum-gold, #c9ad78);
+  box-shadow:
+    inset 0 0 0 1px rgba(201, 173, 120, 0.10),
+    inset 0 -2px 0 0 var(--platinum-gold-soft, #b49a6a);
+}
+
+.tabDimmed {
+  opacity: 0.42;
+}
+
+/* L1 / L2 ... のラベルボタン (タブ選択トリガ) */
+.tabSelect {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: inherit;
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ── M / S / × ミニボタン ──────────────────────────────────────── */
+.miniBtn,
+.miniBtnX {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 2px;
+  color: var(--text-sub, #7a7f86);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  cursor: pointer;
+  padding: 0;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.miniBtn:hover,
+.miniBtnX:hover {
+  color: var(--text-soft, #c2c7cc);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.miniMuteOn {
+  background: rgba(237, 87, 87, 0.22);
+  border-color: var(--mute-color-soft, rgba(237, 87, 87, 0.45));
+  color: var(--mute-color, #ed5757);
+  box-shadow: 0 0 4px rgba(237, 87, 87, 0.28);
+}
+
+.miniSoloOn {
+  background: rgba(243, 197, 68, 0.22);
+  border-color: var(--solo-color-soft, rgba(243, 197, 68, 0.42));
+  color: var(--solo-color, #f3c544);
+  box-shadow: 0 0 4px rgba(243, 197, 68, 0.28);
+}
+
+.miniBtnX {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.miniBtnX:hover:not(:disabled) {
+  color: var(--mute-color, #ed5757);
+  background: rgba(237, 87, 87, 0.12);
+  border-color: rgba(237, 87, 87, 0.4);
+}
+
+.miniBtnX:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ── + 追加ボタン ──────────────────────────────────────────────── */
+.addBtn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(201, 173, 120, 0.05);
+  border: 1px dashed rgba(201, 173, 120, 0.35);
+  border-radius: var(--radius-sm, 3px);
+  color: var(--platinum-gold-soft, #b49a6a);
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.addBtn:hover:not(:disabled) {
+  background: rgba(201, 173, 120, 0.12);
+  border-color: rgba(201, 173, 120, 0.6);
+}
+
+.addBtn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+/* ── ‹ › スクロールボタン (オーバーフロー時のみ) ─────────────── */
+.edgeBtn {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 28px;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-sm, 3px);
+  color: var(--text-sub, #8a8f96);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.edgeBtn:hover {
+  color: var(--accent-cyan, #52c8e8);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.countLabel {
+  align-self: center;
+  margin-left: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-sub, #6f747b);
+  flex: 0 0 auto;
+}
+
+/* ── 1Layer 状態のミニマル表示 ─────────────────────────────────── */
+.barMinimal {
+  justify-content: flex-end;
+  padding: 4px 8px;
+  background: transparent;
+  border-bottom: 1px solid var(--border-faint, rgba(255, 255, 255, 0.04));
+}
+
+.addBtnInline {
+  height: 20px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(201, 173, 120, 0.05);
+  border: 1px dashed rgba(201, 173, 120, 0.32);
+  border-radius: var(--radius-sm, 3px);
+  color: var(--platinum-gold-soft, #b49a6a);
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.addBtnInline:hover:not(:disabled) {
+  background: rgba(201, 173, 120, 0.12);
+  border-color: rgba(201, 173, 120, 0.55);
+  color: var(--platinum-gold, #c9ad78);
+}
+
+/* ── position: relative is required for .tabFlash / .tabMeter absolute children */
+.tab {
+  position: relative;
+}
+
+/* ── Layer trigger flash overlay ──────────────────────────────────────────── */
+/* Full-tab tint; opacity animated via Web Animations API (0.62 → 0, 220ms).  */
+/* Uses accent-cyan tint — same hue as pad flash, but at tab scale.           */
+.tabFlash {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm, 3px);
+  background: rgba(82, 200, 232, 0.38);
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ── Layer level meter (horizontal, 2px at bottom of tab) ────────────────── */
+.tabMeter {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 0 0 var(--radius-sm, 3px) var(--radius-sm, 3px);
+}
+
+/* v8+ perf: clip-path をやめ wrapper を scaleX、内側 gradient を逆 scaleX。
+   transform 合成のみで動く (Master / Mixer メーターと同方式)。 */
+.tabMeterClip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+/* 4-color smooth gradient (-60..0 dB → 0..100% from left).
+   Master / Mixer メーターとなめらかな配色を統一: */
+.tabMeterFill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    var(--meter-deep-blue, #2a4a78)  0%,
+    var(--meter-cyan,      #52c8e8) 50%,
+    var(--meter-amber,     #d68f48) 83.3%,
+    var(--meter-red,       #d9605a) 95%
+  );
+  transform-origin: left center;
+  will-change: transform;
+}

@@ -1,0 +1,202 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  /* グリッドセル内で幅を安定させる */
+  position: relative;
+}
+
+.label {
+  font-size: var(--fs-9);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  font-weight: 600;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.knobOuter {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+  outline: none;
+  border-radius: 50%;
+  isolation: isolate;
+  /* box-shadow uses the compositor on WebKit (GPU); drop-shadow forces a
+     software offscreen pass per element. Visual result is nearly identical
+     for these small soft shadows, but cost is ~5–10× lower. */
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.42),
+    0 3px 7px rgba(0, 0, 0, 0.20);
+  transition:
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.knobOuter:hover {
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.48),
+    0 4px 9px rgba(0, 0, 0, 0.22),
+    0 0 5px var(--accent-blue-glow-soft);
+}
+
+.knobOuter:active {
+  transform: translateY(1px);
+}
+
+.knobOuter:focus-visible {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.58),
+    0 0 7px var(--accent-blue-glow-soft);
+}
+
+.body,
+.face {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.body {
+  inset: 0;
+  background:
+    var(--noise-warm),
+    radial-gradient(circle at 36% 24%, rgba(255, 248, 235, 0.038), transparent 26%),
+    linear-gradient(145deg, #282828 0%, #1a1a1a 52%, #121212 100%);
+  background-size: 200px 200px, auto, auto;
+  background-blend-mode: soft-light, normal, normal;
+  border: 1px solid rgba(80, 76, 68, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.038),
+    inset 0 -5px 10px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(0, 0, 0, 0.38);
+}
+
+.body::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 1px solid rgba(14, 12, 10, 0.92);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 248, 235, 0.022),
+    inset 0 6px 12px rgba(0, 0, 0, 0.20);
+}
+
+.body::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(4, 3, 2, 0.68), transparent 58%);
+  opacity: 0.62;
+}
+
+.face {
+  inset: 13px;
+  background:
+    radial-gradient(circle at 42% 28%, rgba(48, 48, 48, 0.58), rgba(28, 28, 28, 0.88) 52%, #121212 100%);
+  border: 1px solid rgba(80, 76, 68, 0.16);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 248, 235, 0.026),
+    inset 0 -4px 8px rgba(0, 0, 0, 0.38);
+}
+
+.meterSvg {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* メーター/インジケータの stroke 色は CSS で管理する (Layer 編集中のゴールドテーマで
+   差し替えるため)。デフォルトは従来通りのシアン系。
+   `[data-accent="gold"]` をルートに持つコンテナ配下では amber gold に切り替わる。 */
+.meterArcUnder {
+  stroke: rgba(82, 200, 232, 0.30);
+}
+
+.meterArc {
+  stroke: rgba(82, 200, 232, 0.88);
+  opacity: 0.90;
+  transition:
+    opacity 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease;
+}
+
+.indicatorUnder {
+  stroke: rgba(120, 216, 240, 0.30);
+}
+
+.indicator {
+  stroke: rgba(120, 216, 240, 0.88);
+  opacity: 0.92;
+  transition:
+    opacity 160ms ease,
+    stroke 160ms ease,
+    stroke-width 160ms ease;
+}
+
+.knobOuter:hover .meterArc {
+  opacity: 1;
+}
+
+.knobOuter:hover .indicator {
+  opacity: 1;
+}
+
+/* Layer 編集中 (L2 以降) — シャンパンゴールド系に差し替え */
+:global([data-accent="gold"]) .meterArcUnder {
+  stroke: rgba(201, 173, 120, 0.32);
+}
+
+:global([data-accent="gold"]) .meterArc {
+  stroke: rgba(220, 195, 140, 0.92);
+}
+
+:global([data-accent="gold"]) .indicatorUnder {
+  stroke: rgba(220, 195, 140, 0.30);
+}
+
+:global([data-accent="gold"]) .indicator {
+  stroke: rgba(232, 210, 158, 0.92);
+}
+
+.value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  /* 桁数が変わっても高さが変わらないよう固定 */
+  white-space: nowrap;
+  min-height: 13px;
+  text-align: center;
+  /* 横にはみ出してもレイアウトを崩さない */
+  overflow: visible;
+}
+
+.valueInput {
+  width: 54px;
+  height: 15px;
+  padding: 0 3px;
+  border: 1px solid var(--border-hi);
+  border-radius: 3px;
+  background: var(--panel-inset);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  line-height: 13px;
+  text-align: center;
+  outline: none;
+  box-shadow: 0 0 5px var(--accent-blue-glow-soft);
+}

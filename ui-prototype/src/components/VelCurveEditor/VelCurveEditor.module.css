@@ -1,0 +1,187 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.graphWrap {
+  position: relative;
+  width: 188px;
+  height: 92px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.48);
+  flex-shrink: 0;
+  padding: 10px 8px 10px 16px; /* 軸ラベルを置く余白 */
+  box-sizing: border-box;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.grid {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.gridMid {
+  stroke: rgba(255, 255, 255, 0.09);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.curve {
+  fill: none;
+  stroke: var(--accent-cyan, #52c8e8);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(82, 200, 232, 0.32));
+}
+
+.endPoint {
+  fill: rgba(160, 170, 180, 0.55);
+  stroke: none;
+  pointer-events: none;
+}
+
+.pointHit {
+  fill: transparent;
+  cursor: grab;
+}
+
+.pointHit:active {
+  cursor: grabbing;
+}
+
+.point {
+  fill: rgba(20, 28, 36, 0.95);
+  stroke: var(--accent-cyan, #52c8e8);
+  stroke-width: 1.4;
+  pointer-events: none;
+  transition: r 120ms;
+}
+
+.pointActive {
+  fill: rgba(82, 200, 232, 0.55);
+  filter: drop-shadow(0 0 5px rgba(82, 200, 232, 0.7));
+}
+
+/* ── 軸ラベル ──────────────────────────────────────────────────── */
+.axisX {
+  position: absolute;
+  left: 18px;
+  right: 10px;
+  bottom: -3px;
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+  color: rgba(160, 170, 180, 0.50);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.axisY {
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-family: var(--font-mono, monospace);
+  font-size: 8px;
+  color: rgba(160, 170, 180, 0.50);
+  letter-spacing: 0.04em;
+  text-align: right;
+  width: 14px;
+  pointer-events: none;
+}
+
+.axisCaption {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -15px;
+  text-align: center;
+  font-size: 8px;
+  letter-spacing: 0.10em;
+  color: var(--text-sub);
+  opacity: 0.6;
+  font-weight: 600;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* ── 右側 PRESET + Reset ─────────────────────────────────────── */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  justify-content: flex-start;
+  padding-top: 14px; /* タイトル相当の余白 */
+}
+
+.sideLabel {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.resetBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 140ms, border-color 140ms, background 140ms;
+}
+
+.resetBtn:hover {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.45);
+}
+
+.resetBtn svg { opacity: 0.85; }

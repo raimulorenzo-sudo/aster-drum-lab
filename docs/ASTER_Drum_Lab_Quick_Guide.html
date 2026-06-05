@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>ASTER Drum Lab Quick Guide</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #171717;
+      background: #f6f3ec;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Yu Gothic UI", Meiryo, sans-serif;
+      font-size: 10.2pt;
+      line-height: 1.62;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      color: #fff;
+      font-size: 42pt;
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 22pt;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 12pt;
+      line-height: 1.25;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin: 3px 0;
+    }
+
+    .page {
+      position: relative;
+      width: 210mm;
+      min-height: 297mm;
+      padding: 18mm;
+      overflow: hidden;
+      page-break-after: always;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.96), rgba(246,243,236,0.96)),
+        #f6f3ec;
+    }
+
+    .page:last-child {
+      page-break-after: auto;
+    }
+
+    .cover {
+      padding: 0;
+      color: #fff;
+      background: #0b0c0d;
+    }
+
+    .coverImage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 46% 45%;
+      filter: brightness(0.48) contrast(1.08) saturate(1.05);
+    }
+
+    .coverShade {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(5,5,6,0.94), rgba(5,5,6,0.58) 47%, rgba(5,5,6,0.12)),
+        linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.68));
+    }
+
+    .coverContent {
+      position: relative;
+      z-index: 1;
+      height: 297mm;
+      padding: 22mm 19mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      color: #e0c782;
+      font-size: 11pt;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+
+    .mark {
+      width: 28px;
+      height: 28px;
+      border: 1px solid rgba(224,199,130,0.8);
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      font-size: 16pt;
+      line-height: 1;
+    }
+
+    .coverTitle {
+      max-width: 128mm;
+    }
+
+    .coverKicker {
+      margin-bottom: 10px;
+      color: #35d4f2;
+      font-size: 11pt;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .coverLead {
+      margin-top: 14px;
+      max-width: 112mm;
+      color: rgba(255,255,255,0.78);
+      font-size: 13pt;
+      line-height: 1.72;
+    }
+
+    .coverMeta {
+      color: rgba(255,255,255,0.68);
+      font-size: 9.5pt;
+      letter-spacing: 0.06em;
+    }
+
+    .eyebrow {
+      color: #0c9fb9;
+      font-size: 9.2pt;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .lead {
+      margin-top: 9px;
+      max-width: 144mm;
+      color: #4a4a4a;
+      font-size: 11.3pt;
+    }
+
+    .sectionHead {
+      margin-bottom: 10mm;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 47mm 1fr;
+      gap: 11mm;
+      align-items: start;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8mm;
+    }
+
+    .card {
+      padding: 6mm;
+      border: 1px solid rgba(23,23,23,0.1);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.72);
+      box-shadow: 0 8px 24px rgba(20,16,10,0.08);
+      break-inside: avoid;
+    }
+
+    .darkCard {
+      color: #f1f1f1;
+      background: #111315;
+      border-color: #2b3033;
+    }
+
+    .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      margin-bottom: 7px;
+      border: 1px solid #d2b66d;
+      border-radius: 50%;
+      color: #8b6a19;
+      font-size: 8pt;
+      font-weight: 800;
+    }
+
+    .darkCard .num {
+      color: #e5c875;
+    }
+
+    .caption {
+      margin-top: 6px;
+      color: #666;
+      font-size: 8.8pt;
+    }
+
+    .darkCard .caption {
+      color: rgba(255,255,255,0.62);
+    }
+
+    .crop {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #161616;
+      border-radius: 10px;
+      background: #08090a;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.18);
+    }
+
+    .crop img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .fullShot {
+      width: 100%;
+      border: 1px solid #111;
+      border-radius: 10px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.2);
+      display: block;
+    }
+
+    .padsGrid {
+      height: 171mm;
+    }
+
+    .padsGrid img {
+      object-position: 1% 55%;
+    }
+
+    .editorTop {
+      height: 87mm;
+    }
+
+    .editorTop img {
+      object-position: 100% 33%;
+    }
+
+    .trimStrip {
+      height: 70mm;
+    }
+
+    .trimStrip img {
+      object-position: 100% 85%;
+    }
+
+    .playbackStrip {
+      height: 92mm;
+    }
+
+    .playbackStrip img {
+      object-position: 100% 83%;
+    }
+
+    .mixerWide {
+      height: 134mm;
+    }
+
+    .mixerWide img {
+      object-position: 50% 54%;
+    }
+
+    .routingCrop {
+      height: 72mm;
+    }
+
+    .routingCrop img {
+      object-position: 70% 22%;
+    }
+
+    .menuCrop {
+      height: 89mm;
+    }
+
+    .menuCrop img {
+      object-position: 95% 16%;
+    }
+
+    .callout {
+      position: absolute;
+      padding: 4px 7px;
+      border: 1px solid rgba(53,212,242,0.86);
+      border-radius: 999px;
+      color: #0a1c22;
+      background: rgba(53,212,242,0.95);
+      font-size: 8pt;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+    }
+
+    .callout.dark {
+      color: #101010;
+      background: rgba(229,200,117,0.96);
+      border-color: rgba(229,200,117,0.96);
+    }
+
+    .specList {
+      margin-top: 5mm;
+      display: grid;
+      gap: 4mm;
+    }
+
+    .spec {
+      display: grid;
+      grid-template-columns: 28mm 1fr;
+      gap: 5mm;
+      padding-bottom: 4mm;
+      border-bottom: 1px solid rgba(0,0,0,0.09);
+    }
+
+    .spec b {
+      color: #111;
+    }
+
+    .spec span {
+      color: #565656;
+    }
+
+    .footer {
+      position: absolute;
+      left: 18mm;
+      right: 18mm;
+      bottom: 10mm;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(0,0,0,0.38);
+      font-size: 8pt;
+      letter-spacing: 0.08em;
+    }
+
+    .cover .footer {
+      color: rgba(255,255,255,0.42);
+    }
+  </style>
+</head>
+<body>
+  <section class="page cover">
+    <img class="coverImage" src="tester-manual-assets/01-pads-overview.png" alt="">
+    <div class="coverShade"></div>
+    <div class="coverContent">
+      <div class="brand"><span class="mark">*</span><span>ASTER Drum Lab</span></div>
+      <div class="coverTitle">
+        <p class="coverKicker">Quick Guide</p>
+        <h1>Modern Drum<br>Rack Workflow</h1>
+        <p class="coverLead">48 pads, layered sample editing, detailed playback control, and mixer routing in one focused drum instrument.</p>
+      </div>
+      <p class="coverMeta">Version guide / 2026.06.04</p>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="sectionHead">
+      <p class="eyebrow">Overview</p>
+      <h2>画面構成</h2>
+      <p class="lead">ASTER Drum Labは、左側でPadを選び、右側でサンプルとパラメータを編集するレイアウトです。上部のタブでPadsとMixerを切り替えます。</p>
+    </div>
+    <img class="fullShot" src="tester-manual-assets/01-pads-overview.png" alt="ASTER Drum Lab Pads overview">
+    <div class="two" style="margin-top: 8mm;">
+      <div class="card">
+        <span class="num">1</span>
+        <h3>Pads</h3>
+        <p>Padを選択し、サンプル、レイヤー、再生設定を編集します。Page A/B/Cで48 Padを切り替えます。</p>
+      </div>
+      <div class="card">
+        <span class="num">2</span>
+        <h3>Mixer</h3>
+        <p>各Padの音量、Pan、Mute/Solo、Output Assignを一覧で調整します。</p>
+      </div>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Overview</span></div>
+  </section>
+
+  <section class="page">
+    <div class="split">
+      <div>
+        <p class="eyebrow">Pad Browser</p>
+        <h2>Padを選ぶ</h2>
+        <p class="lead">Padグリッドは16個単位で表示されます。各Padには番号、名前、MIDIノート、Mute/Soloがまとまっています。</p>
+        <div class="specList">
+          <div class="spec"><b>Page</b><span>A/B/Cで表示するPadバンクを切り替えます。</span></div>
+          <div class="spec"><b>Pad</b><span>クリックで選択。選択中のPadはアクセント枠で表示されます。</span></div>
+          <div class="spec"><b>M / S</b><span>PadごとのMuteとSoloです。</span></div>
+        </div>
+      </div>
+      <div class="crop padsGrid">
+        <img src="tester-manual-assets/01-pads-overview.png" alt="Pad grid crop">
+        <span class="callout" style="left: 12mm; top: 19mm;">Page A/B/C</span>
+        <span class="callout dark" style="left: 16mm; top: 72mm;">Selected Pad</span>
+        <span class="callout" style="right: 12mm; bottom: 10mm;">Mute / Solo</span>
+      </div>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Pad Browser</span></div>
+  </section>
+
+  <section class="page">
+    <div class="sectionHead">
+      <p class="eyebrow">Sample Editor</p>
+      <h2>サンプルとTrim</h2>
+      <p class="lead">選択中Padのサンプル表示、Reverse、Smart Trim、Re-analyze、Layer追加は右側のエディタに集約されています。</p>
+    </div>
+    <div class="crop editorTop">
+      <img src="tester-manual-assets/01-pads-overview.png" alt="Sample editor top crop">
+      <span class="callout" style="left: 16mm; top: 17mm;">Selected Pad</span>
+      <span class="callout dark" style="right: 12mm; top: 12mm;">Add Layer</span>
+      <span class="callout" style="right: 22mm; top: 41mm;">Sample Slot</span>
+    </div>
+    <div class="two" style="margin-top: 9mm;">
+      <div class="crop trimStrip">
+        <img src="tester-manual-assets/01-pads-overview.png" alt="Trim controls crop">
+      </div>
+      <div class="card">
+        <span class="num">3</span>
+        <h3>Trim Controls</h3>
+        <p>Start / Endで再生範囲を決め、Fade In / Fade Outでクリックノイズを整えます。Smart Trimを使うと無音部分の処理を素早く確認できます。</p>
+      </div>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Sample Editor</span></div>
+  </section>
+
+  <section class="page">
+    <div class="sectionHead">
+      <p class="eyebrow">Playback</p>
+      <h2>再生フィールを調整する</h2>
+      <p class="lead">PLAYBACKタブでは、音量、Pan、Pitch、位相、再生モード、Choke、発音数、Output Assignを設定します。</p>
+    </div>
+    <div class="crop playbackStrip">
+      <img src="tester-manual-assets/02-pad-playback.png" alt="Playback controls crop">
+      <span class="callout" style="left: 15mm; top: 16mm;">Volume / Pan / Pitch</span>
+      <span class="callout dark" style="right: 18mm; top: 19mm;">Output</span>
+      <span class="callout" style="left: 18mm; bottom: 15mm;">Mode / Choke / Voices</span>
+    </div>
+    <div class="two" style="margin-top: 9mm;">
+      <div class="card">
+        <span class="num">4</span>
+        <h3>Mode</h3>
+        <p>One Shotは最後まで再生、Gateは入力が続いている間だけ再生します。</p>
+      </div>
+      <div class="card">
+        <span class="num">5</span>
+        <h3>Choke / Voices</h3>
+        <p>Chokeで鳴り止めグループを作り、Voicesで同時発音数を制限します。</p>
+      </div>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Playback</span></div>
+  </section>
+
+  <section class="page">
+    <div class="sectionHead">
+      <p class="eyebrow">Mixer</p>
+      <h2>16 Padをまとめてミックス</h2>
+      <p class="lead">Mixer画面では、現在のBankにある16 Padの音量、Pan、Output、Mute/Soloを横一列で操作できます。</p>
+    </div>
+    <div class="crop mixerWide">
+      <img src="tester-manual-assets/03-mixer.png" alt="Mixer wide crop">
+      <span class="callout" style="left: 16mm; top: 14mm;">Bank A/B/C</span>
+      <span class="callout dark" style="left: 81mm; top: 14mm;">Out Mode</span>
+      <span class="callout" style="right: 18mm; bottom: 11mm;">Mute / Solo</span>
+    </div>
+    <div class="two" style="margin-top: 9mm;">
+      <div class="card">
+        <span class="num">6</span>
+        <h3>Channel Strip</h3>
+        <p>PadごとにPan、Output Assign、フェーダー、Mute/Soloを調整します。</p>
+      </div>
+      <div class="card">
+        <span class="num">7</span>
+        <h3>Routing</h3>
+        <p>All Main、Individual、Customなど、制作環境に合わせた出力構成を選べます。</p>
+      </div>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Mixer</span></div>
+  </section>
+
+  <section class="page">
+    <div class="sectionHead">
+      <p class="eyebrow">Routing & Display</p>
+      <h2>出力と表示サイズ</h2>
+      <p class="lead">ルーティングはMixer上部に集約されています。表示サイズは右上メニューから変更できます。</p>
+    </div>
+    <div class="two">
+      <div>
+        <div class="crop routingCrop">
+          <img src="tester-manual-assets/03-mixer.png" alt="Routing crop">
+        </div>
+        <p class="caption">Out ModeとRoutingを使い、DAW側の出力構成に合わせます。</p>
+      </div>
+      <div>
+        <div class="crop menuCrop">
+          <img src="tester-manual-assets/04-settings-menu.png" alt="UI size menu crop">
+        </div>
+        <p class="caption">UI Sizeは50%から200%まで変更できます。</p>
+      </div>
+    </div>
+    <div class="card darkCard" style="margin-top: 11mm;">
+      <span class="num">8</span>
+      <h3>Recommended Start</h3>
+      <p>まずはPads画面で音色を選び、TRIMで再生範囲を整え、PLAYBACKで鳴り方を決めます。最後にMixerで音量と出力をまとめて調整します。</p>
+    </div>
+    <div class="footer"><span>ASTER Drum Lab</span><span>Routing & Display</span></div>
+  </section>
+</body>
+</html>

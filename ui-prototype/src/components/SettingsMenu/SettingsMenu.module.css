@@ -1,0 +1,209 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  border: none;
+  cursor: default;
+  z-index: 1000;
+}
+
+.panel {
+  position: fixed;
+  min-width: 240px;
+  padding: 6px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: rgba(20, 24, 30, 0.98);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  z-index: 1001;
+  color: var(--text-soft);
+  /* 内部スタッキング + max-height 超過時のスクロール */
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 内部スクロールバーの ASTER 風スタイル (WebKit) */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(82, 200, 232, 0.18) transparent;
+}
+
+.panel::-webkit-scrollbar {
+  width: 6px;
+}
+.panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel::-webkit-scrollbar-thumb {
+  background: rgba(82, 200, 232, 0.22);
+  border-radius: 3px;
+}
+.panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 200, 232, 0.36);
+}
+
+/* 全 pane 子要素は flex item として自然に上から積み上げ */
+.panel > * {
+  flex-shrink: 0;
+}
+
+.title {
+  padding: 4px 12px 6px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--text-sub);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: var(--fs-11);
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 500;
+}
+
+.item:hover {
+  background: rgba(82, 200, 232, 0.07);
+  color: var(--accent-cyan);
+}
+
+.chevron {
+  color: var(--text-sub);
+  font-size: 10px;
+}
+
+.divider {
+  display: block;
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border-subtle);
+}
+
+.statusLine {
+  padding: 4px 12px 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--accent-cyan);
+  opacity: 0.85;
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 5px 12px;
+  background: rgba(20, 24, 30, 0.98);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-sub);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* sub-pane の戻るボタンはスクロール時もアクセス可能に */
+  position: sticky;
+  top: -6px;             /* panel padding-top と相殺 */
+  z-index: 2;
+}
+
+.back:hover { color: var(--accent-cyan); }
+
+.chevronBack { font-size: 10px; }
+
+/* ── About ─────────────────────────── */
+.aboutBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 14px 12px;
+}
+
+.aboutName {
+  font-size: var(--fs-12);
+  font-weight: 700;
+  color: var(--accent-cyan);
+  letter-spacing: 0.06em;
+}
+
+.aboutLine {
+  font-size: var(--fs-11);
+  color: var(--text-soft);
+  letter-spacing: 0.04em;
+}
+
+.aboutLine b {
+  color: var(--text-strong, #d8dde2);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+/* ── Preferences toggle rows ─────── */
+.prefRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--fs-11);
+  color: var(--text-soft);
+  text-align: left;
+}
+
+.prefRow:hover {
+  background: rgba(82, 200, 232, 0.05);
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  width: 26px;
+  height: 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-strong);
+  padding: 1px;
+  transition: background 160ms, border-color 160ms;
+}
+
+.toggleDot {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-sub);
+  transition: transform 160ms, background 160ms;
+}
+
+.toggleOn {
+  background: rgba(82, 200, 232, 0.32);
+  border-color: rgba(82, 200, 232, 0.55);
+}
+
+.toggleOn .toggleDot {
+  transform: translateX(12px);
+  background: var(--accent-cyan);
+}
+
+.hint {
+  padding: 6px 12px 8px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-sub);
+  opacity: 0.68;
+}

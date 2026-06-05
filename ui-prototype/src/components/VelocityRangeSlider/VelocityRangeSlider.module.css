@@ -1,0 +1,283 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── ヘッダー (タイトル + SPLIT/AUTO ボタン) ─────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--fs-10, 10px);
+  letter-spacing: var(--ls-wide, 0.14em);
+  color: var(--text-sub, #7a7f86);
+  font-weight: 600;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.splitBtn,
+.autoBtn {
+  height: 16px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(201, 173, 120, 0.05);
+  border: 1px solid rgba(201, 173, 120, 0.32);
+  border-radius: 2px;
+  color: var(--platinum-gold-soft, #b49a6a);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.splitBtn:hover,
+.autoBtn:hover {
+  background: rgba(201, 173, 120, 0.12);
+  border-color: rgba(201, 173, 120, 0.55);
+  color: var(--platinum-gold, #c9ad78);
+}
+
+.caret {
+  font-size: 8px;
+  line-height: 1;
+}
+
+.autoMenu {
+  position: fixed;
+  z-index: 9999;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: rgba(20, 22, 26, 0.98);
+  border: 1px solid rgba(201, 173, 120, 0.40);
+  border-radius: 4px;
+  box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.6);
+  min-width: 120px;
+}
+
+.autoOpt {
+  width: 100%;
+  padding: 5px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--text-soft, #c2c7cc);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.autoOpt:hover {
+  background: rgba(201, 173, 120, 0.14);
+  color: var(--platinum-gold, #c9ad78);
+}
+
+/* ── 行リスト (Layer ごとに 1 行) ──────────────────────────────── */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 50px;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border-radius: 3px;
+  transition: background 140ms ease;
+}
+
+.row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.rowActive {
+  background: rgba(201, 173, 120, 0.06);
+}
+
+.rowActive:hover {
+  background: rgba(201, 173, 120, 0.10);
+}
+
+/* Live velocity が当たっている Layer は瞬間的に発光 */
+.rowHit .fill {
+  filter: brightness(1.6);
+}
+
+.rowHit .rowValues b {
+  color: var(--accent-cyan, #38bdf8);
+}
+
+/* 行ラベル (MAIN / L2 / L3 ...) — クリックで Layer 切替 */
+.rowLabel {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-sub, #8a8f96);
+  background: transparent;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  text-align: left;
+  height: 100%;
+  transition: color 140ms ease;
+}
+
+.rowLabel:hover {
+  color: var(--text-soft, #c2c7cc);
+}
+
+.rowActive .rowLabel {
+  color: var(--platinum-gold, #c9ad78);
+}
+
+/* 行末の数値 (29–59) */
+.rowValues {
+  font-size: 8px;
+  letter-spacing: 0.02em;
+  color: var(--text-soft, #c2c7cc);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowValues b {
+  font-weight: 700;
+  color: var(--text-soft, #c2c7cc);
+}
+
+.rowActive .rowValues b {
+  color: var(--platinum-gold, #c9ad78);
+}
+
+/* ダブルクリック後のインライン数値入力 */
+.valueInput {
+  width: 22px;
+  height: 13px;
+  padding: 0 2px;
+  background: rgba(30, 34, 40, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.55);
+  border-radius: 2px;
+  color: var(--accent-cyan, #38bdf8);
+  font-size: 8px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.25);
+}
+
+.rowActive .valueInput {
+  border-color: rgba(201, 173, 120, 0.6);
+  color: var(--platinum-gold, #c9ad78);
+  box-shadow: 0 0 4px rgba(201, 173, 120, 0.25);
+}
+
+/* ── レンジトラック ──────────────────────────────────────────── */
+.track {
+  position: relative;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg,
+    rgba(56, 189, 248, 0.14),
+    rgba(56, 189, 248, 0.26));
+  border-top: 1px solid rgba(56, 189, 248, 0.35);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+  transition: filter 90ms ease;
+}
+
+.rowActive .fill {
+  background: linear-gradient(90deg,
+    rgba(201, 173, 120, 0.22),
+    rgba(220, 195, 140, 0.38));
+  border-top: 1px solid rgba(220, 195, 140, 0.55);
+  border-bottom: 1px solid rgba(220, 195, 140, 0.55);
+}
+
+.thumb {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 14px;
+  margin-left: -4px;
+  transform: translateY(-50%);
+  background: linear-gradient(180deg, #38bdf8, #1e8fc4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.thumb:hover {
+  background: linear-gradient(180deg, #62cdfa, #2aa0d8);
+}
+
+.rowActive .thumb {
+  background: linear-gradient(180deg, #d8b87a, #9c8048);
+  border-color: rgba(255, 240, 210, 0.24);
+}
+
+.rowActive .thumb:hover {
+  background: linear-gradient(180deg, #e5c891, #b09159);
+}
+
+/* ── Live velocity 縦線 ────────────────────────────────────── */
+.liveMarker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: linear-gradient(180deg,
+    rgba(120, 216, 240, 0.0),
+    rgba(120, 216, 240, 0.92),
+    rgba(120, 216, 240, 0.0));
+  box-shadow: 0 0 4px rgba(120, 216, 240, 0.65);
+  pointer-events: none;
+  animation: liveFlash 360ms ease-out;
+}
+
+.rowHit .liveMarker {
+  background: linear-gradient(180deg,
+    rgba(220, 195, 140, 0.0),
+    rgba(220, 195, 140, 0.95),
+    rgba(220, 195, 140, 0.0));
+  box-shadow: 0 0 6px rgba(220, 195, 140, 0.7);
+}
+
+@keyframes liveFlash {
+  0%   { opacity: 0.95; }
+  100% { opacity: 0.55; }
+}

@@ -1,0 +1,229 @@
+/* ─── EQ Card — コンパクト版 ─────────────────────────────────────
+   Layer 固定 EQ。
+   ──────────────────────────────────────────────────────────── */
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px 8px;
+  width: 256px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--panel-inset);
+  box-shadow: var(--panel-shadow-section);
+  transition: opacity 160ms;
+}
+
+.bypassed { opacity: 0.55; }
+
+/* ── Header ──────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.title {
+  color: #7dd7b6;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(125, 215, 182, 0.24);
+}
+
+.headerActions { display: flex; gap: 4px; }
+
+.iconBtn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.20);
+  color: var(--text-sub);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 140ms, border-color 140ms, background 140ms;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.iconBtn:hover { color: var(--text-soft); }
+
+.powerOn {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.45);
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+}
+
+.powerOff { color: rgba(160, 170, 180, 0.45); }
+
+.removeBtn { font-weight: 700; }
+.removeBtn:hover {
+  color: #ed5757;
+  border-color: rgba(237, 87, 87, 0.45);
+}
+
+/* ── Band tab strip ──────────────────────────────────────────── */
+.bandTabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.bandTab {
+  height: 16px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--band-color, var(--text-sub));
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 120ms, background 120ms, border-color 120ms;
+}
+.bandTab:hover { color: var(--text-soft); }
+.bandTabActive {
+  color: var(--band-color-active, var(--accent-cyan));
+  border-color: var(--band-border, rgba(82, 200, 232, 0.32));
+  background: var(--band-bg, rgba(82, 200, 232, 0.06));
+}
+
+.bandLow {
+  --band-color: #9fd36d;
+  --band-color-active: #bde883;
+  --band-border: rgba(189, 232, 131, 0.42);
+  --band-bg: rgba(189, 232, 131, 0.08);
+}
+
+.bandLowMid {
+  --band-color: #f0b463;
+  --band-color-active: #ffc575;
+  --band-border: rgba(255, 197, 117, 0.42);
+  --band-bg: rgba(255, 197, 117, 0.08);
+}
+
+.bandHighMid {
+  --band-color: #e690bd;
+  --band-color-active: #f2a0ca;
+  --band-border: rgba(242, 160, 202, 0.42);
+  --band-bg: rgba(242, 160, 202, 0.08);
+}
+
+.bandHigh {
+  --band-color: #73c8ff;
+  --band-color-active: #91d5ff;
+  --band-border: rgba(145, 213, 255, 0.42);
+  --band-bg: rgba(145, 213, 255, 0.08);
+}
+
+/* ── Knobs row ────────────────────────────────────────────────── */
+.knobsRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  align-items: start;
+  justify-items: center;
+  padding-top: 2px;
+  min-height: 56px;
+}
+
+.knobsRowWithMode {
+  grid-template-columns: 42px 42px 42px 1fr;
+  gap: 3px;
+}
+
+.modeWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 54px;
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  width: 100%;
+  padding-top: 1px;
+}
+
+.modeBtn {
+  height: 17px;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--text-sub);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+
+.modeBtn:hover { color: var(--text-soft); }
+
+.modeBtnActive {
+  color: #7dd7b6;
+  border-color: rgba(125, 215, 182, 0.46);
+  background: rgba(125, 215, 182, 0.08);
+}
+
+.modeHint {
+  align-self: center;
+  height: 10px;
+  margin-top: -4px;
+  color: rgba(125, 215, 182, 0.72);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+/* ── Mini Slope select ────────────────────────────────────────── */
+.slopeWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+
+.miniLabel {
+  font-size: 8px;
+  letter-spacing: 0.10em;
+  color: var(--text-sub);
+  font-weight: 600;
+}
+
+.slopeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  width: 100%;
+}
+
+.slopeBtn {
+  height: 14px;
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: var(--panel-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.slopeBtn:hover { color: var(--text-soft); }
+.slopeBtnActive {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.48);
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+}

@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASTER Drum Lab UI Mock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="plugin-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div class="brand-text"><span>ASTER</span> <em>Drum Lab</em></div>
+      </div>
+
+      <div class="kit-strip">
+        <span class="kit-label">KIT</span>
+        <div class="kit-select">Dark Pop 01 <span class="chevron">⌄</span></div>
+        <button class="nav-btn">‹</button>
+        <button class="nav-btn">›</button>
+      </div>
+
+      <div class="header-actions">
+        <button class="ghost-btn">SAVE</button>
+        <button class="ghost-btn">LOAD</button>
+        <button class="menu-btn" aria-label="Menu"><span></span><span></span><span></span></button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active">PADS</button>
+      <button class="tab">MIXER</button>
+    </nav>
+
+    <section class="workspace">
+      <aside class="pad-panel panel">
+        <div class="page-selector">
+          <span class="page-label">PAGE</span>
+          <div class="page-buttons">
+            <button class="page-btn active">A</button>
+            <button class="page-btn">B</button>
+            <button class="page-btn">C</button>
+          </div>
+        </div>
+
+        <div class="pad-grid">
+          <article class="pad selected">
+            <div class="pad-num">1</div>
+            <h3>KICK</h3>
+            <p>C1</p>
+            <small>kick_dark.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">2</div>
+            <h3>SNARE</h3>
+            <p>D1</p>
+            <small>snare_snap.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">3</div>
+            <h3>CLAP</h3>
+            <p>E1</p>
+            <small>clap_cliq.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">4</div>
+            <h3>CLOSED HAT</h3>
+            <p>F#1</p>
+            <small>ch_closed.wav</small>
+          </article>
+          <article class="pad hot">
+            <div class="pad-num">5</div>
+            <h3>OPEN HAT</h3>
+            <p>G1</p>
+            <small>oh_icy_04.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">6</div>
+            <h3>PERC 1</h3>
+            <p>A1</p>
+            <small>perc_tap.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">7</div>
+            <h3>PERC 2</h3>
+            <p>A#1</p>
+            <small>perc_shot.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">8</div>
+            <h3>SHAKER</h3>
+            <p>B1</p>
+            <small>shake_loop.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">9</div>
+            <h3>808</h3>
+            <p>C2</p>
+            <small>808_deep.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">10</div>
+            <h3>BASS</h3>
+            <p>D2</p>
+            <small>bass_sub.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">11</div>
+            <h3>RIM</h3>
+            <p>D#2</p>
+            <small>rim_click.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">12</div>
+            <h3>TOM</h3>
+            <p>F2</p>
+            <small>tom_mid.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">13</div>
+            <h3>CRASH</h3>
+            <p>G2</p>
+            <small>crash_bright.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">14</div>
+            <h3>RIDE</h3>
+            <p>A2</p>
+            <small>ride_wash.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">15</div>
+            <h3>FX HIT</h3>
+            <p>C#3</p>
+            <small>fx_impact.wav</small>
+          </article>
+          <article class="pad">
+            <div class="pad-num">16</div>
+            <h3>VOX</h3>
+            <p>D#3</p>
+            <small>vocal_phrase.wav</small>
+          </article>
+        </div>
+      </aside>
+
+      <section class="editor-panel panel">
+        <div class="sample-header">
+          <div class="sample-title">oh_icy_04.wav <span>☆</span></div>
+          <div class="sample-actions">
+            <span class="pill active-dot">SMART TRIM</span>
+            <span class="pill">REVERSE</span>
+          </div>
+        </div>
+
+        <div class="waveform-card">
+          <div class="wave-label start">START<br><strong>6.2 ms</strong></div>
+          <div class="wave-label end">END<br><strong>414.8 ms</strong></div>
+          <div class="fade-shape fade-left"></div>
+          <div class="fade-shape fade-right"></div>
+          <div class="trim-line trim-start"></div>
+          <div class="trim-line trim-end"></div>
+          <div class="waveform">
+            <span style="--h:12"></span><span style="--h:18"></span><span style="--h:30"></span><span style="--h:56"></span>
+            <span style="--h:80"></span><span style="--h:96"></span><span style="--h:72"></span><span style="--h:88"></span>
+            <span style="--h:120"></span><span style="--h:138"></span><span style="--h:122"></span><span style="--h:104"></span>
+            <span style="--h:132"></span><span style="--h:88"></span><span style="--h:112"></span><span style="--h:78"></span>
+            <span style="--h:120"></span><span style="--h:92"></span><span style="--h:112"></span><span style="--h:70"></span>
+            <span style="--h:98"></span><span style="--h:64"></span><span style="--h:86"></span><span style="--h:54"></span>
+            <span style="--h:76"></span><span style="--h:46"></span><span style="--h:68"></span><span style="--h:40"></span>
+            <span style="--h:58"></span><span style="--h:36"></span><span style="--h:48"></span><span style="--h:28"></span>
+          </div>
+          <div class="fade-info left">FADE IN<br><strong>4.0 ms</strong></div>
+          <div class="fade-info right">FADE OUT<br><strong>12.0 ms</strong></div>
+        </div>
+
+        <div class="knob-row">
+          <div class="control"><span>START</span><div class="knob k1"></div><strong>6.2 ms</strong></div>
+          <div class="control"><span>END</span><div class="knob k2"></div><strong>414.8 ms</strong></div>
+          <div class="control"><span>FADE IN</span><div class="knob k3"></div><strong>4.0 ms</strong></div>
+          <div class="control"><span>FADE OUT</span><div class="knob k4"></div><strong>12.0 ms</strong></div>
+          <div class="control"><span>PITCH</span><div class="knob k5"></div><strong>0 st</strong></div>
+          <div class="control"><span>ATTACK</span><div class="knob k6"></div><strong>1.0 ms</strong></div>
+          <div class="control"><span>RELEASE</span><div class="knob k7"></div><strong>120 ms</strong></div>
+        </div>
+
+        <div class="bottom-controls">
+          <div class="mode-box">
+            <span>PLAY MODE</span>
+            <button class="small-btn active">ONE SHOT</button>
+            <button class="small-btn">GATE</button>
+          </div>
+          <div class="mini-field"><span>CHOKE GROUP</span><div>1 <b>⌄</b></div></div>
+          <div class="macro"><span>VELOCITY SENS</span><div class="knob small"></div><strong>0.0%</strong></div>
+          <div class="macro"><span>HUMANIZE</span><div class="knob small human"></div><strong>5%</strong></div>
+          <div class="mini-field"><span>OUTPUT ASSIGN</span><div>Out 1 <b>⌄</b></div></div>
+          <div class="switch-group">
+            <span>REVERSE</span><i class="switch"></i>
+          </div>
+          <div class="mute-solo">
+            <span>MUTE</span>
+            <button>M</button><button>S</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="settings-panel panel">
+        <div class="settings-title">PAD SETTINGS <span>⌄</span></div>
+        <label>MIDI NOTE <input value="G1" readonly></label>
+        <label>PAD NAME <input value="OPEN HAT" readonly></label>
+        <label>SAMPLE FILE <div class="file-field">oh_icy_04.wav <button>□</button></div></label>
+        <label>OUTPUT <div class="select-field">Out 1 <span>⌄</span></div></label>
+        <label>PLAY MODE <div class="select-field">One Shot <span>⌄</span></div></label>
+        <label>CHOKE GROUP <div class="select-field">1 <span>⌄</span></div></label>
+        <div class="setting-row"><span>REVERSE</span><i class="toggle"></i></div>
+        <div class="setting-row"><span>SMART TRIM</span><i class="toggle on"></i></div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

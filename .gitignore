@@ -1,0 +1,39 @@
+# macOS metadata
+.DS_Store
+
+# CMake build output
+build/
+build-*/
+cmake-build-*/
+CMakeUserPresets.json
+
+# Web UI generated files and dependencies
+ui-prototype/node_modules/
+ui-prototype/dist/
+ui-prototype/*.tsbuildinfo
+ui-prototype/vite.config.js
+ui-prototype/vite.config.d.ts
+
+# Packaged release output
+dist/
+*.pkg
+*.exe
+*.msi
+
+# Local installer dependencies
+packaging/windows/vendor/
+
+# Signing certificates and private keys
+*.p12
+*.pfx
+*.cer
+*.key
+*.pem
+
+# Editor and temporary files
+.vscode/
+.idea/
+tmp/
+*.swp
+*.tmp
+*~

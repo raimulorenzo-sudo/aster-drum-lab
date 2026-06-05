@@ -1,0 +1,631 @@
+.editor {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, rgba(28, 26, 22, 0.22), rgba(10, 10, 10, 0.12));
+}
+
+.selectedBlock,
+.sampleBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.selectedLabel {
+  color: var(--text-sub);
+  font-size: var(--fs-13);
+  font-weight: 650;
+  letter-spacing: 0.14em;
+}
+
+.selectedName {
+  display: inline-block;
+  max-width: 220px;
+  color: var(--accent-cyan);
+  font-size: var(--fs-14);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 0 5px var(--accent-blue-glow-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.selectedNameButton {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: text;
+}
+
+.nameInput {
+  width: 132px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.38);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--accent-cyan);
+  font-size: var(--fs-13);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  outline: none;
+  box-shadow: 0 0 5px var(--accent-blue-glow-soft);
+}
+
+/* ── MIDI Note ピル ─────────────────────────────────────────────── */
+.midiWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.midiPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 3px;
+  border: 1px solid rgba(82, 200, 232, 0.22);
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.06);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.midiStep {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid rgba(82, 200, 232, 0.22);
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.06);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.midiPill:hover,
+.midiStep:hover {
+  border-color: rgba(82, 200, 232, 0.42);
+  color: var(--accent-cyan-hot);
+}
+
+/* ── 編集ツール (REVERSE / SMART TRIM / RE-ANALYZE) ──────────── */
+.editTools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.toolBtn {
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-sub);
+  font-size: var(--fs-10);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.14);
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
+}
+
+.toolBtn:hover {
+  color: var(--text-soft);
+  border-color: var(--border-hi);
+}
+
+.toolBtnActive {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.48);
+  background:
+    linear-gradient(180deg, rgba(82, 200, 232, 0.08), rgba(82, 200, 232, 0.02));
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 216, 240, 0.06),
+    0 0 5px var(--accent-blue-glow-soft);
+}
+
+.sampleBlock {
+  justify-content: flex-end;
+}
+
+.sampleNav {
+  color: var(--text-sub);
+  font-size: var(--fs-15);
+  letter-spacing: 0.20em;
+}
+
+.sampleLabel {
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-11);
+  font-weight: 650;
+  letter-spacing: 0.15em;
+}
+
+.filename {
+  font-size: var(--fs-13);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  font-family: var(--font-sans);
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filenameMissing {
+  color: var(--mute-color);
+}
+
+.relinkBtn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(237, 87, 87, 0.42);
+  background: rgba(237, 87, 87, 0.08);
+  color: var(--mute-color);
+  font-size: var(--fs-10);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.relinkBtn:hover {
+  border-color: rgba(237, 87, 87, 0.64);
+  color: #f08080;
+}
+
+.waveBox {
+  --wave-editor-bg-top: var(--panel-inset);
+  --wave-editor-bg-bottom: var(--panel-floor);
+  --wave-editor-wave: var(--accent-blue);
+  --wave-editor-trim: var(--accent-cyan-hot);
+  --wave-editor-fade: var(--platinum-gold);
+  --wave-editor-fade-glow: rgba(191, 163, 106, 0.32);
+  position: relative;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, var(--wave-editor-bg-top) 0%, var(--wave-editor-bg-bottom) 100%);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.48),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.waveBoxDragOver {
+  border-color: rgba(82, 200, 232, 0.68);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 0 0 1px rgba(82, 200, 232, 0.20),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.22),
+    0 0 18px rgba(82, 200, 232, 0.16);
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 22px 0 14px;
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  pointer-events: none;
+  background: rgba(6, 12, 16, 0.52);
+  color: var(--accent-cyan);
+  font-size: var(--fs-11);
+  font-weight: 750;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 8px rgba(82, 200, 232, 0.28);
+}
+
+/* ── 上部ツールレーン: zoom controls 専用 (波形と完全に分離) ───── */
+.waveToolLane {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* ── 中段: 波形描画レーン (overlay label 等の position 基準) ───── */
+.waveDisplay {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* ── 下部レーン: View Range Bar 専用 (フェードハンドルと分離) ─── */
+.waveBottomLane {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 14px;
+  padding: 0 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.18);
+  cursor: default;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.waveform {
+  filter:
+    drop-shadow(0 0 3px rgba(82, 200, 232, 0.32))
+    drop-shadow(0 0 6px rgba(82, 200, 232, 0.12));
+}
+
+/* zoom 中も波形ストロークが太くならないように */
+.waveform path {
+  vector-effect: non-scaling-stroke;
+}
+
+/* ── Zoom controls (waveToolLane の右端に通常フローで配置) ─────── */
+.zoomControls {
+  display: inline-flex;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.36);
+}
+
+.zoomBtn {
+  height: 18px;
+  min-width: 22px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-sub);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: color 140ms, background 140ms;
+  line-height: 1;
+}
+
+.zoomBtn:hover:not(:disabled) {
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.10);
+}
+
+.zoomBtn:disabled {
+  color: rgba(160, 170, 180, 0.30);
+  cursor: not-allowed;
+}
+
+.zoomBtnFit {
+  letter-spacing: 0.12em;
+  font-size: 9px;
+  padding: 0 8px;
+}
+
+/* ── View Range Bar (waveBottomLane 内で表示範囲を pan) ─────── */
+.viewRangeBar {
+  position: relative;
+  width: 100%;
+  height: 14px;            /* 当たり判定を確保 (バーの "lane" 自体の高さ) */
+  display: flex;
+  align-items: center;
+  cursor: default;
+  /* track 本体 (細いライン) */
+  --range-track-bg: rgba(255, 255, 255, 0.04);
+  --range-handle-bg: rgba(82, 200, 232, 0.18);
+  --range-handle-border: rgba(82, 200, 232, 0.32);
+}
+
+/* lane 自体に active 状態を持たせる: ズーム中はトラックが少し見えるように */
+.waveBottomLaneActive .viewRangeBar {
+  --range-track-bg: rgba(255, 255, 255, 0.07);
+  --range-handle-bg: rgba(82, 200, 232, 0.28);
+  --range-handle-border: rgba(82, 200, 232, 0.55);
+}
+
+/* track 描画 — 子要素として疑似要素で薄く出す */
+.viewRangeBar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--range-track-bg);
+  pointer-events: none;
+}
+
+.viewRangeBar:hover {
+  --range-track-bg: rgba(255, 255, 255, 0.07);
+}
+
+.viewRangeHandle {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 8px;
+  min-width: 14px;          /* 視認性確保 */
+  border-radius: 2px;
+  background: var(--range-handle-bg);
+  border: 1px solid var(--range-handle-border);
+  cursor: grab;
+  transition: background 140ms, border-color 140ms, box-shadow 160ms, height 140ms;
+}
+
+.viewRangeHandle:hover {
+  background: rgba(82, 200, 232, 0.38);
+  border-color: rgba(120, 216, 240, 0.62);
+  height: 10px;
+  box-shadow: 0 0 6px var(--accent-blue-glow-soft);
+}
+
+.viewRangeHandle:active {
+  cursor: grabbing;
+  background: rgba(82, 200, 232, 0.48);
+}
+
+.trimMarker {
+  stroke: var(--wave-editor-trim);
+  stroke-width: 1.8px;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 2px rgba(120, 216, 240, 0.58))
+    drop-shadow(0 0 6px var(--accent-blue-glow-soft));
+  cursor: ew-resize;
+}
+
+.startMarker,
+.endMarker {
+  stroke-linecap: square;
+}
+
+.fadeCurve {
+  fill: none;
+  stroke: var(--wave-editor-fade);
+  stroke-width: 1.7px;
+  stroke-linecap: butt;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 3px var(--wave-editor-fade-glow))
+    drop-shadow(0 0 6px rgba(191, 163, 106, 0.12));
+  pointer-events: none;
+}
+
+.fadeRange {
+  opacity: 0.78;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.fadeRangeActive {
+  opacity: 0.94;
+}
+
+.fadeDarkMask {
+  fill: rgba(0, 0, 0, 0.60);
+  pointer-events: none;
+}
+
+.fadeDarkMaskActive {
+  fill: rgba(0, 0, 0, 0.70);
+}
+
+.fadeGuide {
+  stroke: var(--wave-editor-fade);
+  stroke-width: 1px;
+  stroke-dasharray: 3 5;
+  stroke-linecap: round;
+  opacity: 0.58;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 2px var(--wave-editor-fade-glow))
+    drop-shadow(0 0 5px rgba(191, 163, 106, 0.10));
+  pointer-events: none;
+}
+
+.previewPlayhead {
+  stroke: var(--accent-cyan-hot);
+  stroke-width: 1.15px;
+  stroke-linecap: square;
+  opacity: 0.98;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 2px rgba(120, 216, 240, 0.72))
+    drop-shadow(0 0 7px var(--accent-blue-glow-soft));
+  pointer-events: none;
+}
+
+.trimHandle {
+  fill: var(--accent-cyan-hot);
+  stroke: rgba(4, 12, 16, 0.78);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 3px rgba(120, 216, 240, 0.68))
+    drop-shadow(0 0 8px var(--accent-blue-glow-soft));
+  cursor: ew-resize;
+}
+
+.fadeHandle {
+  fill: var(--wave-editor-fade);
+  stroke: rgba(8, 8, 8, 0.72);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  filter:
+    drop-shadow(0 0 3px rgba(191, 163, 106, 0.38))
+    drop-shadow(0 0 6px rgba(191, 163, 106, 0.10));
+  cursor: ew-resize;
+}
+
+.fadeHandleActive {
+  filter:
+    drop-shadow(0 0 4px rgba(225, 203, 143, 0.52))
+    drop-shadow(0 0 10px rgba(191, 163, 106, 0.20));
+}
+
+.trimHitArea {
+  cursor: ew-resize;
+}
+
+.handleLabels,
+.fadeLabels {
+  position: absolute;
+  left: 0; right: 0;
+  pointer-events: none;
+}
+
+.handleLabels {
+  top: 2px;
+}
+
+.handleLabel {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  min-width: 68px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(6, 9, 11, 0.54);
+}
+
+.handleTitle {
+  font-size: var(--fs-9);
+  letter-spacing: 0.08em;
+  color: var(--accent-cyan);
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 0 4px var(--accent-blue-glow-soft);
+  white-space: nowrap;
+}
+
+.handleValue {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  line-height: 1;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+/* Fade label を黄色いフェードハンドル (SVG y=H-19) の高さに合わせる。
+   viewBox 0..260 の H-19=241 → 7.3% from bottom 相当。
+   ラベル本体に 18px の余白を確保するため bottom を 6% 程度に。 */
+.fadeLabels {
+  bottom: 6%;
+}
+
+.fadeLabel {
+  position: absolute;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 5px;
+  border: 1px solid rgba(191, 163, 106, 0.16);
+  border-radius: 2px;
+  background: rgba(8, 10, 10, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 248, 235, 0.018);
+}
+
+.fadeTitle {
+  font-size: var(--fs-9);
+  letter-spacing: 0.08em;
+  color: var(--platinum-gold);
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 0 3px rgba(191, 163, 106, 0.14);
+  white-space: nowrap;
+}
+
+.fadeValue {
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  line-height: 1;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.dragValue {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 118px;
+  padding: 7px 10px;
+  border: 1px solid rgba(82, 200, 232, 0.34);
+  border-radius: var(--radius-sm);
+  background:
+    var(--noise-warm),
+    rgba(10, 14, 18, 0.88);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-display);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  letter-spacing: 0.03em;
+  text-align: center;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.02),
+    0 8px 18px rgba(0, 0, 0, 0.32),
+    0 0 8px var(--accent-blue-glow-soft);
+}

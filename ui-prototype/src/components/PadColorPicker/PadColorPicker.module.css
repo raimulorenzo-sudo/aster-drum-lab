@@ -1,0 +1,198 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dialog {
+  width: 320px;
+  padding: 16px;
+  border: 1px solid rgba(82, 200, 232, 0.24);
+  border-radius: var(--radius-md);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(24, 27, 28, 0.98), rgba(11, 14, 16, 0.98));
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-soft);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.024),
+    0 20px 40px rgba(0, 0, 0, 0.6),
+    0 0 16px rgba(82, 200, 232, 0.1);
+}
+
+.title {
+  font-size: var(--fs-12);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  color: var(--accent-cyan);
+}
+
+.previewRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.previewSwatch {
+  width: 56px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.hexInput {
+  flex: 1;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--text-soft);
+  font-family: ui-monospace, monospace;
+  font-size: var(--fs-12);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.hexInput:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+}
+
+.sliderRow {
+  display: grid;
+  grid-template-columns: 44px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sliderLabel {
+  font-size: var(--fs-10);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.sliderValue {
+  font-size: var(--fs-10);
+  font-family: ui-monospace, monospace;
+  color: var(--text-soft);
+  text-align: right;
+}
+
+.sliderRow input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  border-radius: 6px;
+  outline: none;
+}
+
+.sliderRow input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.sliderRow input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.hueSlider {
+  background: linear-gradient(to right,
+    #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%,
+    #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+}
+
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(11, 1fr);
+  gap: 4px;
+  margin: 12px 0 14px;
+}
+
+.presetSwatch {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  padding: 0;
+}
+
+.presetSwatch:hover {
+  transform: scale(1.08);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.presetSelected {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
+}
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.actionsRight {
+  display: flex;
+  gap: 8px;
+}
+
+.actions button {
+  height: 30px;
+  padding: 0 14px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-soft);
+  font-size: var(--fs-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.actions button.primary {
+  background: var(--accent-cyan);
+  color: #07181c;
+  border-color: var(--accent-cyan);
+}
+
+.actions button.primary:hover {
+  color: #07181c;
+  filter: brightness(1.12);
+}
+
+.linkBtn {
+  border-color: transparent !important;
+  background: transparent !important;
+}

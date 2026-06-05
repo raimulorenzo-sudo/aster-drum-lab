@@ -1,0 +1,81 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(ellipse at center, rgba(82, 200, 232, 0.05), transparent 70%),
+    rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.bypassed {
+  opacity: 0.45;
+}
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.gridV,
+.gridH {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.gridHZero {
+  stroke: rgba(255, 255, 255, 0.10);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.fill {
+  fill: url(#filterFill);
+  stroke: none;
+}
+
+.curve {
+  fill: none;
+  stroke: var(--accent-cyan, #52c8e8);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(82, 200, 232, 0.35));
+}
+
+/* HP = 琥珀 (低域を削る = 温色) / LP = シアン (高域を削る = 冷色) */
+.cutoffLineHp {
+  stroke: rgba(214, 143, 72, 0.30);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.cutoffLineLp {
+  stroke: rgba(82, 200, 232, 0.30);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.pointHp {
+  fill: rgba(214, 143, 72, 0.65);
+  stroke: var(--meter-amber, #d68f48);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(214, 143, 72, 0.6));
+}
+
+.pointLp {
+  fill: rgba(82, 200, 232, 0.6);
+  stroke: var(--accent-cyan, #52c8e8);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(82, 200, 232, 0.55));
+}

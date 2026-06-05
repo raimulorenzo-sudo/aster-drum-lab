@@ -1,0 +1,85 @@
+/* ─────────────────────────────────────────────────────────────────────
+   TabBar — ヘッダーと連続するクローム帯
+     アクティブ表示: 細い ice-blue underline のみ（グローなし）
+   ─────────────────────────────────────────────────────────────────── */
+.tabBar {
+  display: flex;
+  align-items: center;
+  background: var(--surface-tab-bg);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 0 var(--plugin-chrome-pad);
+  gap: 4px;
+}
+
+.tab {
+  position: relative;
+  width: 168px;
+  height: 36px;
+  font-size: var(--fs-12);
+  letter-spacing: 0.16em;
+  font-weight: 600;
+  color: var(--text-sub);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  transition: color 160ms ease;
+}
+
+.tab:hover {
+  color: var(--text-soft);
+}
+
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: -1px;
+  height: 2px;
+  background: transparent;
+  border-radius: 1px 1px 0 0;
+  transition: background 180ms ease;
+}
+
+.tabActive {
+  color: var(--accent-cyan);
+  background: transparent;
+}
+
+.tabActive::after {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--accent-cyan) 20%,
+    var(--accent-cyan-hot) 50%,
+    var(--accent-cyan) 80%,
+    transparent 100%);
+}
+
+.spacer { flex: 1; }
+
+/* Missing badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(237, 87, 87, 0.22);
+  border: 1px solid rgba(237, 87, 87, 0.45);
+  color: #ed5757;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.badgeActive {
+  background: rgba(237, 87, 87, 0.32);
+  border-color: rgba(237, 87, 87, 0.68);
+}

@@ -1,0 +1,237 @@
+/* ─── PLAYBACK TAB ──────────────────────────────────────────────── */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+}
+
+/* Volume / Pan / Pitch / Phase / Output を全幅で均等配置 (DYNAMICS と同方針) */
+.controlsRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* 上段ノブと下段トリガー設定の区切り */
+.divider {
+  height: 1px;
+  background: var(--border-faint, rgba(255, 255, 255, 0.06));
+}
+
+/* 下段: 左 トリガー設定 / 右 VEL RANGE。単 Layer 時は 1 カラムで全幅。 */
+.lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 260px);
+  gap: 24px;
+  align-items: start;
+}
+.lowerSingle {
+  grid-template-columns: 1fr;
+}
+
+/* MODE / CHOKE / VOICES を縦に積む。行間にゆとりを持たせて窮屈さを解消 */
+.segStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Phase / Output 用のラベル付きスロット (Knob の wrap と並べても自然な見た目) */
+.slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.slotLabel {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-sub);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.polarityBtn {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-sub);
+  background: var(--panel-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
+}
+.polarityBtn:hover { color: var(--text-soft); }
+.polarityOn {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.55);
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+  box-shadow: 0 0 8px var(--accent-blue-glow-soft);
+}
+
+/* ── Bottom blocks (left col): Mode 上 / Choke 下 ──────────── */
+/* ラベルとセグメントボタンを横一列に並べたコンパクトな行構成 */
+.modeBlock,
+.chokeBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.inlineLabel {
+  min-width: 50px;   /* "MODE" / "CHOKE" を等幅で揃える */
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.14em;
+  opacity: 0.78;
+}
+
+/* セグメントボタン群: 隣接して 1 連の bar に見せる */
+.segGroup {
+  display: inline-flex;
+}
+
+.segBtn {
+  height: 20px;
+  min-width: 56px;
+  padding: 0 10px;
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  font-weight: 650;
+  color: var(--text-soft);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  border: 1px solid var(--border-strong);
+  border-left-width: 0;
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
+}
+
+.segBtn:first-child {
+  border-left-width: 1px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.segBtn:last-child {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.segBtnNarrow {
+  min-width: 34px;
+  padding: 0 6px;
+}
+
+.segBtnActive {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.48);
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 216, 240, 0.06),
+    0 0 6px var(--accent-blue-glow-soft);
+}
+
+.segBtnDimmed {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.stealLabel {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: var(--text-sub);
+  opacity: 0.72;
+  margin-left: 6px;
+}
+
+/* ── Right: VEL RANGE ─────────────────────────────────────────── */
+.rightCol {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.velToggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  align-self: flex-start;
+}
+
+.velChevron {
+  color: var(--text-sub);
+  opacity: 0.7;
+  transition: transform 160ms ease;
+  flex-shrink: 0;
+}
+.velChevronOpen { transform: rotate(180deg); }
+
+.velSliderWrap {
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+/* MAIN / 選択中 Layer のミニ表示 */
+.velPreview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.velChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.velChipActive {
+  border-color: rgba(82, 200, 232, 0.20);
+  background: rgba(82, 200, 232, 0.05);
+}
+
+.velChipLabel {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-sub);
+  min-width: 28px;
+}
+
+.velChipActive .velChipLabel { color: var(--accent-cyan); }
+
+.velChipRange {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-sub);
+  opacity: 0.75;
+}

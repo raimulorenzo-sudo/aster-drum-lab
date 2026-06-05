@@ -1,0 +1,1179 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MixerView — PAD 画面と統一感のあるダーク・ラグジュアリーミキサー
+   ═══════════════════════════════════════════════════════════════════ */
+
+.mixer {
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 54px minmax(0, 1fr) var(--plugin-footer-h);
+  gap: var(--plugin-body-gap);
+  padding: var(--plugin-body-pad);
+  background:
+    var(--noise-matte),
+    linear-gradient(180deg, var(--bg-base) 0%, var(--bg-deep) 100%);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+}
+
+/* ── 3 主要パネル共通質感（PadsView と同じ） ───────────────────────── */
+.topRow,
+.channels,
+.footer {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel-bg);
+  background-size: var(--noise-size) var(--noise-size), auto, auto;
+  background-blend-mode: var(--noise-blend), normal, normal;
+  box-shadow: var(--panel-shadow-inset), var(--panel-shadow-outer);
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   上段ヘッダー
+   ───────────────────────────────────────────────────────────────── */
+.topRow {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 0 18px;
+}
+
+.viewTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-soft);
+}
+
+.titleIcon {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 4px);
+  grid-template-rows: repeat(2, 4px);
+  gap: 2px;
+}
+
+.titleIcon i {
+  width: 4px;
+  height: 4px;
+  background: var(--platinum-gold-soft);
+  opacity: 0.62;
+  border-radius: 1px;
+}
+
+.titleText {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+  font-stretch: condensed;
+  letter-spacing: 0.22em;
+  color: var(--text-display);
+}
+
+/* ── 中央：バンクタブ ─────────────────────────────────────────────── */
+.bankTabs {
+  display: flex;
+  gap: 10px;
+}
+
+.bankTab {
+  width: 44px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-sub);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: var(--ls-wide);
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.16);
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 200ms;
+}
+
+.bankTab:hover {
+  color: var(--text-soft);
+  border-color: var(--border-hi);
+}
+
+.bankTabActive {
+  color: var(--accent-cyan);
+  background:
+    linear-gradient(180deg, rgba(82, 200, 232, 0.08) 0%, rgba(82, 200, 232, 0.02) 100%),
+    var(--panel-inset);
+  border-color: rgba(82, 200, 232, 0.42);
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 216, 240, 0.05),
+    0 0 5px var(--accent-blue-glow-soft);
+}
+
+/* ── 右：Output Mode + ルーティングプリセット + メタ情報 ───────────── */
+.topRight {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: nowrap;
+}
+
+.outputModeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.outputModeSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 26px;
+  padding: 0 24px 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.28);
+  color: var(--accent-cyan);
+  background-color: #1a1918;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--accent-cyan) 50%),
+    linear-gradient(135deg, var(--accent-cyan) 50%, transparent 50%);
+  background-position:
+    calc(100% - 12px) 11px,
+    calc(100% - 8px) 11px;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  color-scheme: dark;
+  font-size: var(--fs-10);
+  font-weight: 650;
+  letter-spacing: 0.10em;
+  cursor: pointer;
+  transition: border-color 140ms, color 140ms;
+}
+
+.outputModeSelect:hover {
+  border-color: rgba(82, 200, 232, 0.48);
+  color: var(--accent-cyan-hot);
+}
+
+.outputModeSelect:focus {
+  outline: none;
+  border-color: rgba(82, 200, 232, 0.55);
+}
+
+.routingPresets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.routingStatus {
+  height: 26px;
+  min-width: 84px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.30);
+  background:
+    linear-gradient(180deg, rgba(82, 200, 232, 0.08), rgba(82, 200, 232, 0.025)),
+    var(--panel-inset);
+  color: var(--accent-cyan);
+  font-size: var(--fs-10);
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.routingStatusCustom {
+  border-color: var(--gold-rim-soft);
+  background:
+    linear-gradient(180deg, rgba(191, 163, 106, 0.10), rgba(191, 163, 106, 0.025)),
+    var(--panel-inset);
+  color: var(--platinum-gold-soft);
+}
+
+.presetLabel {
+  font-size: var(--fs-10);
+  letter-spacing: var(--ls-wide);
+  font-weight: 600;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+
+.presetBtn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-soft);
+  font-size: var(--fs-10);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -2px 6px rgba(0, 0, 0, 0.14);
+  transition: color 140ms, border-color 140ms, background 140ms;
+}
+
+.presetBtn:hover {
+  color: var(--platinum-gold-soft);
+  border-color: var(--gold-rim-soft);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(191, 163, 106, 0.08), rgba(191, 163, 106, 0.02));
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+}
+
+.presetBtn:active {
+  transform: translateY(1px);
+}
+
+.presetBtn:disabled {
+  cursor: default;
+  opacity: 0.42;
+  color: var(--text-dim);
+  border-color: var(--border-weak);
+}
+
+.presetBtn:disabled:hover {
+  color: var(--text-dim);
+  border-color: var(--border-weak);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+}
+
+.topMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+}
+
+.metaLabel {
+  color: var(--text-sub);
+  letter-spacing: var(--ls-wide);
+}
+
+.metaValue {
+  color: var(--platinum-gold-soft);
+  font-weight: 600;
+}
+
+.metaDot {
+  color: var(--text-dim);
+  margin: 0 2px;
+}
+
+/* multi-selection 数表示 (2ch 以上選択時のみ) */
+.selCount {
+  color: var(--accent-cyan);
+  font-weight: 700;
+  letter-spacing: var(--ls-wide);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   チャンネルストリップ列
+   ═══════════════════════════════════════════════════════════════════ */
+.channels {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   1つの ChannelStrip
+   ───────────────────────────────────────────────────────────────── */
+.channel {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  /* head | pan | output | fader+meter | dB | M/S */
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  padding: 9px 6px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, var(--panel-raised) 0%, var(--panel-floor) 100%);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.022),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.16);
+  cursor: pointer;
+  transition: border-color 160ms, box-shadow 200ms, transform 120ms;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+@media (max-width: 1120px) {
+  .channels {
+    grid-template-columns: repeat(16, minmax(58px, 1fr));
+  }
+
+  .topRow {
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+  }
+
+  .topRight {
+    display: none;
+  }
+}
+
+.channel::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(var(--radius-md) - 1px);
+  border: 1px solid rgba(255, 255, 255, 0.012);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.022),
+    inset 0 -10px 22px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.channel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.channel:hover {
+  border-color: var(--border-panel);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.024),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.30);
+}
+
+/* ── Selected (PadCell と同じゴールドリム表現) ───────────────────── */
+.channelSelected {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--gold-rim-soft),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.38),
+    0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.channelSelected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg,
+      var(--gold-frame-start) 0%,
+      var(--gold-frame-end) 30%,
+      var(--gold-frame-hi) 50%,
+      var(--gold-frame-end) 70%,
+      var(--gold-frame-start) 100%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0.68;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── 空パッド：全体的にトーンダウン ──────────────────────────────── */
+.channelEmpty .name,
+.channelEmpty .sample {
+  opacity: 0.32;
+}
+.channelEmpty .meterFill,
+.channelEmpty .meterPeak {
+  opacity: 0.18;
+}
+
+/* ── ミュート中：ほのかに赤の影 ──────────────────────────────────── */
+.channelMuted .meterFill {
+  filter: saturate(0.2) brightness(0.6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ヘッダー（番号・名前・サンプル名）
+   ═══════════════════════════════════════════════════════════════════ */
+.head {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: 2px;
+  padding: 0 2px;
+  text-align: center;
+}
+
+.numBadge {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--platinum-gold-soft);
+  opacity: 0.78;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+.name {
+  font-family: var(--font-display);
+  font-size: 11.5px;
+  font-weight: 400;
+  font-stretch: condensed;
+  letter-spacing: 0.06em;
+  color: var(--text-display);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sample {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  font-style: italic;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.78;
+}
+
+.channelSelected .numBadge { color: var(--platinum-gold); opacity: 1; }
+.channelSelected .name { color: #ebe3d0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Pan セクション
+   ═══════════════════════════════════════════════════════════════════ */
+.panBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.panLabel {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-sub);
+  line-height: 1;
+}
+
+.channelSelected .panLabel {
+  color: rgba(158, 228, 248, 0.82);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   OUTPUT アサイン
+   ═══════════════════════════════════════════════════════════════════ */
+.outputRow {
+  padding: 0 2px 2px;
+}
+
+.outputSelect {
+  width: 100%;
+  height: 20px;
+  padding: 0 4px 0 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.28);
+  background-color: #1a1918 !important;
+  color: var(--accent-cyan);
+  color-scheme: dark;
+  font-size: 9.5px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  text-align: center;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 248, 235, 0.014);
+  transition: border-color 140ms, color 140ms;
+}
+
+.outputSelect:hover {
+  border-color: rgba(82, 200, 232, 0.42);
+  color: var(--accent-cyan-hot);
+}
+
+.outputSelect:focus {
+  outline: none;
+  border-color: rgba(82, 200, 232, 0.52);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   メーター + フェーダー
+   ═══════════════════════════════════════════════════════════════════ */
+.fmBlock {
+  position: relative;
+  display: grid;
+  grid-template-columns: 11px 7px 1fr;
+  gap: 2px;
+  align-items: stretch;
+  min-height: 110px;
+  padding: 2px 0;
+}
+
+/* ── 目盛 ──────────────────────────────────────────────────────── */
+/* Positions are NOT hard-coded here — JSX places each <span> via
+   FADER_SCALE_MARKS (utils/fader.ts) so the labels always sit on the
+   exact rail position they describe. */
+.scale {
+  position: relative;
+  width: 11px;
+  height: 100%;
+  font-family: var(--font-mono);
+  font-size: 7px;
+  line-height: 1;
+  color: var(--text-dim);
+  letter-spacing: 0;
+  padding: 2px 0;
+}
+
+.scaleMark {
+  position: absolute;
+  right: 0;
+  /* `bottom: <pos>%` is supplied inline from FADER_SCALE_MARKS */
+  transform: translateY(50%);
+  text-align: right;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 0 dB のラベルだけ少し強調 */
+.scaleMarkUnity {
+  color: var(--platinum-gold-dim);
+}
+
+/* ── メーター ─────────────────────────────────────────────────── */
+.meter {
+  position: relative;
+  width: 7px;
+  border-radius: 1.5px;
+  background:
+    repeating-linear-gradient(180deg, rgba(255,248,235,0.08) 0 1px, transparent 1px 5px),
+    var(--panel-inset);
+  border: 1px solid rgba(80, 76, 68, 0.32);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.36);
+  overflow: hidden;
+}
+
+/* v8+ perf: 塗りは clip-path をやめ、wrapper(.meterClip) を scaleY で伸縮し、
+   内側 gradient(.meterFill) を逆 scaleY で打ち消す二重 transform 方式。
+   transform は repaint を起こさず GPU 合成だけで動くので 16ch でも軽い。 */
+.meterClip {
+  position: absolute;
+  inset: 1px;
+  overflow: hidden;
+  transform-origin: bottom center;
+  transform: scaleY(0);
+  will-change: transform;
+}
+
+.meterFill {
+  position: absolute;
+  inset: 0;
+  /* 4-color smooth gradient (180deg, top=0 dB=loud, bottom=-60 dB=quiet):
+       red (-3 dB / 5% from top) → amber (-10 dB / 16.67%)
+       → cyan (-30 dB / 50%) → deep-blue (-60 dB / 100%) */
+  background: linear-gradient(180deg,
+    var(--meter-red)       5%,
+    var(--meter-amber)     16.67%,
+    var(--meter-cyan)      50%,
+    var(--meter-deep-blue) 100%);
+  transform-origin: bottom center;
+  will-change: transform;
+}
+
+/* ピークホールド線 — full-height 要素の top border として描画し、要素自身を
+   translateY で位置決め (bottom 書き換えの layout/paint を回避)。
+   zone は JS が data-zone 属性で塗り分け。 */
+.meterPeak {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  border-top: 1.5px solid var(--meter-cyan);
+  pointer-events: none;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+.meterPeak[data-zone="yellow"] {
+  border-top-color: var(--meter-amber);
+}
+
+.meterPeak[data-zone="red"],
+.meterPeak[data-clip="true"] {
+  border-top-color: var(--meter-red);
+}
+
+/* ── Per-channel Clip LED (latched, click-to-reset) ─────────────── */
+/* meter の overflow:hidden を回避するため pointer-events を allow し、メーター上端の
+   描画領域内に配置。fill が最大時はわずかに重なるが、赤色なので視覚的に問題なし。 */
+.channelClipLed {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  padding: 0;
+  border: none;
+  border-radius: 1.5px 1.5px 0 0;
+  background: rgba(20, 22, 24, 0.0);
+  cursor: pointer;
+  transition: background 140ms, box-shadow 140ms;
+  z-index: 3;
+}
+
+.channelClipLed:hover {
+  background: rgba(217, 96, 90, 0.18);
+}
+
+.channelClipLed[data-clip="true"] {
+  background: var(--meter-red);
+  box-shadow:
+    0 0 5px var(--meter-red-glow),
+    0 0 2px var(--meter-red);
+}
+
+.channelClipLed[data-clip="true"]:hover {
+  background: var(--meter-red);
+  box-shadow:
+    0 0 6px var(--meter-red-glow),
+    0 0 3px var(--meter-red),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* 0 dB ライン */
+.zeroLine {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% - 1px);
+  height: 1px;
+  background: rgba(243, 197, 68, 0.30);
+  pointer-events: none;
+}
+
+/* ── フェーダー ───────────────────────────────────────────────── */
+.fader {
+  position: relative;
+  min-width: 0;
+}
+
+.faderTrack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.faderTrack:focus-visible {
+  outline: 1px solid rgba(82, 200, 232, 0.42);
+  outline-offset: 2px;
+}
+
+.faderTrack::before {
+  /* 中央の溝 */
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg,
+      rgba(0,0,0,0.62) 0%,
+      rgba(0,0,0,0.42) 50%,
+      rgba(0,0,0,0.62) 100%);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.58),
+    inset 0 -1px 0 rgba(255, 248, 235, 0.04);
+}
+
+.faderTrack::after {
+  /* 細かいティック */
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  background:
+    repeating-linear-gradient(180deg,
+      transparent 0 8px,
+      rgba(120, 112, 104, 0.14) 8px 9px);
+  pointer-events: none;
+}
+
+/* 0 dB / ユニティラベル位置 */
+.faderUnity {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 75%;
+  height: 1px;
+  background: rgba(243, 197, 68, 0.22);
+  pointer-events: none;
+}
+
+.faderFill {
+  /* `height` を毎フレーム書き換えると reflow が走るため、固定 height + scaleY で
+     合成 (compositor) レイヤだけで動かす。inline style で transform をセット。 */
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  top: 4px;
+  width: 2.5px;
+  border-radius: 2px;
+  background: linear-gradient(180deg,
+    var(--platinum-gold) 0%,
+    var(--platinum-gold-soft) 55%,
+    var(--accent-gold-dim) 100%);
+  box-shadow: 0 0 5px rgba(191, 163, 106, 0.28);
+  pointer-events: none;
+  transform-origin: bottom center;
+  transform: translateX(-50%) scaleY(0);
+  will-change: transform;
+}
+
+/* Thumb 用ガイドライン (見えないトラックライン)。
+   `bottom` を毎フレーム書き換える代わりに、この wrap に translateY() を当てて
+   thumb を縦移動させる。`transform` は reflow を起こさず compositor で動く。 */
+.faderThumbWrap {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  top: 4px;
+  width: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.faderThumb {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 24px;
+  height: 14px;
+  transform: translate(-50%, 50%);
+  will-change: transform;
+  border-radius: 2.5px;
+  background:
+    linear-gradient(180deg,
+      rgba(168, 162, 152, 0.78) 0%,
+      rgba(70, 66, 60, 0.96) 38%,
+      rgba(24, 22, 20, 1) 76%,
+      rgba(10, 9, 8, 1) 100%);
+  border: 1px solid rgba(6, 5, 4, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.30),
+    inset 0 -4px 5px rgba(0, 0, 0, 0.42),
+    0 3px 6px rgba(0, 0, 0, 0.52),
+    0 6px 12px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* グリップ線 */
+.faderThumb i {
+  width: 14px;
+  height: 1px;
+  background: rgba(255, 248, 235, 0.22);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.42);
+}
+
+.faderThumb::before {
+  /* 中央の薄い金色ライン（ユニティ印） */
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(191, 163, 106, 0.42),
+    transparent);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.channelSelected .faderThumb {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.34),
+    inset 0 -4px 5px rgba(0, 0, 0, 0.42),
+    0 3px 6px rgba(0, 0, 0, 0.52),
+    0 0 8px rgba(191, 163, 106, 0.20);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   dB 表示
+   ═══════════════════════════════════════════════════════════════════ */
+.dbRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  padding-top: 2px;
+}
+
+.dbValue {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dbInput {
+  width: 42px;
+  height: 18px;
+  padding: 0 3px;
+  border: 1px solid var(--border-hi);
+  border-radius: 3px;
+  background: var(--panel-inset);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  outline: none;
+  box-shadow: 0 0 5px var(--accent-blue-glow-soft);
+}
+
+.dbUnit {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  color: var(--text-sub);
+  letter-spacing: 0.04em;
+}
+
+.channelSelected .dbValue {
+  color: var(--text-display);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Mute / Solo
+   ═══════════════════════════════════════════════════════════════════ */
+.msRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.msButton {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(80, 76, 68, 0.48);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(34, 34, 34, 0.94), rgba(22, 22, 22, 0.98));
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  color: var(--text-sub);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -3px 7px rgba(0, 0, 0, 0.14);
+  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
+}
+
+.msButton:hover {
+  color: var(--text-soft);
+  border-color: rgba(80, 76, 68, 0.65);
+}
+
+/* MUTE 点灯 */
+.msOnMute {
+  color: var(--mute-color);
+  border-color: rgba(237, 87, 87, 0.62);
+  background:
+    linear-gradient(180deg, rgba(237, 87, 87, 0.18), rgba(180, 50, 50, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.08),
+    0 0 6px var(--mute-color-soft);
+}
+.msOnMute:hover {
+  color: #f08080;
+  border-color: rgba(237, 87, 87, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.12),
+    0 0 10px rgba(237, 87, 87, 0.55);
+}
+
+/* SOLO 点灯 */
+.msOnSolo {
+  color: var(--solo-color);
+  border-color: rgba(243, 197, 68, 0.62);
+  background:
+    linear-gradient(180deg, rgba(243, 197, 68, 0.18), rgba(180, 140, 30, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.08),
+    0 0 6px var(--solo-color-soft);
+}
+.msOnSolo:hover {
+  color: #f7d98a;
+  border-color: rgba(243, 197, 68, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.12),
+    0 0 10px rgba(243, 197, 68, 0.55);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   フッター（PadsView と完全同等）
+   ═══════════════════════════════════════════════════════════════════ */
+.footer {
+  display: grid;
+  grid-template-columns:
+    40px
+    minmax(165px, 1fr)
+    minmax(165px, 1fr)
+    auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background:
+    var(--noise-warm),
+    var(--panel-overlay-footer),
+    var(--panel);
+  background-size: var(--noise-size) var(--noise-size), auto, auto;
+  background-blend-mode: var(--noise-blend), normal, normal;
+  box-shadow:
+    inset 0 1px 0 var(--rim-light),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.42),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.26),
+    0 1px 0 rgba(0, 0, 0, 0.38);
+}
+
+.gear {
+  width: 30px;
+  height: 30px;
+  color: var(--text-sub);
+  transition: color 140ms;
+}
+.gear:hover { color: var(--platinum-gold-soft); }
+
+.footerSelect,
+.resource,
+.outputBlock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.footerLabel {
+  color: var(--text-sub);
+  font-size: var(--fs-11);
+  letter-spacing: var(--ls-wide);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.footerBox {
+  height: 30px;
+  min-width: 88px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-soft);
+  font-size: var(--fs-11);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.16);
+  transition: border-color 140ms, color 140ms;
+}
+.footerBox:hover { border-color: var(--border-hi); }
+
+.resourceBar {
+  position: relative;
+  width: 92px;
+  height: 14px;
+  border: 1px solid rgba(80, 76, 68, 0.32);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,248,235,0.12) 0 3px, transparent 3px 7px),
+    var(--panel-inset);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+.resourceBar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(144, 140, 132, 0.38);
+}
+
+.resourceValue,
+.outputDb {
+  color: var(--text-soft);
+  font-size: var(--fs-11);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.outputDbInput {
+  width: 58px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--border-hi);
+  border-radius: 3px;
+  background: var(--panel-inset);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-align: center;
+  outline: none;
+  box-shadow: 0 0 5px var(--accent-blue-glow-soft);
+}
+
+.outputBlock {
+  justify-self: end;
+}
+
+.outputMeter {
+  position: relative;
+  width: 96px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--panel-inset);
+  border: 1px solid rgba(80, 76, 68, 0.34);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+/* v8+ perf: channel meter と同じ二重 transform 方式 (横方向 scaleX)。 */
+.outputMeterClip {
+  position: absolute;
+  inset: 1px;
+  overflow: hidden;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+.outputMeterFill {
+  position: absolute;
+  inset: 0;
+  /* 4-color smooth gradient. dB→% で中心点をつなぐ:
+     -60..-30 dB (0..50%) deep-blue → -30..-10 dB (50..83.3%) cyan
+     → -10..-3 dB (83.3..95%) amber → -3..0 dB (95..100%) red */
+  background: linear-gradient(90deg,
+    var(--meter-deep-blue) 0%,
+    var(--meter-cyan)      50%,
+    var(--meter-amber)     83.3%,
+    var(--meter-red)       95%);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.outputMeterPeak {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  right: 1px;
+  border-left: 1px solid var(--meter-cyan);
+  pointer-events: none;
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.outputMeterPeak[data-zone="yellow"] {
+  border-left-color: var(--meter-amber);
+}
+
+.outputMeterPeak[data-zone="red"],
+.outputMeterPeak[data-clip="true"] {
+  border-left-color: var(--meter-red);
+}
+
+.outputMeterZero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% - 1px);
+  width: 1px;
+  background: rgba(243, 197, 68, 0.55);
+  pointer-events: none;
+}
+
+.outputDbClip {
+  color: var(--mute-color) !important;
+}
+
+.clipLed {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(80, 76, 68, 0.5);
+  background: rgba(40, 36, 30, 0.9);
+  cursor: pointer;
+  transition: background 80ms, box-shadow 80ms;
+}
+
+.clipLedActive {
+  background: var(--mute-color);
+  border-color: rgba(255, 80, 60, 0.6);
+  box-shadow: 0 0 5px var(--mute-color), 0 0 2px rgba(255, 80, 60, 0.9);
+}

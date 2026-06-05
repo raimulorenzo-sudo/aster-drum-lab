@@ -1,0 +1,1088 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>ASTER Drum Lab — ユーザーマニュアル</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  :root {
+    --ink:#1b1b1d; --ink-soft:#54545a; --ink-faint:#86868e;
+    --paper:#f6f3ec; --paper-2:#fffdf8;
+    --line:rgba(20,18,14,0.12); --line-soft:rgba(20,18,14,0.07);
+    --cyan:#1ea7c4; --cyan-bright:#36cdec; --gold:#b18a42; --gold-soft:#c9ab6c;
+    --ink-dark:#0c0d0e; --panel:#121417; --panel-line:#2a2f33;
+  }
+  html,body { margin:0; padding:0; }
+  body {
+    color:var(--ink); background:#d9d4c8;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Yu Gothic UI",Meiryo,sans-serif;
+    font-size:10.3pt; line-height:1.72; -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4,p,ul,ol { margin:0; }
+  b,strong { color:var(--ink); font-weight:700; }
+  .mono { font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:0.92em; }
+
+  /* ── Page shell ───────────────────────────────────────────── */
+  .page {
+    position:relative; width:210mm; min-height:297mm; margin:0 auto;
+    padding:17mm 16mm 16mm; overflow:hidden; background:var(--paper);
+    page-break-after:always;
+  }
+  .page:last-child { page-break-after:auto; }
+  .pageFoot {
+    position:absolute; left:16mm; right:16mm; bottom:8mm;
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:7.6pt; letter-spacing:0.06em; color:var(--ink-faint);
+    border-top:1px solid var(--line-soft); padding-top:3mm;
+  }
+  .pageFoot .brandDot { color:var(--gold); font-weight:800; }
+  .pageNo { font-variant-numeric:tabular-nums; }
+
+  /* ── Section heading ──────────────────────────────────────── */
+  .eyebrow {
+    display:inline-flex; align-items:center; gap:7px;
+    color:var(--cyan); font-size:8pt; font-weight:800;
+    letter-spacing:0.22em; text-transform:uppercase;
+  }
+  .eyebrow::before { content:""; width:16px; height:2px; background:var(--cyan); border-radius:2px; }
+  h2.sec {
+    margin-top:6px; font-size:21pt; line-height:1.12; letter-spacing:-0.01em; font-weight:800;
+  }
+  .lead { margin-top:8px; max-width:160mm; color:var(--ink-soft); font-size:10.6pt; }
+  .secHead { margin-bottom:8mm; }
+  .chapNo {
+    float:right; font-size:34pt; font-weight:800; line-height:1;
+    color:rgba(27,27,29,0.08); letter-spacing:-0.02em; margin-top:-4mm;
+  }
+
+  h3.blk {
+    margin:7mm 0 3mm; font-size:11.5pt; font-weight:800; letter-spacing:0.01em;
+    padding-left:9px; border-left:3px solid var(--gold);
+  }
+  h4.sub { margin:5mm 0 2mm; font-size:9.6pt; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); }
+  p + p { margin-top:5px; }
+  ul.clean,ol.clean { margin:4px 0 0; padding-left:18px; }
+  ul.clean li,ol.clean li { margin:3px 0; }
+  ul.tick { list-style:none; margin:5px 0 0; padding:0; }
+  ul.tick li { position:relative; padding-left:20px; margin:4px 0; }
+  ul.tick li::before { content:"›"; position:absolute; left:4px; top:-1px; color:var(--cyan); font-weight:800; }
+
+  /* ── Screenshot frame ─────────────────────────────────────── */
+  .shot { margin:5mm 0 2mm; }
+  figure.shot { margin:5mm 0 2mm; }
+  .device {
+    border-radius:9px; overflow:hidden; background:var(--ink-dark);
+    border:1px solid #0a0b0c; box-shadow:0 10px 30px rgba(15,12,8,0.18), 0 2px 6px rgba(0,0,0,0.12);
+  }
+  .device img { display:block; width:100%; }
+  .cap { margin-top:6px; color:var(--ink-faint); font-size:8.4pt; line-height:1.5; }
+  .cap b { color:var(--ink-soft); }
+
+  /* annotated overlay */
+  .annot { position:relative; }
+  .annot .cnum {
+    position:absolute; transform:translate(-50%,-50%);
+    width:21px; height:21px; border-radius:50%;
+    display:grid; place-items:center; font-size:8pt; font-weight:800;
+    color:#04181d; background:var(--cyan-bright);
+    border:2px solid #fff; box-shadow:0 2px 7px rgba(0,0,0,0.4);
+  }
+  .legend { margin:6mm 0 0; display:grid; grid-template-columns:1fr 1fr; gap:3mm 9mm; }
+  .legend .li { display:flex; gap:8px; align-items:baseline; font-size:9pt; }
+  .legend .n {
+    flex:0 0 auto; width:17px; height:17px; border-radius:50%; background:var(--ink);
+    color:#fff; font-size:7.6pt; font-weight:800; display:grid; place-items:center; margin-top:1px;
+  }
+  .legend .li b { display:block; }
+  .legend .li span { color:var(--ink-soft); }
+
+  /* ── Parameter table ──────────────────────────────────────── */
+  table.pt { width:100%; border-collapse:collapse; margin:3mm 0 1mm; font-size:9pt; }
+  table.pt th {
+    text-align:left; font-size:7.6pt; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--ink-faint); font-weight:800; padding:0 8px 4px; border-bottom:1.5px solid var(--ink);
+  }
+  table.pt td { padding:6px 8px; border-bottom:1px solid var(--line-soft); vertical-align:top; }
+  table.pt td.name { font-weight:700; white-space:nowrap; width:30mm; }
+  table.pt td.val { color:var(--cyan); font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:8.2pt; white-space:nowrap; width:34mm; }
+  table.pt tr:last-child td { border-bottom:none; }
+  table.pt.tight td { padding:4.5px 8px; }
+
+  /* ── Cards ────────────────────────────────────────────────── */
+  .cards { display:grid; gap:4mm; margin:5mm 0 0; }
+  .cards.c2 { grid-template-columns:1fr 1fr; }
+  .cards.c3 { grid-template-columns:1fr 1fr 1fr; }
+  .card {
+    padding:5mm; border:1px solid var(--line); border-radius:8px;
+    background:var(--paper-2); box-shadow:0 4px 14px rgba(20,16,10,0.05); break-inside:avoid;
+  }
+  .card .ic { font-size:13pt; }
+  .card h4 { margin:0 0 3px; font-size:10pt; font-weight:800; }
+  .card p { font-size:8.7pt; color:var(--ink-soft); }
+  .card .tag { display:inline-block; font-size:7pt; font-weight:800; letter-spacing:0.1em; color:var(--gold);
+    border:1px solid var(--gold-soft); border-radius:20px; padding:1px 8px; margin-bottom:6px; text-transform:uppercase; }
+
+  /* ── Note / tip / warn ────────────────────────────────────── */
+  .box { margin:5mm 0 0; padding:4mm 4mm 4mm 11mm; border-radius:7px; position:relative; font-size:9pt; break-inside:avoid; }
+  .box .bt { position:absolute; left:4mm; top:4mm; font-weight:800; font-size:8pt; }
+  .box.tip  { background:rgba(30,167,196,0.08);  border:1px solid rgba(30,167,196,0.28); }
+  .box.tip .bt  { color:var(--cyan); }
+  .box.note { background:rgba(177,138,66,0.09);  border:1px solid rgba(177,138,66,0.30); }
+  .box.note .bt { color:var(--gold); }
+  .box.warn { background:rgba(199,80,70,0.08);   border:1px solid rgba(199,80,70,0.30); }
+  .box.warn .bt { color:#bb4a40; }
+  .box b { color:var(--ink); }
+
+  .kbd { display:inline-block; font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:8pt;
+    background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 6px; color:var(--ink); }
+
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:8mm; align-items:start; }
+  .three { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6mm; }
+  .pill { display:inline-block; font-size:7.4pt; font-weight:800; letter-spacing:0.08em; padding:1px 7px; border-radius:20px;
+    background:var(--ink); color:#fff; }
+  .pill.cy { background:var(--cyan); } .pill.go { background:var(--gold); }
+
+  /* ── Cover ────────────────────────────────────────────────── */
+  .cover { padding:0; background:var(--ink-dark); color:#fff; }
+  .coverImg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:30% 40%;
+    filter:brightness(0.42) saturate(1.08) contrast(1.05); }
+  .coverShade { position:absolute; inset:0;
+    background:linear-gradient(120deg, rgba(8,9,11,0.95) 8%, rgba(8,9,11,0.66) 48%, rgba(8,9,11,0.30)),
+               linear-gradient(180deg, rgba(0,0,0,0.30), rgba(0,0,0,0.72)); }
+  .coverIn { position:relative; z-index:1; height:297mm; padding:24mm 22mm; display:flex; flex-direction:column; justify-content:space-between; }
+  .coverBrand { display:flex; align-items:center; gap:13px; }
+  .coverBrand .star { width:34px; height:34px; }
+  .coverBrand .bn { font-size:9.5pt; letter-spacing:0.34em; text-transform:uppercase; color:var(--gold-soft); }
+  .coverKick { color:var(--cyan-bright); font-size:10.5pt; font-weight:800; letter-spacing:0.26em; text-transform:uppercase; }
+  h1.cv { font-size:50pt; line-height:0.98; letter-spacing:-0.015em; font-weight:800; margin-top:10px; }
+  h1.cv small { display:block; font-size:15pt; font-weight:600; letter-spacing:0.36em; color:rgba(255,255,255,0.7); margin-top:12px; text-transform:uppercase; }
+  .cvLead { margin-top:20px; max-width:118mm; color:rgba(255,255,255,0.8); font-size:11.5pt; line-height:1.8; }
+  .cvFeat { margin-top:18px; display:flex; flex-wrap:wrap; gap:8px; }
+  .cvFeat span { font-size:8.4pt; letter-spacing:0.06em; color:#fff; border:1px solid rgba(255,255,255,0.28); border-radius:20px; padding:3px 12px; }
+  .cvMeta { display:flex; justify-content:space-between; align-items:flex-end; color:rgba(255,255,255,0.62); font-size:9pt; letter-spacing:0.04em; }
+  .cvMeta .doc { color:#fff; font-weight:700; letter-spacing:0.18em; text-transform:uppercase; font-size:9.5pt; }
+
+  /* ── TOC ──────────────────────────────────────────────────── */
+  .toc { columns:2; column-gap:14mm; margin-top:6mm; }
+  .tocItem { break-inside:avoid; display:flex; gap:9px; align-items:baseline; padding:3.5px 0; border-bottom:1px dotted var(--line); }
+  .tocItem .tn { color:var(--cyan); font-weight:800; font-size:8.6pt; width:8mm; flex:0 0 auto; font-variant-numeric:tabular-nums; }
+  .tocItem .tt { font-size:9.4pt; font-weight:600; }
+  .tocItem .tp { margin-left:auto; color:var(--ink-faint); font-size:8.4pt; font-variant-numeric:tabular-nums; }
+  .tocGroup { font-size:7.6pt; font-weight:800; letter-spacing:0.16em; text-transform:uppercase; color:var(--gold); margin:5mm 0 1mm; break-inside:avoid; }
+  .tocGroup:first-child { margin-top:0; }
+
+  .flowRow { display:flex; align-items:stretch; gap:0; margin:4mm 0 1mm; }
+  .flowRow .f { flex:1; text-align:center; padding:4mm 2mm; border:1px solid var(--line); background:var(--paper-2); border-radius:7px; font-size:8.4pt; }
+  .flowRow .f b { display:block; font-size:9.2pt; }
+  .flowRow .f span { color:var(--ink-faint); font-size:7.6pt; }
+  .flowRow .arr { align-self:center; color:var(--cyan); font-weight:800; padding:0 4px; font-size:12pt; }
+
+  .statline { display:grid; grid-template-columns:repeat(4,1fr); gap:4mm; margin:5mm 0 0; }
+  .stat { text-align:center; padding:4mm 2mm; border:1px solid var(--line); border-radius:8px; background:var(--paper-2); }
+  .stat .big { font-size:20pt; font-weight:800; color:var(--cyan); line-height:1; }
+  .stat .lab { font-size:7.8pt; letter-spacing:0.08em; color:var(--ink-soft); margin-top:5px; text-transform:uppercase; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════ COVER ════════════════════════ -->
+<section class="page cover">
+  <img class="coverImg" src="manual-assets/01-overview.png" alt="">
+  <div class="coverShade"></div>
+  <div class="coverIn">
+    <div class="coverBrand">
+      <svg class="star" viewBox="-18 -18 36 36" aria-hidden>
+        <g stroke="#c9ab6c" stroke-linecap="round" fill="none">
+          <line x1="0" y1="-15" x2="0" y2="-4" stroke-width="1.1"/>
+          <line x1="0" y1="15" x2="0" y2="4" stroke-width="1.1"/>
+          <line x1="-15" y1="0" x2="-4" y2="0" stroke-width="1.1"/>
+          <line x1="15" y1="0" x2="4" y2="0" stroke-width="1.1"/>
+          <line x1="-10" y1="-10" x2="-3" y2="-3" stroke-width="0.8" opacity="0.8"/>
+          <line x1="10" y1="10" x2="3" y2="3" stroke-width="0.8" opacity="0.8"/>
+          <line x1="10" y1="-10" x2="3" y2="-3" stroke-width="0.8" opacity="0.8"/>
+          <line x1="-10" y1="10" x2="-3" y2="3" stroke-width="0.8" opacity="0.8"/>
+        </g>
+        <path d="M0 -3 L2.2 0 L0 3 L-2.2 0 Z" fill="#e0cf9d"/>
+      </svg>
+      <span class="bn">ENIGMA</span>
+    </div>
+
+    <div>
+      <div class="coverKick">Drum Sampler Instrument</div>
+      <h1 class="cv">ASTER<br>Drum&nbsp;Lab<small>ユーザーマニュアル</small></h1>
+      <p class="cvLead">48パッド・最大8レイヤーのサンプル設計、緻密なトリム＆再生コントロール、レイヤー単位のFXチェーン、そして48アウトのミキサールーティングを1つに凝縮した、モダンなドラム制作のための楽器です。</p>
+      <div class="cvFeat">
+        <span>48 Pads / 3 Banks</span><span>8 Layers / Pad</span>
+        <span>5 FX Modules</span><span>48-Out Routing</span>
+        <span>VST3 · AU · Standalone</span>
+      </div>
+    </div>
+
+    <div class="cvMeta">
+      <div>
+        <div class="doc">User Manual</div>
+        <div>Version 0.1.0 ・ 2026</div>
+      </div>
+      <div style="text-align:right">
+        © ENIGMA<br>com.enigma.asterdrumlab
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ TOC + INTRO ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="eyebrow">Contents &amp; Overview</span>
+    <h2 class="sec">目次 / ASTER Drum Lab とは</h2>
+    <p class="lead">本書は ASTER Drum Lab のすべての機能を、実際の画面とともに解説するユーザーマニュアルです。はじめての方は「クイックスタート」から、特定の機能を調べたい方は下記の目次からご覧ください。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <div class="toc">
+        <div class="tocGroup">はじめに</div>
+        <div class="tocItem"><span class="tn">01</span><span class="tt">ASTER Drum Lab とは</span><span class="tp">02</span></div>
+        <div class="tocItem"><span class="tn">02</span><span class="tt">インストールと起動</span><span class="tp">03</span></div>
+        <div class="tocItem"><span class="tn">03</span><span class="tt">画面構成</span><span class="tp">04</span></div>
+        <div class="tocItem"><span class="tn">04</span><span class="tt">クイックスタート</span><span class="tp">05</span></div>
+        <div class="tocGroup">パッドとサンプル</div>
+        <div class="tocItem"><span class="tn">05</span><span class="tt">パッドグリッド</span><span class="tp">06</span></div>
+        <div class="tocItem"><span class="tn">06</span><span class="tt">パッド操作メニュー</span><span class="tp">07</span></div>
+        <div class="tocItem"><span class="tn">07</span><span class="tt">レイヤー</span><span class="tp">08</span></div>
+        <div class="tocItem"><span class="tn">08</span><span class="tt">波形エディタ</span><span class="tp">09</span></div>
+        <div class="tocGroup">音作り（エディタタブ）</div>
+        <div class="tocItem"><span class="tn">09</span><span class="tt">TRIM タブ</span><span class="tp">10</span></div>
+        <div class="tocItem"><span class="tn">10</span><span class="tt">PLAYBACK タブ</span><span class="tp">11</span></div>
+        <div class="tocItem"><span class="tn">11</span><span class="tt">DYNAMICS タブ</span><span class="tp">12</span></div>
+        <div class="tocItem"><span class="tn">12</span><span class="tt">FX タブ — 操作</span><span class="tp">13</span></div>
+        <div class="tocItem"><span class="tn">13</span><span class="tt">FX タブ — 5種のFX</span><span class="tp">14</span></div>
+        <div class="tocGroup">ミキサー・出力・運用</div>
+        <div class="tocItem"><span class="tn">14</span><span class="tt">ミキサー</span><span class="tp">15</span></div>
+        <div class="tocItem"><span class="tn">15</span><span class="tt">出力モードとルーティング</span><span class="tp">16</span></div>
+        <div class="tocItem"><span class="tn">16</span><span class="tt">キット管理</span><span class="tp">17</span></div>
+        <div class="tocItem"><span class="tn">17</span><span class="tt">設定とプリファレンス</span><span class="tp">18</span></div>
+        <div class="tocItem"><span class="tn">18</span><span class="tt">ショートカット／仕様</span><span class="tp">19</span></div>
+        <div class="tocItem"><span class="tn">19</span><span class="tt">トラブルシューティング</span><span class="tp">20</span></div>
+      </div>
+    </div>
+
+    <div>
+      <h3 class="blk" style="margin-top:0">概要</h3>
+      <p>ASTER Drum Lab は、自分のサンプルを読み込み、叩き、磨き上げて、完成したドラムキットへと仕上げるためのサンプラー型インストゥルメントです。各パッドは独立した音作りチェーンを持ち、レイヤーを重ねて厚みを出したり、ベロシティで音色を切り替えたりできます。</p>
+
+      <h4 class="sub">シグナルフロー</h4>
+      <div class="flowRow">
+        <div class="f"><b>Layer</b><span>Vol/Pan/Pitch・FX</span></div>
+        <div class="arr">→</div>
+        <div class="f"><b>Pad</b><span>Vol/Pan</span></div>
+        <div class="arr">→</div>
+        <div class="f"><b>Output</b><span>Routing</span></div>
+        <div class="arr">→</div>
+        <div class="f"><b>Out</b><span>Main / Multi</span></div>
+      </div>
+      <p class="cap">各レイヤーで作った音がパッドでまとめられ、アサインした出力からDAWへ送られます。</p>
+
+      <div class="statline">
+        <div class="stat"><div class="big">48</div><div class="lab">Pads</div></div>
+        <div class="stat"><div class="big">8</div><div class="lab">Layers / Pad</div></div>
+        <div class="stat"><div class="big">5</div><div class="lab">FX Types</div></div>
+        <div class="stat"><div class="big">48</div><div class="lab">Outputs</div></div>
+      </div>
+
+      <div class="box tip"><span class="bt">TIP</span>
+        画面右上のメニュー（≡）から <b>UI Size</b> を 50〜200% に変更できます。ディスプレイの解像度に合わせて見やすいサイズに調整してください。</div>
+    </div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">02</span></div>
+</section>
+
+<!-- ════════════════════════ 02 INSTALL ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">02</span>
+    <span class="eyebrow">Getting Started</span>
+    <h2 class="sec">インストールと起動</h2>
+    <p class="lead">VST3 / AU プラグイン、およびスタンドアロンアプリに対応しています。お使いのDAWに合わせてフォーマットを選んでください。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3 class="blk" style="margin-top:0">対応フォーマット</h3>
+      <table class="pt tight">
+        <tr><th>フォーマット</th><th>対応環境</th></tr>
+        <tr><td class="name">VST3</td><td>Windows / macOS — 主要DAW全般</td></tr>
+        <tr><td class="name">Audio Unit (AU)</td><td>macOS — Logic Pro / GarageBand / Live 等</td></tr>
+        <tr><td class="name">Standalone</td><td>Windows / macOS — DAW不要で単体起動</td></tr>
+      </table>
+
+      <h3 class="blk">インストール先</h3>
+      <h4 class="sub">macOS</h4>
+      <ul class="tick">
+        <li>VST3：<span class="mono">~/Library/Audio/Plug-Ins/VST3/ASTER&nbsp;Drum&nbsp;Lab.vst3</span></li>
+        <li>AU：<span class="mono">~/Library/Audio/Plug-Ins/Components/ASTER&nbsp;Drum&nbsp;Lab.component</span></li>
+        <li>Standalone：<span class="mono">ASTER Drum Lab.app</span>（アプリケーション）</li>
+      </ul>
+      <h4 class="sub">Windows</h4>
+      <ul class="tick">
+        <li>VST3：<span class="mono">C:\Program&nbsp;Files\Common&nbsp;Files\VST3\ASTER&nbsp;Drum&nbsp;Lab.vst3</span></li>
+      </ul>
+    </div>
+
+    <div>
+      <h3 class="blk" style="margin-top:0">起動の手順</h3>
+      <ol class="clean">
+        <li>インストーラ（または各ファイル）を上記の場所へ配置します。</li>
+        <li>DAWを起動し、必要に応じて<b>プラグインを再スキャン</b>します。</li>
+        <li>インストゥルメント・トラックを作成し、<b>ENIGMA &gt; ASTER Drum Lab</b> を選択します。</li>
+        <li>パッドにサンプルをドラッグ＆ドロップして完了です。</li>
+      </ol>
+
+      <div class="box note"><span class="bt">NOTE</span>
+        AU版が一覧に出ないときは、プラグイン検証をやり直すかDAWを再起動してください。Logic Pro は初回起動時に AU 検証を自動実行します。</div>
+
+      <h3 class="blk">マルチ出力で使う場合</h3>
+      <p>各パッドを個別の出力へ送るには、DAW側で<b>マルチアウトプット</b>構成で読み込み、<span class="pill cy">OUT MODE</span> を 16 / 32 / 48 Outs に設定します（→「15. ルーティング」）。</p>
+
+      <div class="box tip"><span class="bt">TIP</span>
+        まずはスタンドアロン版がおすすめ。オーディオ／MIDIデバイスを選ぶだけで、すぐにパッドを試せます。</div>
+    </div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">03</span></div>
+</section>
+
+<!-- ════════════════════════ 03 INTERFACE ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">03</span>
+    <span class="eyebrow">Interface</span>
+    <h2 class="sec">画面構成</h2>
+    <p class="lead">メイン画面は大きく分けて、上部の<b>ヘッダー</b>、左の<b>パッドグリッド</b>、右の<b>エディタ</b>、下部の<b>フッター</b>で構成されます。各部の役割を番号で確認しましょう。</p>
+  </div>
+
+  <figure class="shot">
+    <div class="device annot">
+      <img src="manual-assets/01-overview.png" alt="ASTER Drum Lab 全体画面">
+      <span class="cnum" style="left:24%;top:4.5%">1</span>
+      <span class="cnum" style="left:8%;top:13%">2</span>
+      <span class="cnum" style="left:19%;top:46%">3</span>
+      <span class="cnum" style="left:60%;top:10%">4</span>
+      <span class="cnum" style="left:60%;top:46%">5</span>
+      <span class="cnum" style="left:42%;top:73%">6</span>
+      <span class="cnum" style="left:52%;top:95.5%">7</span>
+    </div>
+  </figure>
+
+  <div class="legend">
+    <div class="li"><span class="n">1</span><span><b>ヘッダー</b>ロゴ、KIT（キット）セレクタ、Undo/Redo、SAVE KIT / SAVE KIT AS、メニュー（≡）。</span></div>
+    <div class="li"><span class="n">2</span><span><b>ビュー切替</b>PADS（編集）と MIXER（ミックス）を切り替えます。</span></div>
+    <div class="li"><span class="n">3</span><span><b>パッドグリッド</b>16パッド×3バンク（A/B/C）。クリックで選択・試聴。</span></div>
+    <div class="li"><span class="n">4</span><span><b>レイヤータブ</b>MAIN〜L8。＋ ADD LAYER でレイヤーを追加。</span></div>
+    <div class="li"><span class="n">5</span><span><b>波形エディタ</b>選択レイヤーの波形、トリム、リバース等を編集。</span></div>
+    <div class="li"><span class="n">6</span><span><b>エディタタブ</b>TRIM / PLAYBACK / DYNAMICS / FX で音を作り込み。</span></div>
+    <div class="li"><span class="n">7</span><span><b>フッター</b>設定（⚙）、CPU / MEM メーター、マスター OUTPUT。</span></div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    パッド名（例：SNARE）や MIDI ノート名（例：D1）はクリックして直接編集できます。値の数字部分は<b>ダブルクリック</b>でキーボード入力に切り替わります。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">04</span></div>
+</section>
+
+<!-- ════════════════════════ 04 QUICK START ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">04</span>
+    <span class="eyebrow">Quick Start</span>
+    <h2 class="sec">クイックスタート</h2>
+    <p class="lead">5つのステップで、空のキットから自分だけのドラムキットを作り上げる流れを体験しましょう。</p>
+  </div>
+
+  <div class="cards c2">
+    <div class="card"><span class="tag">Step 1</span><h4>サンプルを読み込む</h4>
+      <p>Finder / エクスプローラーから音声ファイル（WAV / AIFF / FLAC / MP3 など）をパッドへ<b>ドラッグ＆ドロップ</b>。または右クリック →「Load Sample…」で選びます。</p></div>
+    <div class="card"><span class="tag">Step 2</span><h4>再生範囲を整える</h4>
+      <p>波形上の <b>START / END</b> ハンドルで鳴らす範囲を決め、<b>FADE</b> でクリックノイズを除去。<b>SMART TRIM</b> で頭の無音を自動カットできます。</p></div>
+    <div class="card"><span class="tag">Step 3</span><h4>鳴り方を決める</h4>
+      <p><b>PLAYBACK</b> タブで Volume / Pan / Pitch、再生モード（One Shot / Gate）、Choke、発音数を設定します。</p></div>
+    <div class="card"><span class="tag">Step 4</span><h4>音を磨く</h4>
+      <p><b>DYNAMICS</b> でベロシティの反応を、<b>FX</b> で EQ・コンプ・サチュレーションなどを加えて質感を仕上げます。</p></div>
+    <div class="card"><span class="tag">Step 5</span><h4>ミックス＆保存</h4>
+      <p><b>MIXER</b> で音量バランスと出力を整え、<b>SAVE KIT AS</b> で自分のキットとして保存します。</p></div>
+    <div class="card" style="background:var(--ink-dark); color:#eee; border-color:#000">
+      <span class="tag" style="color:var(--cyan-bright);border-color:var(--cyan)">Ready</span>
+      <h4 style="color:#fff">完成！</h4>
+      <p style="color:rgba(255,255,255,0.72)">あとは MIDI で叩くだけ。パッドのMIDIノート（既定 C1〜）に合わせて打ち込み、トラックを鳴らしましょう。</p></div>
+  </div>
+
+  <div class="box note"><span class="bt">NOTE</span>
+    パッドをクリックすると、選択と同時にサンプルが<b>試聴</b>されます（プリファレンスでオフにも可能）。波形上には再生位置を示すプレイヘッドが走ります。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">05</span></div>
+</section>
+
+<!-- ════════════════════════ 05 PAD GRID ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">05</span>
+    <span class="eyebrow">Pads</span>
+    <h2 class="sec">パッドグリッド</h2>
+    <p class="lead">画面左に並ぶ16個のパッドが、ASTER Drum Lab の中心です。3つのバンク（A / B / C）を合わせて、合計48パッドを扱えます。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <figure class="shot" style="margin-top:0">
+        <div class="device"><img src="manual-assets/crop-grid.png" alt="パッドグリッド"></div>
+      </figure>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">基本操作</h3>
+      <ul class="tick">
+        <li><b>選択／試聴</b>：パッドをクリックすると選択され、音が試聴されます。</li>
+        <li><b>バンク切替</b>：上部の <b>A / B / C</b> で16パッドのセットを切り替えます。</li>
+        <li><b>読み込み</b>：音声ファイルをパッドへドラッグ＆ドロップ。</li>
+        <li><b>入れ替え</b>：パッドを別のパッドへドラッグすると、音色を入れ替えます。</li>
+        <li><b>Mute / Solo</b>：各パッドの <b>M / S</b> ボタンで個別に制御。</li>
+      </ul>
+
+      <h3 class="blk">パッドの表示情報</h3>
+      <table class="pt tight">
+        <tr><th>表示</th><th>意味</th></tr>
+        <tr><td class="name">番号</td><td>パッド番号（01〜16 / バンク内）</td></tr>
+        <tr><td class="name">名前</td><td>パッド名（クリックで変更可）</td></tr>
+        <tr><td class="name">サンプル名</td><td>読み込み中のファイル名</td></tr>
+        <tr><td class="name">MIDIノート</td><td>このパッドを鳴らす音名（例：C1）</td></tr>
+        <tr><td class="name">カラー帯</td><td>パッドの識別カラー</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    パッドの色は右クリック →「Change Pad Color…」から、9色のプリセットまたはカスタムカラーで自由に設定できます。キックは赤、ハットは水色…のように役割ごとに色分けすると視認性が上がります。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">06</span></div>
+</section>
+
+<!-- ════════════════════════ 06 CONTEXT MENU ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">06</span>
+    <span class="eyebrow">Pads</span>
+    <h2 class="sec">パッド操作メニュー</h2>
+    <p class="lead">パッドを<b>右クリック</b>すると、サンプルの読み込みからレイヤー操作、色・名前・MIDIノートの変更まで、そのパッドに関するすべての操作にアクセスできます。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <figure class="shot" style="margin-top:0">
+        <div class="device"><img src="manual-assets/crop-context.png" alt="パッド右クリックメニュー"></div>
+        <figcaption class="cap">右クリックで開くコンテキストメニュー。</figcaption>
+      </figure>
+    </div>
+    <div>
+      <table class="pt tight">
+        <tr><th>項目</th><th>動作</th></tr>
+        <tr><td class="name">Load / Replace Sample</td><td>サンプルを読み込み／差し替え</td></tr>
+        <tr><td class="name">Clear Sample</td><td>サンプルを外す</td></tr>
+        <tr><td class="name">Add / Duplicate Layer</td><td>レイヤーを追加／複製</td></tr>
+        <tr><td class="name">Copy / Paste Pad</td><td>パッド設定をコピー／貼り付け</td></tr>
+        <tr><td class="name">Reset Pad Settings</td><td>再生系パラメータを初期化</td></tr>
+        <tr><td class="name">Reset Layer N</td><td>そのレイヤーの音作りを初期化</td></tr>
+        <tr><td class="name">Clear Layer N</td><td>レイヤーのサンプル＋設定を消去</td></tr>
+        <tr><td class="name">Clear Pad</td><td>パッドを空に（MIDI/出力は保持）</td></tr>
+        <tr><td class="name">Rename Pad</td><td>パッド名を変更</td></tr>
+        <tr><td class="name">Set MIDI Note…</td><td>MIDIノート指定（MIDIラーン対応）</td></tr>
+        <tr><td class="name">Change Pad Color…</td><td>カラーを変更</td></tr>
+        <tr><td class="name">Reveal Sample</td><td>元ファイルをFinder/Explorerで表示</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box note"><span class="bt">NOTE</span>
+    <b>Set MIDI Note…</b> ではノートを直接指定するほか、<b>MIDI ラーン</b>で実際に鍵盤やパッドを叩いて割り当てられます。既に他のパッドが使っているノートを指定すると、2つのパッドのノートが自動的に入れ替わります。</div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    気に入った1枚のパッドを作り込んだら、<b>Copy Pad → Paste Pad</b> で他のパッドへ設定を流用できます。キット全体の音作りを素早く統一したいときに便利です。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">07</span></div>
+</section>
+
+<!-- ════════════════════════ 07 LAYERS ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">07</span>
+    <span class="eyebrow">Layers</span>
+    <h2 class="sec">レイヤー</h2>
+    <p class="lead">1つのパッドには最大<b>8つのレイヤー</b>を重ねられます。複数のサンプルを同時に鳴らして音に厚みを出したり、ベロシティ（叩く強さ）で鳴らすレイヤーを切り替えたりできます。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/05-playback.png" alt="マルチレイヤーとベロシティレンジ"></div>
+    <figcaption class="cap">2レイヤー（MAIN / L2）構成のスネア。右側の <b>VEL RANGE</b> で各レイヤーの発音範囲を設定しています。</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">レイヤーの操作</h3>
+      <ul class="tick">
+        <li><b>MAIN</b> が基本レイヤー。追加すると <b>L2, L3 …</b> と並びます。</li>
+        <li><b>＋</b>（ADD LAYER）で追加、各タブの <b>×</b> で削除。</li>
+        <li>レイヤー名をクリックで選択。編集対象が切り替わります。</li>
+        <li>各レイヤーに <b>M / S</b>（ミュート／ソロ）があります。</li>
+        <li>波形・TRIM・PLAYBACK・DYNAMICS・FX は<b>選択中レイヤー</b>に適用されます。</li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="blk">ベロシティ・レイヤリング</h3>
+      <p>2つ以上のレイヤーがあるとき、PLAYBACKタブに <b>VEL RANGE</b> が表示されます。各レイヤーに発音するベロシティ範囲（0〜127）を割り当てることで、</p>
+      <ul class="tick">
+        <li>弱打 → ソフトなサンプル、強打 → 鋭いサンプル</li>
+        <li>といった<b>強弱で音色が変わる</b>リアルな表現が可能です。</li>
+      </ul>
+      <p style="margin-top:4px"><b>SPLIT</b> は全レイヤーへ範囲を均等分割、<b>AUTO</b> は追加時に自動で範囲を割り当てます。</p>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    重ねたレイヤーは <b>PLAYBACK</b> の <b>PHASE（Ø）</b> で位相反転できます。キックのサブレイヤーなどで音が薄く感じるときに試すと、芯が出ることがあります。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">08</span></div>
+</section>
+
+<!-- ════════════════════════ 08 WAVEFORM ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">08</span>
+    <span class="eyebrow">Sample Editor</span>
+    <h2 class="sec">波形エディタ</h2>
+    <p class="lead">選択中レイヤーのサンプルが波形で表示されます。ドラッグ操作で再生範囲とフェードを直感的に編集できます。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/crop-wave.png" alt="波形エディタの拡大"></div>
+    <figcaption class="cap">START / END で再生範囲、底辺のハンドルで FADE IN / OUT を調整。<b>REVERSE</b> 有効時は波形も反転表示されます。</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">ハンドル操作</h3>
+      <table class="pt tight">
+        <tr><th>操作</th><th>内容</th></tr>
+        <tr><td class="name">START / END</td><td>左右の縦ラインで再生範囲を指定</td></tr>
+        <tr><td class="name">FADE IN/OUT</td><td>下部のハンドルでフェード長を設定</td></tr>
+        <tr><td class="name">ダブルクリック</td><td>各ハンドルを初期値へリセット</td></tr>
+        <tr><td class="name"><span class="mono">Cmd/Ctrl</span>＋ドラッグ</td><td>微調整（ファイン）モード</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 class="blk">編集ツール</h3>
+      <table class="pt tight">
+        <tr><th>ボタン</th><th>内容</th></tr>
+        <tr><td class="name">REVERSE</td><td>サンプルを逆再生</td></tr>
+        <tr><td class="name">SMART TRIM</td><td>頭の無音／最初のアタックを自動検出して START を合わせる</td></tr>
+        <tr><td class="name">RE-ANALYZE</td><td>サンプルを再解析（波形・トリム再計算）</td></tr>
+      </table>
+      <h4 class="sub">ズーム</h4>
+      <p style="font-size:9pt"><span class="kbd">＋ / −</span> ボタンや <span class="kbd">Cmd/Ctrl＋ホイール</span> で拡大、<span class="kbd">Shift＋ホイール</span> で左右スクロール、波形を<b>ダブルクリック</b>で全体表示（FIT）に戻ります。表示倍率は保存されません。</p>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    波形エリアへ直接ファイルをドロップすると、<b>選択中レイヤー</b>のサンプルを差し替えられます。レイヤーを切り替えながらドロップしていけば、素早く多層パッドを組めます。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">09</span></div>
+</section>
+
+<!-- ════════════════════════ 09 TRIM ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">09</span>
+    <span class="eyebrow">Editor — Trim</span>
+    <h2 class="sec">TRIM タブ</h2>
+    <p class="lead">再生範囲とフェードを数値ノブで精密に設定するタブです。波形上のハンドル操作と連動します。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/crop-trim.png" alt="TRIM タブ"></div>
+  </figure>
+
+  <table class="pt">
+    <tr><th>パラメータ</th><th>範囲</th><th>説明</th></tr>
+    <tr><td class="name">START</td><td class="val">0 – 100 %</td><td>再生を開始する位置。頭の不要部分をカットします。</td></tr>
+    <tr><td class="name">END</td><td class="val">0 – 100 %</td><td>再生を終了する位置。末尾の不要部分をカットします。</td></tr>
+    <tr><td class="name">FADE IN</td><td class="val">0 ms –</td><td>立ち上がりのフェード。アタックのクリックノイズを除去します。</td></tr>
+    <tr><td class="name">FADE OUT</td><td class="val">0 ms –</td><td>終わりのフェード。プツッという切れを防ぎます。</td></tr>
+  </table>
+
+  <div class="box note"><span class="bt">NOTE</span>
+    すべてのノブは <b>Option/Alt＋クリック</b> で初期値に戻り、値の表示を<b>ダブルクリック</b>すると数値を直接入力できます。これは ASTER Drum Lab のすべてのノブ・フェーダーに共通の操作です。</div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    ループ素材やワンショットの頭出しは、まず <b>SMART TRIM</b>（波形エディタ）で大まかに合わせ、TRIMノブで微調整すると速くて正確です。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">10</span></div>
+</section>
+
+<!-- ════════════════════════ 10 PLAYBACK ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">10</span>
+    <span class="eyebrow">Editor — Playback</span>
+    <h2 class="sec">PLAYBACK タブ</h2>
+    <p class="lead">音量・パン・ピッチといった基本から、再生モード、チョーク、発音数（ポリフォニー）まで、パッドの「鳴り方」を決めるタブです。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/crop-playback.png" alt="PLAYBACK タブ"></div>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h4 class="sub">レベルとピッチ</h4>
+      <table class="pt tight">
+        <tr><th>名称</th><th>範囲</th></tr>
+        <tr><td class="name">VOLUME</td><td class="val">−∞ – 0 dB +</td></tr>
+        <tr><td class="name">PAN</td><td class="val">L ↔ C ↔ R</td></tr>
+        <tr><td class="name">PITCH</td><td class="val">−24 – +24 st</td></tr>
+        <tr><td class="name">PHASE (Ø)</td><td class="val">位相反転</td></tr>
+        <tr><td class="name">OUTPUT</td><td class="val">出力アサイン</td></tr>
+      </table>
+      <h4 class="sub">再生モード（MODE）</h4>
+      <table class="pt tight">
+        <tr><td class="name">One Shot</td><td>キーを離しても最後まで再生</td></tr>
+        <tr><td class="name">Gate</td><td>押している間だけ再生</td></tr>
+      </table>
+    </div>
+    <div>
+      <h4 class="sub">CHOKE（チョークグループ）</h4>
+      <p style="font-size:9pt">同じチョークグループ（1〜4）に属するパッドは、片方を鳴らすともう片方が止まります。クローズ／オープンハイハットの鳴き分けに最適です。<b>OFF</b> で無効。</p>
+      <h4 class="sub">VOICES（発音数）＆ STEAL</h4>
+      <p style="font-size:9pt"><b>VOICES</b> はこのパッドの同時発音数（1 / 2 / 4 / 8 / 16 / ∞）。上限に達したときの挙動を <b>STEAL</b> で選びます。</p>
+      <table class="pt tight">
+        <tr><td class="name">OLD</td><td>最も古い音を止める</td></tr>
+        <tr><td class="name">QUIET</td><td>最も小さい音を止める</td></tr>
+        <tr><td class="name">OFF</td><td>新しい音を鳴らさない</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    <b>VEL RANGE</b>（マルチレイヤー時のみ表示）で、レイヤーごとに反応するベロシティ範囲を設定できます。詳しくは「07. レイヤー」を参照してください。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">11</span></div>
+</section>
+
+<!-- ════════════════════════ 11 DYNAMICS ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">11</span>
+    <span class="eyebrow">Editor — Dynamics</span>
+    <h2 class="sec">DYNAMICS タブ</h2>
+    <p class="lead">エンベロープと、演奏の強弱（ベロシティ）への反応を設定します。打ち込みに人間らしいニュアンスを加えるのに役立ちます。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/crop-dynamics.png" alt="DYNAMICS タブ"></div>
+  </figure>
+
+  <table class="pt">
+    <tr><th>パラメータ</th><th>範囲</th><th>説明</th></tr>
+    <tr><td class="name">ATTACK</td><td class="val">0 – 2000 ms</td><td>音の立ち上がりの速さ。長くするとソフトな入りに。</td></tr>
+    <tr><td class="name">RELEASE</td><td class="val">0 – 4000 ms</td><td>発音終了後の余韻の長さ。</td></tr>
+    <tr><td class="name">HUMANIZE</td><td class="val">0 – 100 %</td><td>発音ごとに音量・タイミングを微妙に揺らし、機械的な反復を緩和。</td></tr>
+    <tr><td class="name">VELOCITY</td><td class="val">0 – 100 %</td><td>ベロシティ感度。0%でベロシティを無視（一定音量）、100%で最大限反応。</td></tr>
+    <tr><td class="name">VEL CURVE</td><td class="val">プリセット / Custom</td><td>ベロシティ→音量の変換カーブ。</td></tr>
+  </table>
+
+  <h3 class="blk">VEL CURVE プリセット</h3>
+  <div class="three">
+    <div><b>Linear</b><p class="cap" style="margin-top:2px">入力をそのまま反映（標準）。</p></div>
+    <div><b>Soft</b><p class="cap" style="margin-top:2px">弱打でも音量が出やすい。</p></div>
+    <div><b>Hard</b><p class="cap" style="margin-top:2px">強く叩いたときだけ大きく。</p></div>
+    <div><b>Less Dynamics</b><p class="cap" style="margin-top:2px">音量差を圧縮し均一に。</p></div>
+    <div><b>More Dynamics</b><p class="cap" style="margin-top:2px">音量差を強調しメリハリ。</p></div>
+    <div><b>Custom</b><p class="cap" style="margin-top:2px">カーブ上の2点をドラッグして自作。</p></div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    打ち込みが単調に聞こえるときは、<b>HUMANIZE</b> を 5〜15% ほど加えるだけで、ハイハットやシェイカーの連打が一気に生っぽくなります。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">12</span></div>
+</section>
+
+<!-- ════════════════════════ 12 FX OPERATION ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">12</span>
+    <span class="eyebrow">Editor — FX</span>
+    <h2 class="sec">FX タブ — 操作</h2>
+    <p class="lead">各レイヤーは独立した<b>FXチェーン</b>を持ちます。EQ・フィルター・ドライブ・トランジェント・コンプの5種類を、自由な順番で組み合わせられます。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/crop-fx.png" alt="FX チェーン"></div>
+    <figcaption class="cap">EQ → TRANSIENT → COMPRESSOR を連結した例。コンプには <b>GR（ゲインリダクション）</b>メーターが付きます。</figcaption>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">チェーンの編集</h3>
+      <ul class="tick">
+        <li><b>＋ Add FX</b> でモジュールを追加（各タイプ1つまで／レイヤー）。</li>
+        <li>左端の<b>ハンドルをドラッグ</b>して処理順を入れ替え。</li>
+        <li>電源アイコンで<b>バイパス</b>、× で削除。</li>
+        <li>モジュールを<b>右クリック</b>で設定の Copy / Paste / Reset。</li>
+      </ul>
+    </div>
+    <div>
+      <figure class="shot" style="margin-top:0">
+        <div class="device"><img src="manual-assets/crop-fxmenu.png" alt="FX 追加メニュー"></div>
+        <figcaption class="cap">＋ Add FX のメニュー。追加済みのタイプは選択不可（ADDED）になります。</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="box note"><span class="bt">NOTE</span>
+    FXは<b>レイヤーごと</b>に独立しています。マルチレイヤーのパッドでは、レイヤーを切り替えるとそのレイヤー専用のFXチェーンが表示されます。処理は左から右の順に適用されます。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">13</span></div>
+</section>
+
+<!-- ════════════════════════ 13 FX DETAIL ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">13</span>
+    <span class="eyebrow">Editor — FX</span>
+    <h2 class="sec">FX タブ — 5種のFX</h2>
+    <p class="lead">それぞれのFXモジュールの役割と主なパラメータです。ドラムの整音に必要な処理を一通り内蔵しています。</p>
+  </div>
+
+  <h3 class="blk" style="margin-top:2mm">◆ EQ — 4バンド・イコライザー</h3>
+  <table class="pt tight">
+    <tr><th>バンド</th><th>種類</th><th>用途</th></tr>
+    <tr><td class="name">LOW</td><td class="val">Shelf / Cut</td><td>低域のブースト／カット。芯や重さを調整。</td></tr>
+    <tr><td class="name">LOW MID</td><td class="val">Bell</td><td>こもり（200〜500Hz付近）の処理。</td></tr>
+    <tr><td class="name">HIGH MID</td><td class="val">Bell</td><td>アタックや存在感（2〜4kHz）を強調。</td></tr>
+    <tr><td class="name">HIGH</td><td class="val">Shelf / Cut</td><td>高域の明るさ・空気感を調整。</td></tr>
+  </table>
+  <p class="cap">各バンドは <b>FREQ（周波数）/ GAIN（増減）/ Q（幅）</b> を持ちます。カーブを直接ドラッグして編集することも可能です。</p>
+
+  <div class="two" style="margin-top:4mm">
+    <div>
+      <h3 class="blk" style="margin-top:0">◆ FILTER</h3>
+      <p style="font-size:9pt">独立した<b>ハイパス（HP）</b>と<b>ローパス（LP）</b>。スロープは <b>12 / 24 / 48 dB/oct</b>、レゾナンスも各々設定可。両方を有効にするとバンドパス的に使えます。</p>
+
+      <h3 class="blk">◆ DRIVE — サチュレーション</h3>
+      <p style="font-size:9pt">7種のキャラクター（<b>Soft / Hard / Tube / Tape / Fold / Bit Crush / Rate</b>）で歪み・質感を付加。<b>DRIVE（量）/ TONE / MIX / OUTPUT</b> で調整します。</p>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">◆ TRANSIENT</h3>
+      <p style="font-size:9pt"><b>ATTACK</b> でアタックの強さ、<b>SUSTAIN</b> で余韻を ±方向に調整。叩きを際立たせたり、逆にルームを抑えたりできます。</p>
+
+      <h3 class="blk">◆ COMPRESSOR</h3>
+      <table class="pt tight">
+        <tr><td class="name">THRESHOLD</td><td class="val">−48 – 0 dB</td></tr>
+        <tr><td class="name">RATIO</td><td class="val">1:1 – 20:1</td></tr>
+        <tr><td class="name">ATTACK</td><td class="val">1 – 80 ms</td></tr>
+        <tr><td class="name">RELEASE</td><td class="val">10 – 500 ms</td></tr>
+        <tr><td class="name">MIX</td><td class="val">0 – 100 %</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    定番の流れは <b>EQ → COMPRESSOR → DRIVE</b>。まずEQで不要な帯域を整え、コンプで粒を揃え、最後にドライブで質感を足す——この順番を起点に、ハンドルドラッグで入れ替えながら追い込みましょう。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">14</span></div>
+</section>
+
+<!-- ════════════════════════ 14 MIXER ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">14</span>
+    <span class="eyebrow">Mixer</span>
+    <h2 class="sec">ミキサー</h2>
+    <p class="lead">上部の <b>MIXER</b> タブでは、現在のバンクにある16パッドの音量・パン・出力を、チャンネルストリップとしてまとめて操作できます。</p>
+  </div>
+
+  <figure class="shot" style="margin-top:0">
+    <div class="device"><img src="manual-assets/09-mixer-A.png" alt="ミキサー画面"></div>
+  </figure>
+
+  <div class="two">
+    <div>
+      <h3 class="blk">チャンネルストリップ</h3>
+      <table class="pt tight">
+        <tr><th>要素</th><th>内容</th></tr>
+        <tr><td class="name">PAN</td><td>定位（上部ノブ）</td></tr>
+        <tr><td class="name">OUTPUT</td><td>出力先のアサイン</td></tr>
+        <tr><td class="name">フェーダー</td><td>音量（0 dB＝ユニティ）</td></tr>
+        <tr><td class="name">dB値</td><td>ダブルクリックで数値入力</td></tr>
+        <tr><td class="name">メーター/CLIP</td><td>レベル表示。CLIP点灯はクリックで解除</td></tr>
+        <tr><td class="name">M / S</td><td>ミュート／ソロ</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 class="blk">複数チャンネルの一括編集</h3>
+      <ul class="tick">
+        <li><b>Shift＋クリック</b>：範囲選択</li>
+        <li><span class="mono">Cmd/Ctrl</span><b>＋クリック</b>：個別に追加／解除</li>
+        <li>選択した複数チャンネルのフェーダー／パンを<b>相対的に</b>まとめて操作（音量差を保ったまま増減）</li>
+        <li><b>Esc</b> で選択解除</li>
+      </ul>
+      <p style="margin-top:5px; font-size:9pt">フッターには <b>CPU / MEM</b> メーターと、全体音量を司る <b>マスター OUTPUT</b> ノブ（クリップLED付き）があります。</p>
+    </div>
+  </div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    キック＋スネア＋ハットなど複数チャンネルを選択してフェーダーを動かすと、バランスを崩さずグループ全体の音量を調整できます。バスのような感覚で使えます。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">15</span></div>
+</section>
+
+<!-- ════════════════════════ 15 ROUTING ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">15</span>
+    <span class="eyebrow">Mixer — Routing</span>
+    <h2 class="sec">出力モードとルーティング</h2>
+    <p class="lead">ASTER Drum Lab は最大48の出力を備え、各パッドを個別のDAWチャンネルへ送れます。出力構成はミキサー上部に集約されています。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3 class="blk" style="margin-top:0">OUT MODE（出力モード）</h3>
+      <table class="pt tight">
+        <tr><th>モード</th><th>内容</th></tr>
+        <tr><td class="name">STEREO</td><td>メインL/Rのみ（1ステレオ）</td></tr>
+        <tr><td class="name">16 OUTS</td><td>16系統の個別ステレオ出力</td></tr>
+        <tr><td class="name">32 OUTS</td><td>32系統の個別ステレオ出力</td></tr>
+        <tr><td class="name">48 OUTS</td><td>48系統＝全パッド個別出力</td></tr>
+      </table>
+      <p class="cap">DAW側のマルチアウト構成と合わせて使います。各パッドの <b>OUTPUT</b> で送り先（例：1-2、3-4 …）を指定します。</p>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">ROUTING プリセット</h3>
+      <table class="pt tight">
+        <tr><th>ボタン</th><th>動作</th></tr>
+        <tr><td class="name">ALL MAIN</td><td>全パッドをメイン出力(1-2)へ</td></tr>
+        <tr><td class="name">INDIVIDUAL</td><td>Pad1→Out1、Pad2→Out2…と連番で個別アサイン</td></tr>
+        <tr><td class="name">SAVE CUSTOM</td><td>現在の48パッドのルーティングを一時保存</td></tr>
+        <tr><td class="name">RECALL</td><td>保存したルーティングを呼び戻す</td></tr>
+      </table>
+      <p class="cap">現在の状態は <b>ALL MAIN / INDIVIDUAL / CUSTOM</b> と表示されます。</p>
+    </div>
+  </div>
+
+  <div class="box note"><span class="bt">NOTE</span>
+    マルチアウトを使うには、まずDAW側でASTER Drum Labを<b>マルチアウトプット楽器</b>として読み込み、補助（Aux）チャンネルを必要数立ち上げる必要があります。手順はお使いのDAWのマニュアルをご確認ください。</div>
+
+  <div class="box tip"><span class="bt">TIP</span>
+    まず <b>INDIVIDUAL</b> で全パッドをバラ出しし、不要なものだけ <b>OUTPUT</b> で個別にメインへ戻す——という進め方が効率的です。固まったら <b>SAVE CUSTOM</b> で控えておくと安心です。</div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">16</span></div>
+</section>
+
+<!-- ════════════════════════ 16 KIT MANAGEMENT ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">16</span>
+    <span class="eyebrow">Kits</span>
+    <h2 class="sec">キット管理</h2>
+    <p class="lead">作り込んだ48パッドの構成は「キット」として保存・読み込みできます。ヘッダーの KIT セレクタと SAVE ボタンが入口です。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3 class="blk" style="margin-top:0">保存と読み込み</h3>
+      <table class="pt tight">
+        <tr><th>操作</th><th>内容</th></tr>
+        <tr><td class="name">SAVE KIT</td><td>現在のキットに上書き保存</td></tr>
+        <tr><td class="name">SAVE KIT AS</td><td>名前を付けて新規保存</td></tr>
+        <tr><td class="name">KIT セレクタ</td><td>保存済みキットを選んで読み込み</td></tr>
+        <tr><td class="name">Rescan Kit Folder</td><td>キットフォルダを再スキャン</td></tr>
+        <tr><td class="name">Reveal Kit Folder</td><td>キットの保存場所を開く</td></tr>
+      </table>
+
+      <h3 class="blk">選択的ロード</h3>
+      <p style="font-size:9pt">キット読み込み時、取り込む要素を選べます。例えば「サンプルはそのままに、ミキサー設定だけ別キットから読む」といった使い方が可能です。</p>
+      <ul class="tick" style="font-size:9pt">
+        <li>Samples（サンプル）</li>
+        <li>Pad Names &amp; Colours（名前と色）</li>
+        <li>Pad Parameters（音作り設定）</li>
+        <li>Mixer Settings（ミキサー）</li>
+        <li>Routing（ルーティング）</li>
+      </ul>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">サンプルが見つからないとき</h3>
+      <p>キットを別環境へ移したなどで元のサンプルが見つからない場合、上部に <b>MISSING</b> タブが現れ、該当パッドが赤く表示されます。</p>
+      <ul class="tick">
+        <li><b>RELINK</b> で1つずつ、または MISSING 画面でまとめて再リンク。</li>
+        <li>同名ファイルは、1つ再リンクすると残りも<b>自動で解決</b>されます。</li>
+      </ul>
+
+      <div class="box warn" style="margin-top:6mm"><span class="bt">!</span>
+        編集中に未保存の変更があるまま別キットを読み込もうとすると、保存するかどうかの確認が表示されます。大切なキットは <b>SAVE KIT AS</b> でこまめに名前を付けて残しましょう。</div>
+
+      <div class="box tip"><span class="bt">TIP</span>
+        ヘッダーのキット名の隣にある印（＊など）は<b>未保存の変更</b >がある合図です。</div>
+    </div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">17</span></div>
+</section>
+
+<!-- ════════════════════════ 17 SETTINGS ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">17</span>
+    <span class="eyebrow">Settings</span>
+    <h2 class="sec">設定とプリファレンス</h2>
+    <p class="lead">フッター左の歯車（⚙）から動作の設定を、ヘッダー右のメニュー（≡）から表示サイズを変更できます。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <figure class="shot" style="margin-top:0">
+        <div class="device"><img src="manual-assets/crop-prefs.png" alt="プリファレンス"></div>
+        <figcaption class="cap">⚙ → Preferences。動作の自動化を切り替えます。</figcaption>
+      </figure>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">Preferences（プリファレンス）</h3>
+      <table class="pt tight">
+        <tr><th>項目</th><th>内容</th></tr>
+        <tr><td class="name">Smart Trim on Sample Load</td><td>読込時に自動でスマートトリム</td></tr>
+        <tr><td class="name">Auto Fade on Trim Edit</td><td>トリム編集時に自動フェード</td></tr>
+        <tr><td class="name">Preview on Pad Click</td><td>パッドクリックで試聴</td></tr>
+        <tr><td class="name">Preserve Pad Name on Load</td><td>読込してもパッド名を保持</td></tr>
+        <tr><td class="name">Output Name follows Pad</td><td>出力名をパッド名に追従</td></tr>
+      </table>
+      <p class="cap">設定はプラグイン全体に適用されます。⚙メニューには <b>About / Version</b> と <b>Check for Updates</b> もあります。</p>
+    </div>
+  </div>
+
+  <h3 class="blk">UI Size（表示サイズ）</h3>
+  <div class="two">
+    <div>
+      <p>ヘッダー右の <b>≡</b> メニューから、画面全体の表示倍率を選べます。</p>
+      <p style="margin-top:3px"><span class="pill">50%</span> <span class="pill">75%</span> <span class="pill cy">100%</span> <span class="pill">120%</span> <span class="pill">150%</span> <span class="pill">175%</span> <span class="pill">200%</span></p>
+      <p class="cap" style="margin-top:6px">高解像度ディスプレイでは拡大、画面が狭いときは縮小して、見やすさと作業領域のバランスを取ってください。</p>
+    </div>
+    <div>
+      <figure class="shot" style="margin-top:0">
+        <div class="device"><img src="manual-assets/crop-uisize.png" alt="UI サイズメニュー"></div>
+      </figure>
+    </div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">18</span></div>
+</section>
+
+<!-- ════════════════════════ 18 SHORTCUTS / SPEC ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">18</span>
+    <span class="eyebrow">Reference</span>
+    <h2 class="sec">ショートカット／仕様</h2>
+    <p class="lead">よく使う操作と、製品の主な仕様の一覧です。</p>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3 class="blk" style="margin-top:0">マウス＆キーボード</h3>
+      <table class="pt tight">
+        <tr><th>操作</th><th>動作</th></tr>
+        <tr><td class="name"><span class="mono">Cmd/Ctrl</span>+Z</td><td>元に戻す（Undo）</td></tr>
+        <tr><td class="name"><span class="mono">Cmd/Ctrl</span>+Shift+Z</td><td>やり直し（Redo）</td></tr>
+        <tr><td class="name">ダブルクリック</td><td>数値を直接入力</td></tr>
+        <tr><td class="name">Option/Alt＋クリック</td><td>ノブ／フェーダーを初期値へ</td></tr>
+        <tr><td class="name"><span class="mono">Cmd/Ctrl</span>＋ドラッグ</td><td>微調整（ファイン）</td></tr>
+        <tr><td class="name"><span class="mono">Cmd/Ctrl</span>＋ホイール</td><td>波形をズーム</td></tr>
+        <tr><td class="name">Shift＋ホイール</td><td>波形を左右スクロール</td></tr>
+        <tr><td class="name">波形をダブルクリック</td><td>全体表示（FIT）に戻す</td></tr>
+        <tr><td class="name">Shift / <span class="mono">Cmd</span>＋クリック</td><td>ミキサーで複数選択</td></tr>
+        <tr><td class="name">パッドをドラッグ</td><td>音色を入れ替え</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 class="blk" style="margin-top:0">仕様</h3>
+      <table class="pt tight">
+        <tr><th>項目</th><th>内容</th></tr>
+        <tr><td class="name">製品名</td><td>ASTER Drum Lab</td></tr>
+        <tr><td class="name">メーカー</td><td>ENIGMA</td></tr>
+        <tr><td class="name">バージョン</td><td>0.1.0</td></tr>
+        <tr><td class="name">タイプ</td><td>ドラムサンプラー／インストゥルメント</td></tr>
+        <tr><td class="name">フォーマット</td><td>VST3 / AU / Standalone</td></tr>
+        <tr><td class="name">パッド数</td><td>48（16×3バンク）</td></tr>
+        <tr><td class="name">レイヤー</td><td>最大8／パッド</td></tr>
+        <tr><td class="name">再生モード</td><td>One Shot / Gate</td></tr>
+        <tr><td class="name">チョーク</td><td>4グループ</td></tr>
+        <tr><td class="name">FX</td><td>EQ / Filter / Drive / Transient / Compressor</td></tr>
+        <tr><td class="name">出力</td><td>Stereo / 16 / 32 / 48 Outs</td></tr>
+        <tr><td class="name">対応形式</td><td>WAV / AIFF / FLAC / MP3 / OGG</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">19</span></div>
+</section>
+
+<!-- ════════════════════════ 19 TROUBLESHOOTING ════════════════════════ -->
+<section class="page">
+  <div class="secHead">
+    <span class="chapNo">19</span>
+    <span class="eyebrow">Help</span>
+    <h2 class="sec">トラブルシューティング</h2>
+    <p class="lead">よくある質問と対処法です。解決しない場合はサポートまでお問い合わせください。</p>
+  </div>
+
+  <h3 class="blk" style="margin-top:2mm">Q. 音が鳴らない</h3>
+  <ul class="tick">
+    <li>パッドにサンプルが読み込まれているか確認（「— empty —」になっていないか）。</li>
+    <li>パッドの <b>MIDIノート</b>と、打ち込み／鍵盤のノートが一致しているか。</li>
+    <li>パッドまたはレイヤーが <b>Mute</b>、あるいは他に <b>Solo</b> がないか。</li>
+    <li>マスター OUTPUT が下がりきっていないか、DAWのトラック出力先が正しいか。</li>
+  </ul>
+
+  <h3 class="blk">Q. サンプルが「Missing」と表示される</h3>
+  <p>元のファイルが移動／削除された状態です。<b>MISSING</b> タブまたはパッドの <b>RELINK</b> から、ファイルを選び直してください（同名ファイルはまとめて解決されます）。</p>
+
+  <h3 class="blk">Q. マルチアウトの音がDAWに出てこない</h3>
+  <ul class="tick">
+    <li>プラグインを<b>マルチアウトプット</b>構成で読み込んでいるか。</li>
+    <li><b>OUT MODE</b> が Stereo 以外（16/32/48 Outs）になっているか。</li>
+    <li>各パッドの <b>OUTPUT</b> アサインと、DAWのAuxチャンネルの入力が対応しているか。</li>
+  </ul>
+
+  <h3 class="blk">Q. CPU負荷が高い</h3>
+  <ul class="tick">
+    <li>不要なFX（特にコンプ／フィルターの高スロープ）をバイパス／削除する。</li>
+    <li>レイヤー数や同時発音数（VOICES）を見直す。</li>
+    <li>フッターの <b>CPU</b> メーターで負荷を確認しながら調整する。</li>
+  </ul>
+
+  <div class="box note" style="margin-top:7mm"><span class="bt">NOTE</span>
+    本書の画面は開発中のバージョン（0.1.0）のものです。実際の製品では細部の表示が異なる場合があります。</div>
+
+  <!-- Colophon -->
+  <div style="margin-top:12mm; padding-top:6mm; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:flex-end;">
+    <div>
+      <div class="eyebrow" style="color:var(--gold)"><span style="background:var(--gold)"></span>ASTER Drum Lab</div>
+      <div style="font-size:9pt; color:var(--ink-soft); margin-top:6px;">Drum Sampler Instrument &nbsp;·&nbsp; Version 0.1.0</div>
+      <div style="font-size:8.4pt; color:var(--ink-faint); margin-top:2px;">© ENIGMA &nbsp;·&nbsp; com.enigma.asterdrumlab</div>
+    </div>
+    <div style="text-align:right; font-size:8pt; color:var(--ink-faint);">User Manual<br>2026</div>
+  </div>
+
+  <div class="pageFoot"><span><span class="brandDot">✦</span> ASTER Drum Lab — User Manual</span><span class="pageNo">20</span></div>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,104 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 8px;
+  height: 26px;
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-sub);
+  font-size: var(--fs-10);
+  letter-spacing: var(--ls-xwide);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -3px 8px rgba(0, 0, 0, 0.14);
+  transition:
+    color 140ms,
+    border-color 140ms,
+    background 140ms,
+    box-shadow 200ms;
+}
+
+.toggle:hover {
+  color: var(--text-soft);
+  border-color: var(--border-hi);
+}
+
+.track {
+  position: relative;
+  display: inline-block;
+  width: 22px;
+  height: 11px;
+  border-radius: 6px;
+  background: var(--panel-inset);
+  border: 1px solid var(--border-strong);
+  transition: background 200ms, border-color 200ms;
+}
+
+.thumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3a3630;
+  transition: left 200ms ease, background 200ms ease, box-shadow 200ms ease;
+}
+
+.on {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.52);
+  background:
+    linear-gradient(180deg, rgba(82, 200, 232, 0.08), rgba(82, 200, 232, 0.02)),
+    var(--panel-inset);
+  box-shadow:
+    inset 0 0 0 1px rgba(120, 216, 240, 0.04),
+    0 0 5px var(--accent-blue-glow-soft);
+}
+
+.on .track {
+  background: rgba(82, 200, 232, 0.22);
+  border-color: rgba(82, 200, 232, 0.52);
+  box-shadow: inset 0 0 4px rgba(120, 216, 240, 0.10);
+}
+
+.on .thumb {
+  left: 12px;
+  background: var(--accent-cyan-hot);
+  box-shadow: 0 0 4px var(--accent-blue-glow-soft);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--panel-inset);
+  border: 1px solid var(--border-strong);
+  transition: background 200ms, box-shadow 200ms;
+}
+
+.dotOn {
+  background: var(--accent-cyan);
+  border-color: rgba(120, 216, 240, 0.68);
+  box-shadow: 0 0 4px var(--accent-blue-glow-soft);
+}
+
+.text {
+  white-space: nowrap;
+}
+
+.sm {
+  height: 22px;
+  padding: 2px 8px 2px 6px;
+  font-size: 9px;
+}
+.sm .track { width: 18px; height: 9px; }
+.sm .thumb { width: 5px; height: 5px; }
+.sm.on .thumb { left: 10px; }

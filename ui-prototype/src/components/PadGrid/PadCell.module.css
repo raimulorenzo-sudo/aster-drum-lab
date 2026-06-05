@@ -1,0 +1,348 @@
+.cell {
+  position: relative;
+  display: grid;
+  grid-template-rows: 22px auto minmax(0, 1fr) 24px;
+  gap: 4px;
+  padding: 10px 11px 8px 14px;
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, var(--panel-raised) 0%, var(--panel-floor) 100%);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  overflow: hidden;
+  isolation: isolate;
+  /* クリック反応をキビキビ感じさせるため、UI 反応系トランジションを短縮。
+     transform は即座に追従するよう特に短く。 */
+  transition:
+    border-color 100ms ease,
+    box-shadow 110ms ease,
+    transform 70ms ease;
+}
+
+.cell::before {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(var(--radius-lg) - 1px);
+  border: 1px solid rgba(255, 255, 255, 0.018);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.026),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.20);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cell:hover {
+  border-color: var(--border-panel);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.014),
+    0 5px 12px rgba(0, 0, 0, 0.36);
+}
+
+.dragOver {
+  border-color: rgba(82, 200, 232, 0.66);
+  box-shadow:
+    inset 0 0 0 1px rgba(82, 200, 232, 0.18),
+    0 0 14px rgba(82, 200, 232, 0.18);
+}
+
+.cell:active {
+  transform: translateY(1px);
+}
+
+.cell > * {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.num {
+  position: absolute;
+  top: 9px;
+  left: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--platinum-gold-soft);
+  opacity: 0.76;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.52);
+  z-index: 2;
+}
+
+/* Layer count indicator — Layer 数を colorStripe の内部分割で表現するため、
+   旧来の "2L" バッジは廃止 (PadCell コーナーが窮屈になるのを避ける)。
+   実装は .colorStripe + .colorStripeSegment にまとまっている。 */
+
+.name {
+  align-self: end;
+  justify-self: center;
+  max-width: calc(100% - 14px);
+  margin-top: 6px;
+  font-family: var(--font-display);
+  color: var(--text-display);
+  font-size: 11.5px;
+  font-weight: 400;
+  font-stretch: condensed;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Sample File Name (補助情報、極小・薄いグレー) */
+.sampleName {
+  justify-self: center;
+  max-width: calc(100% - 10px);
+  margin-top: -1px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-sub);
+  opacity: 0.62;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hasSample .sampleName {
+  color: var(--text-soft);
+  opacity: 0.72;
+}
+
+.missingSample .sampleName {
+  color: var(--mute-color);
+  opacity: 0.92;
+}
+
+.missingSample .colorStripe {
+  background: var(--mute-color) !important;
+  box-shadow: 0 0 4px var(--mute-color-soft) !important;
+}
+
+/* カテゴリーカラーの縦バー。内部に .colorStripeSegment を N 個並べて Layer 数を表現。
+   1 Layer 時は単一セグメントで従来見た目を維持する。 */
+.colorStripe {
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5px;
+}
+
+.colorStripeSegment {
+  flex: 1 1 0;
+  min-height: 2px;
+  border-radius: 1.5px;
+  opacity: 0.72;
+}
+
+/* 多層時のセグメントは少し明度を上げて視認性を上げる */
+.colorStripe > .colorStripeSegment:not(:only-child) {
+  opacity: 0.86;
+}
+
+.preview {
+  align-self: center;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 1.5px;
+  padding: 0 4px;
+  opacity: 0.82;
+  transform: translateY(1px);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.preview span {
+  width: 2px;
+  min-height: 3px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  background: linear-gradient(180deg,
+    rgba(180, 176, 168, 0.44),
+    rgba(100, 96, 88, 0.28));
+}
+
+.bottomRow {
+  align-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.midi {
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  letter-spacing: 0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.padButtons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.msButton {
+  width: 22px;
+  height: 21px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(80, 76, 68, 0.48);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(34, 34, 34, 0.94), rgba(22, 22, 22, 0.98));
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+  color: var(--text-sub);
+  font-size: var(--fs-11);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.016);
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 160ms ease;
+}
+
+.msButton:hover {
+  color: var(--text-soft);
+  border-color: rgba(80, 76, 68, 0.65);
+}
+
+.msOnMute:hover {
+  color: #f08080;
+  border-color: rgba(237, 87, 87, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.12),
+    0 0 10px rgba(237, 87, 87, 0.55);
+}
+
+.msOnSolo:hover {
+  color: #f7d98a;
+  border-color: rgba(243, 197, 68, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.12),
+    0 0 10px rgba(243, 197, 68, 0.55);
+}
+
+/* MUTE: Red */
+.msOnMute {
+  color: var(--mute-color);
+  border-color: rgba(237, 87, 87, 0.62);
+  background:
+    linear-gradient(180deg, rgba(237, 87, 87, 0.18), rgba(180, 50, 50, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 130, 130, 0.08),
+    0 0 6px var(--mute-color-soft);
+}
+
+/* SOLO: Yellow */
+.msOnSolo {
+  color: var(--solo-color);
+  border-color: rgba(243, 197, 68, 0.62);
+  background:
+    linear-gradient(180deg, rgba(243, 197, 68, 0.18), rgba(180, 140, 30, 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 225, 130, 0.08),
+    0 0 6px var(--solo-color-soft);
+}
+
+/* ── 選択中：内部発光なし、外枠リム中心 ───────────────────────────── */
+.selected {
+  border-color: transparent;
+  box-shadow:
+    0 0 0 1px var(--gold-rim-soft),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.38),
+    0 10px 22px rgba(0, 0, 0, 0.30);
+}
+
+.selected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background:
+    linear-gradient(135deg,
+      var(--gold-frame-start) 0%,
+      var(--gold-frame-end) 30%,
+      var(--gold-frame-hi) 50%,
+      var(--gold-frame-end) 70%,
+      var(--gold-frame-start) 100%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0.72;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.selected .name {
+  color: #ebe3d0;
+}
+
+.selected .num {
+  color: var(--platinum-gold);
+  opacity: 0.88;
+}
+
+.selected .midi {
+  color: rgba(158, 228, 248, 0.82);
+}
+
+.selected .preview {
+  opacity: 1;
+}
+
+.selected .preview span {
+  background: linear-gradient(180deg,
+    rgba(158, 228, 248, 0.68),
+    rgba(82, 200, 232, 0.32));
+  box-shadow: 0 0 3px var(--accent-blue-glow-soft);
+}
+
+/* Flash overlay: cell の内側を青白く照らすためのレイヤ。
+   常に DOM 上に存在し、opacity を Web Animations API で 1→0 に animate する。
+   `opacity` は compositor accelerated なので、複数 pad 同時発光でも安価。
+   旧実装の `::before` + class swap + offsetWidth pattern は強制 reflow を
+   起こすため廃止。 */
+.flashOverlay {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  background: rgba(140, 210, 240, 0.28);
+  opacity: 0;
+  will-change: opacity;
+}

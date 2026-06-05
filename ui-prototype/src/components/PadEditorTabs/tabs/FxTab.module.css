@@ -1,0 +1,680 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.titleBlock {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.title {
+  color: var(--platinum-gold-soft);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+.count {
+  color: var(--text-muted);
+  font-size: 9px;
+  letter-spacing: 0.10em;
+  font-family: var(--font-mono);
+}
+
+.addWrap {
+  position: relative;
+}
+
+.addButton,
+.empty button {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid rgba(82, 200, 232, 0.38);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+  color: var(--accent-cyan);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.addButton:hover,
+.empty button:hover {
+  color: var(--text-soft);
+  border-color: rgba(82, 200, 232, 0.55);
+}
+
+.menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 132px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(14, 17, 20, 0.98);
+  box-shadow: var(--panel-shadow-section);
+}
+
+.menu button {
+  width: 100%;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.menu button:hover {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.22);
+  background: rgba(82, 200, 232, 0.06);
+}
+
+.menu button:disabled {
+  color: rgba(185, 191, 199, 0.34);
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+}
+
+.menu button:disabled:hover {
+  color: rgba(185, 191, 199, 0.34);
+  border-color: transparent;
+  background: transparent;
+}
+
+.menu button span {
+  color: rgba(82, 200, 232, 0.42);
+  font-size: 8px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.empty {
+  min-height: 124px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.empty span {
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.chain {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(82, 200, 232, 0.35) rgba(255, 255, 255, 0.04);
+}
+
+.chain::-webkit-scrollbar {
+  height: 7px;
+}
+
+.chain::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.chain::-webkit-scrollbar-thumb {
+  background: rgba(82, 200, 232, 0.30);
+  border-radius: 999px;
+}
+
+.chain::-webkit-scrollbar-thumb:hover {
+  background: rgba(82, 200, 232, 0.48);
+}
+
+.slotFrame {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dragging {
+  opacity: 0.42;
+}
+
+.dragging > :not(.dragHandle):not(.dragOverlay) {
+  transform: translateY(1px);
+}
+
+.dragOverlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  border: 1px solid rgba(82, 200, 232, 0.48);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(135deg, rgba(82, 200, 232, 0.14), rgba(255, 255, 255, 0.025) 48%, rgba(82, 200, 232, 0.08)),
+    rgba(3, 8, 12, 0.22);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 0 14px rgba(82, 200, 232, 0.18);
+}
+
+.dragOverlay span {
+  padding: 4px 8px;
+  border: 1px solid rgba(82, 200, 232, 0.36);
+  border-radius: 3px;
+  background: rgba(5, 10, 14, 0.72);
+  color: var(--accent-cyan);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dragPreview {
+  opacity: 0.72;
+  transform: scale(0.98);
+  filter:
+    drop-shadow(0 8px 18px rgba(0, 0, 0, 0.36))
+    drop-shadow(0 0 12px rgba(82, 200, 232, 0.20));
+}
+
+.dragPreview .dragOverlay {
+  display: none;
+}
+
+.dragPreview .dragHandle {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.48);
+}
+
+.justAdded {
+  animation: addedPulse 900ms ease-out;
+}
+
+@keyframes addedPulse {
+  0% {
+    filter: drop-shadow(0 0 0 rgba(82, 200, 232, 0));
+    transform: translateY(0);
+  }
+  18% {
+    filter: drop-shadow(0 0 10px rgba(82, 200, 232, 0.42));
+    transform: translateY(-1px);
+  }
+  100% {
+    filter: drop-shadow(0 0 0 rgba(82, 200, 232, 0));
+    transform: translateY(0);
+  }
+}
+
+.dragHandle {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  right: 52px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.20);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  cursor: grab;
+}
+
+.dragHandle:hover {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.40);
+  background: rgba(82, 200, 232, 0.06);
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.module {
+  width: 256px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--panel-inset);
+  box-shadow: var(--panel-shadow-section);
+  transition: opacity 160ms;
+}
+
+.bypassed {
+  opacity: 0.55;
+}
+
+.moduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.moduleTitle {
+  /* --fx: FX 種別ごとのアクセント色 (下の [data-fx] で設定) */
+  --fx: var(--platinum-gold-soft);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.titleDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--fx);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--fx) 65%, transparent);
+  flex-shrink: 0;
+}
+
+.moduleTitle span:not(.titleDot) {
+  color: var(--fx);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+}
+
+/* Serum 風に種別ごとのカラー identity */
+.moduleTitle[data-fx="FILTER"]     { --fx: var(--accent-cyan, #52c8e8); }
+.moduleTitle[data-fx="DRIVE"]      { --fx: #e08a4a; }
+.moduleTitle[data-fx="TRANSIENT"]  { --fx: #7ec98a; }
+.moduleTitle[data-fx="COMPRESSOR"] { --fx: #b08ad6; }
+
+.headerActions {
+  display: flex;
+  gap: 4px;
+}
+
+.iconBtn {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  background: rgba(0, 0, 0, 0.20);
+  color: var(--text-sub);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 140ms, border-color 140ms, background 140ms;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.iconBtn:hover {
+  color: var(--text-soft);
+}
+
+.powerOn {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.45);
+  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
+}
+
+.powerOff {
+  color: rgba(160, 170, 180, 0.45);
+}
+
+.removeBtn:hover {
+  color: #ed5757;
+  border-color: rgba(237, 87, 87, 0.45);
+}
+
+.controls {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  gap: 4px;
+}
+
+.module:has(.controls > :nth-child(5)) .controls {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.modeButton {
+  width: 42px;
+  height: 28px;
+  border: 1px solid rgba(82, 200, 232, 0.30);
+  border-radius: 3px;
+  background: rgba(82, 200, 232, 0.06);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.modeButton:hover {
+  border-color: rgba(82, 200, 232, 0.48);
+  color: var(--text-soft);
+}
+
+/* ── Filter: HP / LP を独立した色分けセクションに ─────────────────────── */
+.filterSections {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.filterSection {
+  /* --sec: そのセクションのアクセント色 (HP=琥珀 / LP=シアン) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--sec) 28%, transparent);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sec) 9%, transparent), transparent 70%),
+    rgba(0, 0, 0, 0.18);
+  transition: opacity 140ms, border-color 140ms, background 140ms;
+}
+
+.secHp { --sec: var(--meter-amber, #d68f48); }
+.secLp { --sec: var(--accent-cyan, #52c8e8); }
+
+.secOff {
+  opacity: 0.5;
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.secToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 20px;
+  border: none;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--sec) 14%, transparent);
+  color: var(--sec);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: background 140ms, color 140ms;
+}
+
+.secOff .secToggle {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+}
+
+.secDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sec);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--sec) 70%, transparent);
+}
+
+.secOff .secDot {
+  background: var(--text-dim);
+  box-shadow: none;
+}
+
+.secKnobs {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* slope セグメント: 3 連ボタンを 1 本の bar に */
+.slopeSeg {
+  display: inline-flex;
+  width: 100%;
+}
+
+.slopeBtn {
+  flex: 1;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-left-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.slopeBtn:first-child { border-left-width: 1px; border-radius: 3px 0 0 3px; }
+.slopeBtn:last-child  { border-radius: 0 3px 3px 0; }
+
+.slopeBtn:hover { color: var(--text-soft); }
+
+.slopeOn {
+  background: color-mix(in srgb, var(--sec) 22%, transparent);
+  border-color: color-mix(in srgb, var(--sec) 50%, transparent);
+  color: var(--sec);
+}
+
+/* ── Compressor: ゲインリダクションメーター ─────────────────────────── */
+.grMeter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.grLabel {
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--text-sub);
+}
+
+.grTrack {
+  position: relative;
+  flex: 1;
+  height: 22px;
+  border-radius: 4px;
+  background:
+    linear-gradient(90deg,
+      rgba(82, 200, 232, 0.06) 0%,
+      rgba(214, 143, 72, 0.08) 50%,
+      rgba(217, 96, 90, 0.10) 100%),
+    var(--panel-inset, rgba(0,0,0,0.3));
+  border: 1px solid rgba(80, 76, 68, 0.32);
+  overflow: hidden;
+}
+
+/* リダクションが増えるほど右へ伸びる。圧縮を示す暖色グラデーション。 */
+.grFill {
+  position: absolute;
+  inset: 1px;
+  transform-origin: left center;
+  background:
+    linear-gradient(90deg,
+      rgba(82, 200, 232, 0.72) 0%,
+      rgba(214, 143, 72, 0.86) 58%,
+      rgba(217, 96, 90, 0.94) 100%);
+  box-shadow: 0 0 7px rgba(214, 143, 72, 0.32);
+  will-change: transform;
+}
+
+.grPeak {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(255, 245, 216, 0.96);
+  box-shadow:
+    0 0 5px rgba(255, 226, 170, 0.64),
+    0 0 10px rgba(214, 143, 72, 0.34);
+  transform-origin: left center;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.grScale {
+  position: absolute;
+  inset: 0 4px;
+  pointer-events: none;
+}
+
+.grMark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 800;
+  color: rgba(255, 238, 202, 0.62);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.82),
+    0 0 4px rgba(0, 0, 0, 0.56);
+}
+
+.grMark i {
+  position: absolute;
+  top: 2px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(255, 238, 202, 0.28);
+}
+
+.grMark b {
+  font: inherit;
+  line-height: 1;
+  transform: translateY(-2px);
+}
+
+.grMark:last-child {
+  transform: translateX(-100%);
+}
+
+.typeButton {
+  width: 58px;
+  height: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1px solid rgba(82, 200, 232, 0.30);
+  border-radius: 3px;
+  background: rgba(82, 200, 232, 0.06);
+  color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.typeButton span {
+  color: var(--text-sub);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.typeButton b {
+  color: var(--accent-cyan);
+  font-size: 7.6px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+}
+
+.typeButton:hover {
+  border-color: rgba(82, 200, 232, 0.48);
+}
+
+.contextMenu {
+  position: fixed;
+  z-index: 100;
+  width: 144px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(14, 17, 20, 0.98);
+  box-shadow: var(--panel-shadow-section);
+}
+
+.contextMenu button {
+  width: 100%;
+  height: 23px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contextMenu button:hover:not(:disabled) {
+  color: var(--accent-cyan);
+  border-color: rgba(82, 200, 232, 0.22);
+  background: rgba(82, 200, 232, 0.06);
+}
+
+.contextMenu button:disabled {
+  color: rgba(160, 170, 180, 0.32);
+  cursor: default;
+}

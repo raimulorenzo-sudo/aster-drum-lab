@@ -1,0 +1,99 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(ellipse at center, rgba(82, 200, 232, 0.04), transparent 70%),
+    rgba(0, 0, 0, 0.30);
+  overflow: hidden;
+}
+
+.bypassed { opacity: 0.45; }
+
+.svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.gridV, .gridH {
+  stroke: rgba(255, 255, 255, 0.05);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.gridHZero {
+  stroke: rgba(255, 255, 255, 0.10);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.gridLabel {
+  /* compact card 内ではテキストは省略 — グリッドの位置だけ示す */
+  display: none;
+}
+
+.curve {
+  fill: none;
+  stroke: var(--accent-cyan, #52c8e8);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(82, 200, 232, 0.35));
+}
+
+.curveFill {
+  fill: rgba(82, 200, 232, 0.07);
+  stroke: none;
+}
+
+.cutFillLow,
+.cutFillHigh {
+  stroke: none;
+  opacity: 0.95;
+}
+
+.cutFillLow {
+  fill: rgba(189, 232, 131, 0.14);
+}
+
+.cutFillHigh {
+  fill: rgba(145, 213, 255, 0.14);
+}
+
+.cutLineLow,
+.cutLineHigh {
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.cutLineLow { stroke: rgba(189, 232, 131, 0.42); }
+.cutLineHigh { stroke: rgba(145, 213, 255, 0.42); }
+
+.point {
+  fill: rgba(20, 28, 36, 0.95);
+  stroke: var(--point-color, var(--accent-cyan, #52c8e8));
+  stroke-width: 1.2;
+  cursor: grab;
+  transition: fill 120ms;
+}
+
+.point:hover { fill: color-mix(in srgb, var(--point-color, #52c8e8) 28%, transparent); }
+.point:active { cursor: grabbing; }
+
+.pointActive {
+  fill: color-mix(in srgb, var(--point-color, #52c8e8) 54%, transparent);
+  filter: drop-shadow(0 0 4px var(--point-color, #52c8e8));
+}
+
+.pointLow { --point-color: #bde883; }
+.pointLowMid { --point-color: #ffc575; }
+.pointHighMid { --point-color: #f2a0ca; }
+.pointHigh { --point-color: #91d5ff; }
+
+.pointLabel { display: none; }
+.pointLabelActive { display: none; }

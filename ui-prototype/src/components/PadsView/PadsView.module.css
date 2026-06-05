@@ -1,0 +1,259 @@
+.padsView {
+  height: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--plugin-footer-h);
+  gap: var(--plugin-body-gap);
+  padding: var(--plugin-body-pad);
+  background:
+    var(--noise-matte),
+    linear-gradient(180deg, var(--bg-base) 0%, var(--bg-deep) 100%);
+  background-size: var(--noise-size) var(--noise-size), auto;
+  background-blend-mode: var(--noise-blend), normal;
+}
+
+.main {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, var(--plugin-pad-col)) minmax(0, var(--plugin-editor-col));
+  gap: var(--plugin-body-gap);
+}
+
+/* ── 3つのメインパネル共通質感 ─────────────────────────────────────── */
+.padPanel,
+.editorPanel,
+.footer {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel-bg);
+  background-size: var(--noise-size) var(--noise-size), auto, auto;
+  background-blend-mode: var(--noise-blend), normal, normal;
+  box-shadow: var(--panel-shadow-inset), var(--panel-shadow-outer);
+}
+
+.padPanel {
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+}
+
+.editorPanel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  /* Row 3 (PadControlSections) sizes to its content so VEL RANGE rows
+     can grow freely. Row 2 (WaveformEditor) absorbs the slack via 1fr
+     and shrinks down — minimum 72px keeps it always visible. */
+  grid-template-rows: auto minmax(72px, 1fr) auto;
+  gap: 8px;
+  padding: 10px;
+}
+
+.footer {
+  display: grid;
+  grid-template-columns:
+    40px
+    minmax(165px, 1fr)
+    minmax(165px, 1fr)
+    auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background:
+    var(--noise-warm),
+    var(--panel-overlay-footer),
+    var(--panel);
+  background-size: var(--noise-size) var(--noise-size), auto, auto;
+  background-blend-mode: var(--noise-blend), normal, normal;
+  box-shadow:
+    inset 0 1px 0 var(--rim-light),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.42),
+    inset 0 -8px 20px rgba(0, 0, 0, 0.26),
+    0 1px 0 rgba(0, 0, 0, 0.38);
+}
+
+.gear {
+  width: 30px;
+  height: 30px;
+  color: var(--text-sub);
+  transition: color 140ms;
+}
+.gear:hover { color: var(--platinum-gold-soft); }
+
+.footerSelect,
+.resource,
+.output {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.footerLabel {
+  color: var(--text-sub);
+  font-size: var(--fs-11);
+  letter-spacing: var(--ls-wide);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.footerBox {
+  height: 30px;
+  min-width: 88px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background:
+    var(--noise-warm),
+    var(--panel-inset);
+  background-size: 200px 200px, auto;
+  background-blend-mode: soft-light, normal;
+  color: var(--text-soft);
+  font-size: var(--fs-11);
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 235, 0.018),
+    inset 0 -4px 10px rgba(0, 0, 0, 0.16);
+  transition: border-color 140ms, color 140ms;
+}
+.footerBox:hover { border-color: var(--border-hi); }
+
+.resourceBar {
+  position: relative;
+  width: 92px;
+  height: 14px;
+  border: 1px solid rgba(80, 76, 68, 0.32);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,248,235,0.12) 0 3px, transparent 3px 7px),
+    var(--panel-inset);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+.resourceBar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(144, 140, 132, 0.38);
+}
+
+.resourceValue,
+.outputDb {
+  color: var(--text-soft);
+  font-size: var(--fs-11);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.outputDbInput {
+  width: 58px;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid var(--border-hi);
+  border-radius: 3px;
+  background: var(--panel-inset);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-align: center;
+  outline: none;
+  box-shadow: 0 0 5px var(--accent-blue-glow-soft);
+}
+
+.output {
+  justify-self: end;
+}
+
+.outputMeter {
+  position: relative;
+  width: 96px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--panel-inset);
+  border: 1px solid rgba(80, 76, 68, 0.34);
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.28);
+}
+
+.outputMeterClip {
+  position: absolute;
+  inset: 1px;
+  overflow: hidden;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+.outputMeterFill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg,
+    var(--meter-deep-blue) 0%,
+    var(--meter-cyan)      50%,
+    var(--meter-amber)     83.3%,
+    var(--meter-red)       95%);
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.outputMeterPeak {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  right: 1px;
+  border-left: 1px solid var(--meter-cyan);
+  pointer-events: none;
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.outputMeterPeak[data-zone="yellow"] {
+  border-left-color: var(--meter-amber);
+}
+
+.outputMeterPeak[data-zone="red"],
+.outputMeterPeak[data-clip="true"] {
+  border-left-color: var(--meter-red);
+}
+
+/* 0 dB reference tick */
+.outputMeterZero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(100% - 1px);
+  width: 1px;
+  background: rgba(243, 197, 68, 0.55);
+  pointer-events: none;
+}
+
+/* dB value label */
+.outputDbClip {
+  color: var(--mute-color) !important;
+}
+
+/* Clip LED */
+.clipLed {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(80, 76, 68, 0.5);
+  background: rgba(40, 36, 30, 0.9);
+  cursor: pointer;
+  transition: background 80ms, box-shadow 80ms;
+}
+
+.clipLedActive {
+  background: var(--mute-color);
+  border-color: rgba(255, 80, 60, 0.6);
+  box-shadow: 0 0 5px var(--mute-color), 0 0 2px rgba(255, 80, 60, 0.9);
+}

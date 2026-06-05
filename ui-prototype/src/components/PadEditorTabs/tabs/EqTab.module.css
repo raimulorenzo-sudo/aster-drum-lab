@@ -1,0 +1,12 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.chain {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
