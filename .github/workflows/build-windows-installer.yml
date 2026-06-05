@@ -32,10 +32,10 @@ jobs:
 
     steps:
       - name: Check out project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
@@ -67,7 +67,7 @@ jobs:
           Get-FileHash -Algorithm SHA256 $installer.FullName
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ASTER-Drum-Lab-Windows-x64
           path: |

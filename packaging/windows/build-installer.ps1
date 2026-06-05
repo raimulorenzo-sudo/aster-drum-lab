@@ -18,7 +18,8 @@ $DistDir = Join-Path $Root "dist"
 $VendorDir = Join-Path $PSScriptRoot "vendor"
 $WebView2 = Join-Path $VendorDir "MicrosoftEdgeWebview2Setup.exe"
 $WebView2PackageVersion = "1.0.3967.48"
-$WebView2Package = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.web.webview2\$WebView2PackageVersion"
+$WebView2NuGetPackage = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.web.webview2\$WebView2PackageVersion"
+$WebView2JucePackage = Join-Path $VendorDir "Microsoft.Web.WebView2.$WebView2PackageVersion"
 
 function Find-SignTool {
     $tool = Get-Command signtool.exe -ErrorAction SilentlyContinue
@@ -58,7 +59,7 @@ if (-not $SkipBuild) {
         npm --prefix ui-prototype ci
         npm --prefix ui-prototype run build
 
-        if (-not (Test-Path $WebView2Package)) {
+        if (-not (Test-Path $WebView2NuGetPackage)) {
             $tempProject = Join-Path $env:TEMP "aster-webview2-restore"
             Remove-Item $tempProject -Recurse -Force -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Force $tempProject | Out-Null
@@ -66,9 +67,15 @@ if (-not $SkipBuild) {
             dotnet add $tempProject package Microsoft.Web.WebView2 --version $WebView2PackageVersion | Out-Null
         }
 
+        if (-not (Test-Path (Join-Path $WebView2JucePackage "build\native\include\WebView2.h"))) {
+            Remove-Item $WebView2JucePackage -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force $WebView2JucePackage | Out-Null
+            Copy-Item (Join-Path $WebView2NuGetPackage "*") $WebView2JucePackage -Recurse -Force
+        }
+
         cmake -S . -B $BuildDir -G "Visual Studio 17 2022" -A x64 `
             -DASTER_COPY_PLUGIN_AFTER_BUILD=OFF `
-            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$WebView2Package"
+            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$VendorDir"
         cmake --build $BuildDir --config Release --parallel
     }
     finally {
