@@ -89,6 +89,14 @@ foreach ($file in @($VstBinary)) {
     Sign-File $file
 }
 
+$VstBundle = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3"
+$VstArchive = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-VST3.zip"
+Remove-Item $VstArchive -Force -ErrorAction SilentlyContinue
+Compress-Archive -Path $VstBundle -DestinationPath $VstArchive -CompressionLevel Optimal
+$VstHash = (Get-FileHash -Algorithm SHA256 $VstArchive).Hash.ToLowerInvariant()
+"$VstHash  $([System.IO.Path]::GetFileName($VstArchive))" |
+    Set-Content -Encoding ascii "$VstArchive.sha256"
+
 $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
 if (-not $iscc) {
     $defaultIscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
@@ -114,6 +122,8 @@ $Hash = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLowerInvariant()
 
 Write-Host "Created: $Installer"
 Write-Host "Checksum: $HashFile"
+Write-Host "Created: $VstArchive"
+Write-Host "Checksum: $VstArchive.sha256"
 if ($Unsigned) {
     Write-Warning "This installer is unsigned and is only suitable for local testing."
 }

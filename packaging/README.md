@@ -61,4 +61,5 @@ installer on GitHub's Windows runner. It runs after relevant changes reach
 `main`, and it can also be started manually from the repository's Actions tab.
 
 The downloadable artifact is named `ASTER-Drum-Lab-Windows-x64` and contains
-the installer plus its SHA-256 checksum. GitHub retains it for 14 days.
+the installer, a manual-install VST3 ZIP, and their SHA-256 checksums. GitHub
+retains it for 14 days.

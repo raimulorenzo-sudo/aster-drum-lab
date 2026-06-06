@@ -53,7 +53,7 @@ jobs:
         shell: pwsh
         run: ./packaging/windows/build-installer.ps1 -Unsigned
 
-      - name: Verify installer output
+      - name: Verify release output
         shell: pwsh
         run: |
           $installers = @(Get-ChildItem dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe)
@@ -64,14 +64,24 @@ jobs:
           if ($installer.Length -lt 1MB) {
             throw "Installer is unexpectedly small: $($installer.Length) bytes."
           }
+          $archives = @(Get-ChildItem dist/ASTER-Drum-Lab-*-Windows-x64-VST3.zip)
+          if ($archives.Count -ne 1) {
+            throw "Expected one VST3 archive, found $($archives.Count)."
+          }
+          if ($archives[0].Length -lt 1MB) {
+            throw "VST3 archive is unexpectedly small: $($archives[0].Length) bytes."
+          }
           Get-FileHash -Algorithm SHA256 $installer.FullName
+          Get-FileHash -Algorithm SHA256 $archives[0].FullName
 
-      - name: Upload Windows installer
+      - name: Upload Windows release
         uses: actions/upload-artifact@v7
         with:
           name: ASTER-Drum-Lab-Windows-x64
           path: |
             dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe
             dist/ASTER-Drum-Lab-*-Windows-x64-Setup.exe.sha256
+            dist/ASTER-Drum-Lab-*-Windows-x64-VST3.zip
+            dist/ASTER-Drum-Lab-*-Windows-x64-VST3.zip.sha256
           if-no-files-found: error
           retention-days: 14
