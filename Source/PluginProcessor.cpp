@@ -1067,8 +1067,8 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
     // 退避していた値を復元
     pad.padName      = keepName;
     pad.midiNote     = keepMidi;
-    // outputAssign を Individual Outs デフォルトに揃える
-    pad.outputAssign = padIndex;
+    // Full reset follows the kit default routing: Main.
+    pad.outputAssign = 0;
     pad.padColourARGB = keepColour;
     pad.padColourMode = keepColourMode;
     syncParametersFromKit();
@@ -1271,7 +1271,7 @@ void DrumSamplerAudioProcessor::resetMixerPage(int page)
         pad.pan = 0.0f;
         pad.mute = false;
         pad.solo = false;
-        pad.outputAssign = i;
+        pad.outputAssign = 0;
         pad.syncLayer0FromFlat();
         voiceManager.clearPadClip(i);
     }

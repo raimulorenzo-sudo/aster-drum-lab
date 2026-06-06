@@ -111,7 +111,7 @@ struct KitData
     std::array<PadData,    NUM_PADS>    pads;
     std::array<OutputSlot, NUM_OUTPUTS> outputs;
     juce::String kitName    { "Default" };
-    OutputMode   outputMode { OutputMode::Outs48 };  // デフォルト: Individual Outs を活かす
+    OutputMode   outputMode { OutputMode::Outs48 };  // 48 Outsを公開しつつ、初期ルーティングはAll Main。
     // マスター出力ボリューム。pad.volume と同じくフェーダー位置 [0..1] で保持
     // (FaderCurve::positionToGain で線形ゲインへ変換)。0.75 = ユニティ(0 dB)。
     float        masterVolume { 0.75f };

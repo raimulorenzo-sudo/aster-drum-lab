@@ -112,8 +112,8 @@ void KitData::resetToDefaults()
         pads[idx].midiNote     = kDefaultMidiNotes[i];
         pads[idx].padColourARGB = kDefaultPadColours[i];
 
-        // Phase 4: デフォルトは Individual Outs（Pad i → OUT i）
-        pads[idx].outputAssign = i;
+        // New/empty kits start with every pad routed to Main.
+        pads[idx].outputAssign = 0;
         if (i == 4 || i == 5 || i == 20 || i == 21)
             pads[idx].chokeGroup = 1;
 
@@ -240,7 +240,7 @@ void KitData::fromValueTree(const juce::ValueTree& vt)
             // 後方互換: 旧 outputAssign (-1 = main, 0-7 = aux) を新形式 (0-47) に変換
             auto& pd = pads[static_cast<size_t>(padCount)];
             if (pd.outputAssign < 0 || pd.outputAssign >= NUM_OUTPUTS)
-                pd.outputAssign = padCount;  // デフォルト: Individual Outs
+                pd.outputAssign = 0;  // Invalid legacy assignments fall back to Main.
             if (pd.padColourARGB == 0)
                 pd.padColourARGB = kDefaultPadColours[padCount];
 

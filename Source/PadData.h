@@ -254,7 +254,7 @@ struct PadData
     bool mute { false };
     bool solo { false };
     // Phase 4: 0 〜 47 の Output インデックス。
-    // デフォルトは KitData::resetToDefaults() で「Pad i → OUT i」（Individual Outs）に設定。
+    // デフォルトは KitData::resetToDefaults() で全 Pad を Main に設定。
     // 旧版（-1 = Main / 0〜7 = Aux）の値は KitData::fromValueTree() で 0〜47 に変換される。
     int  outputAssign { 0 };
 
