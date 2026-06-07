@@ -2,26 +2,29 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   min-height: 0;
 }
 
-/* 選択中 Layer の再生パラメータを均等配置 */
 .controlsRow {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
+  justify-content: flex-start;
+  gap: 24px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
 }
 
-.velocitySection {
+.lowerRow {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(220px, 280px);
+  align-items: start;
+  gap: 24px;
   padding-top: 12px;
   border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
 
-/* Phase / Output 用のラベル付きスロット (Knob の wrap と並べても自然な見た目) */
 .slot {
   display: flex;
   flex-direction: column;
@@ -62,12 +65,26 @@
   box-shadow: 0 0 8px var(--accent-blue-glow-soft);
 }
 
-/* ── Right: VEL RANGE ─────────────────────────────────────────── */
-.rightCol {
+.envelopeSection,
+.velocitySection {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
   min-width: 0;
+}
+
+.sectionLabel {
+  font-size: var(--fs-9, 9px);
+  letter-spacing: 0.12em;
+  font-weight: 650;
+  color: var(--text-sub);
+}
+
+.envelopeControls {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  padding-left: 14px;
 }
 
 .velToggle {
@@ -93,6 +110,7 @@
 .velSliderWrap {
   overflow: hidden;
   margin-top: 2px;
+  width: 100%;
 }
 
 /* MAIN / 選択中 Layer のミニ表示 */

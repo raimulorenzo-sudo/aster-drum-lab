@@ -24,7 +24,8 @@ interface MixerViewProps {
   outputMode: OutputMode;
   onOutputModeChange: (m: OutputMode) => void;
   selectedIndex: number;                                // 絶対 index (0..47)
-  onSelect: (index: number) => void;                    // 絶対 index
+  onSelect: (index: number) => void;                    // 無音で選択
+  onAudition: (index: number) => void;                  // 名前エリアから試聴
   onChangePad: (index: number, patch: Partial<PadParams>) => void;  // 絶対 index
   onChangePads: (changes: { index: number; patch: Partial<PadParams> }[]) => void;  // 一括編集
   masterKnob: number;
@@ -68,6 +69,7 @@ function MixerViewComponent({
   onOutputModeChange,
   selectedIndex,
   onSelect,
+  onAudition,
   onChangePad,
   onChangePads,
   masterKnob,
@@ -143,6 +145,15 @@ function MixerViewComponent({
       }
     },
     [onSelect],
+  );
+
+  const handleChannelAudition = useCallback(
+    (index: number, e: ReactMouseEvent) => {
+      e.stopPropagation();
+      handleChannelMouseDown(index, e);
+      onAudition(index);
+    },
+    [handleChannelMouseDown, onAudition],
   );
 
   // 編集対象の決定: batch なら選択集合全員、そうでなければ origin 単独 (+ origin を選択化)
@@ -390,6 +401,7 @@ function MixerViewComponent({
               selected={selection.has(absoluteIndex)}
               outputCount={outputCount}
               onChannelMouseDown={handleChannelMouseDown}
+              onChannelAudition={handleChannelAudition}
               onChangeSingle={onChangePad}
               onVolumeGestureStart={beginGesture}
               onVolumeCommit={commitVolume}
@@ -432,7 +444,7 @@ function MixerViewComponent({
 // ─────────────────────────────────────────────────────────────────
 function ChannelStripContainer({
   absoluteIndex, pad, selected, outputCount,
-  onChannelMouseDown, onChangeSingle,
+  onChannelMouseDown, onChannelAudition, onChangeSingle,
   onVolumeGestureStart, onVolumeCommit, onPanCommit, onOutputCommit, onResetParam, onGestureEnd,
 }: {
   absoluteIndex: number;
@@ -440,6 +452,7 @@ function ChannelStripContainer({
   selected: boolean;
   outputCount: number;
   onChannelMouseDown: (index: number, e: ReactMouseEvent) => void;
+  onChannelAudition: (index: number, e: ReactMouseEvent) => void;
   onChangeSingle: (index: number, patch: Partial<PadParams>) => void;
   onVolumeGestureStart: (kind: 'volume' | 'pan', origin: number) => void;
   onVolumeCommit: (origin: number, newPos: number) => void;
@@ -450,6 +463,8 @@ function ChannelStripContainer({
 }) {
   const mouseDownThis = useCallback((e: ReactMouseEvent) => onChannelMouseDown(absoluteIndex, e),
     [onChannelMouseDown, absoluteIndex]);
+  const auditionThis = useCallback((e: ReactMouseEvent) => onChannelAudition(absoluteIndex, e),
+    [onChannelAudition, absoluteIndex]);
   const changeThis = useCallback((patch: Partial<PadParams>) => onChangeSingle(absoluteIndex, patch),
     [onChangeSingle, absoluteIndex]);
   const volumeStartThis = useCallback(() => onVolumeGestureStart('volume', absoluteIndex),
@@ -474,6 +489,7 @@ function ChannelStripContainer({
       selected={selected}
       outputCount={outputCount}
       onMouseDownChannel={mouseDownThis}
+      onMouseDownAudition={auditionThis}
       onChangeSingle={changeThis}
       onVolumeGestureStart={volumeStartThis}
       onVolumeCommit={volumeCommitThis}
@@ -493,7 +509,7 @@ function ChannelStripContainer({
 // ─────────────────────────────────────────────────────────────────
 function ChannelStripBodyImpl({
   absoluteIndex, pad, selected, outputCount,
-  onMouseDownChannel, onChangeSingle,
+  onMouseDownChannel, onMouseDownAudition, onChangeSingle,
   onVolumeGestureStart, onVolumeCommit,
   onPanGestureStart, onPanCommit,
   onOutputCommit, onResetVolume, onResetPan, onGestureEnd,
@@ -503,6 +519,7 @@ function ChannelStripBodyImpl({
   selected: boolean;
   outputCount: number;
   onMouseDownChannel: (e: ReactMouseEvent) => void;
+  onMouseDownAudition: (e: ReactMouseEvent) => void;
   onChangeSingle: (patch: Partial<PadParams>) => void;
   onVolumeGestureStart: () => void;
   onVolumeCommit: (newPos: number) => void;
@@ -625,7 +642,13 @@ function ChannelStripBodyImpl({
   return (
     <article className={channelClass} onMouseDown={onMouseDownChannel}>
       {/* ── 番号 + 名前 + サンプル ─────────────────────────────── */}
-      <div className={styles.head}>
+      <div
+        className={styles.head}
+        onMouseDown={onMouseDownAudition}
+        role="button"
+        tabIndex={0}
+        aria-label={`Audition ${padName}`}
+      >
         <div className={styles.numBadge}>{String(absoluteIndex + 1).padStart(2, '0')}</div>
         <div
           className={styles.name}

@@ -1,6 +1,6 @@
 /* ─────────────────────────────────────────────────────────────────────
    PadEditorTabs — 波形下のタブ化編集エリア
-   TabBar (TRIM/PLAYBACK/PITCH/DYNAMICS/FX/LAYER) + Selected Pad/Layer 表示
+   TabBar (TRIM/PLAYBACK/PAD/FX) + Selected Pad/Layer 表示
    + 1 タブ分の body。
    配色・余白は既存 PadControlSections を尊重 (重要)。
    ─────────────────────────────────────────────────────────────────── */

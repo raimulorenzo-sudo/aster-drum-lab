@@ -4,7 +4,7 @@ import styles from './PlaybackTab.module.css';
 import { Knob } from '../../Knob/Knob';
 import { VelocityRangeSlider } from '../../VelocityRangeSlider/VelocityRangeSlider';
 import { defaultPadParam } from '../../../data/parameterSpecs';
-import { formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
+import { formatMs, formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
 import { dbToPosition } from '../../../utils/fader';
 import { parseNumericText, parsePanInput } from '../../../utils/numericInput';
 import {
@@ -87,9 +87,32 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
 
       </div>
 
-      {/* ── Layer velocity range ── */}
-      <div className={styles.velocitySection}>
-        <div className={styles.rightCol}>
+      <div className={styles.lowerRow}>
+        <div className={styles.envelopeSection}>
+          <span className={styles.sectionLabel}>LAYER ENVELOPE</span>
+          <div className={styles.envelopeControls}>
+            <Knob ownerKey={ownerKey} size={52} label="ATTACK"
+              value={pad.attack / 2.0}
+              defaultValue={defaultPadParam('attack') / 2.0}
+              valueText={formatMs(pad.attack * 1000)}
+              parseInput={text => {
+                const parsed = parseNumericText(text);
+                return parsed === null ? null : (parsed / 1000) / 2.0;
+              }}
+              onChange={v => onChange({ attack: v * 2.0 })} />
+            <Knob ownerKey={ownerKey} size={52} label="RELEASE"
+              value={pad.release / 4.0}
+              defaultValue={defaultPadParam('release') / 4.0}
+              valueText={formatMs(pad.release * 1000, 0)}
+              parseInput={text => {
+                const parsed = parseNumericText(text);
+                return parsed === null ? null : (parsed / 1000) / 4.0;
+              }}
+              onChange={v => onChange({ release: v * 4.0 })} />
+          </div>
+        </div>
+
+        <div className={styles.velocitySection}>
           <button
             type="button"
             className={styles.velToggle}

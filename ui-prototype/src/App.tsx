@@ -962,12 +962,15 @@ export default function App() {
     [],
   );
 
-  const selectPad = useCallback((index: number) => {
-    const pad = padsRef.current[index];
+  const selectPadWithoutAudition = useCallback((index: number) => {
     setSelectedIndex(index);
     setPage(pageOfIndex(index));
-    // Notify C++ of selection change
     sendToJuce('selectPad', { index });
+  }, []);
+
+  const selectPad = useCallback((index: number) => {
+    const pad = padsRef.current[index];
+    selectPadWithoutAudition(index);
     // Audition: trigger sample preview
     auditionedPadRef.current = index;
     sendToJuce('audition', { index, velocity: 0.9 });
@@ -988,7 +991,7 @@ export default function App() {
     } else {
       setPreviewPlayback(prev => ({ ...prev, isPreviewPlaying: false }));
     }
-  }, []);
+  }, [selectPadWithoutAudition]);
 
   const handlePreviewFinished = useCallback((triggerId: number) => {
     setPreviewPlayback(prev =>
@@ -1769,7 +1772,8 @@ export default function App() {
                 outputMode={outputMode}
                 onOutputModeChange={handleOutputModeChange}
                 selectedIndex={selectedIndex}
-                onSelect={selectPad}
+                onSelect={selectPadWithoutAudition}
+                onAudition={selectPad}
                 onChangePad={updatePad}
                 onChangePads={updatePads}
                 masterKnob={masterKnob}
