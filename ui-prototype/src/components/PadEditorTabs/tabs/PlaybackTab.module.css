@@ -9,18 +9,22 @@
 .controlsRow {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-start;
-  gap: 24px;
-  width: fit-content;
+  justify-content: space-between;
+  gap: 36px;
+  width: 560px;
   max-width: 100%;
   margin: 0 auto;
 }
 
 .lowerRow {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(220px, 280px);
+  grid-template-columns: 220px 240px;
   align-items: start;
-  gap: 24px;
+  justify-content: center;
+  gap: 40px;
+  width: 520px;
+  max-width: 100%;
+  margin: 0 auto;
   padding-top: 12px;
   border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
@@ -83,8 +87,9 @@
 .envelopeControls {
   display: flex;
   align-items: flex-start;
-  gap: 28px;
-  padding-left: 14px;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 10px;
 }
 
 .velToggle {
@@ -111,6 +116,17 @@
   overflow: hidden;
   margin-top: 2px;
   width: 100%;
+}
+
+@media (max-width: 620px) {
+  .controlsRow {
+    gap: 24px;
+  }
+
+  .lowerRow {
+    grid-template-columns: minmax(190px, 220px) minmax(210px, 240px);
+    gap: 24px;
+  }
 }
 
 /* MAIN / 選択中 Layer のミニ表示 */

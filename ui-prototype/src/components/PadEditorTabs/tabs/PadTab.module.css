@@ -4,8 +4,8 @@
 
 .columns {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(330px, 390px);
-  gap: 24px;
+  grid-template-columns: 260px minmax(390px, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
@@ -24,7 +24,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-left: 20px;
+  padding-left: 12px;
   border-left: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
 
@@ -32,8 +32,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 28px;
-  padding-left: 12px;
+  gap: 20px;
+  padding-left: 6px;
 }
 
 .outputSlot {
@@ -61,7 +61,7 @@
 .settingRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -82,7 +82,7 @@
 
 .responseBody {
   display: grid;
-  grid-template-columns: 108px minmax(0, 1fr);
+  grid-template-columns: 100px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
 }
@@ -90,19 +90,15 @@
 .responseKnobs {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 4px;
 }
 
 .curveSlot {
   min-width: 0;
-  transform: scale(0.82);
-  transform-origin: top left;
-  width: 122%;
-  margin-bottom: -24px;
 }
 
 .inlineLabel {
-  min-width: 50px;
+  min-width: 45px;
   font-size: var(--fs-9, 9px);
   letter-spacing: 0.14em;
   opacity: 0.78;
