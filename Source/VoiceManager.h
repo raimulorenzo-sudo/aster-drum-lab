@@ -117,6 +117,14 @@ public:
     void notifyPadVisualTrigger(int padIndex, float velocity) noexcept;
 
 private:
+    struct PadHumanize
+    {
+        float velocityMultiplier { 1.0f };
+        float panOffset          { 0.0f };
+        float pitchOffset        { 0.0f };
+        float startOffsetAmount  { 0.0f };
+        float delayAmount        { 0.0f };
+    };
 
     // Pad の全 Layer をループして条件を満たすものを起動する。
     // previewVoice=true の場合、選択中 Layer のみが鳴る（呼び出し側で
@@ -137,5 +145,6 @@ private:
                          const KitData&       kit,
                          const AudioFileManager& files,
                          double               hostSampleRate,
-                         bool                 previewVoice);
+                         bool                 previewVoice,
+                         const PadHumanize&   humanize);
 };

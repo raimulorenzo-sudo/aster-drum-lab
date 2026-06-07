@@ -271,6 +271,7 @@ namespace
             if (options.padParameters)
             {
                 dst.pitch = src.pitch;
+                dst.padPitch = src.padPitch;
                 dst.attack = src.attack;
                 dst.release = src.release;
                 dst.startPosition = src.startPosition;
@@ -289,6 +290,8 @@ namespace
             {
                 dst.volume = src.volume;
                 dst.pan = src.pan;
+                dst.padVolume = src.padVolume;
+                dst.padPan = src.padPan;
                 dst.mute = src.mute;
                 dst.solo = src.solo;
             }
@@ -1681,7 +1684,9 @@ DrumSamplerAudioProcessor::createParameterLayout()
         {
             // New parameters are appended after the complete legacy layout so
             // existing AU/VST3 parameter indices remain stable.
-            if (spec.param == PadParameterSpecs::Param::PadVolume)
+            if (spec.param == PadParameterSpecs::Param::PadVolume
+                || spec.param == PadParameterSpecs::Param::PadPan
+                || spec.param == PadParameterSpecs::Param::PadPitch)
                 continue;
 
             const auto id   = PadParameterSpecs::parameterID(padIndex, spec.param);
@@ -1730,15 +1735,21 @@ DrumSamplerAudioProcessor::createParameterLayout()
         }
     }
 
-    const auto& padVolumeSpec = PadParameterSpecs::specFor(PadParameterSpecs::Param::PadVolume);
-    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+    for (const auto appendedParam : {
+            PadParameterSpecs::Param::PadVolume,
+            PadParameterSpecs::Param::PadPan,
+            PadParameterSpecs::Param::PadPitch })
     {
-        const auto& pad = defaultKit.pads[static_cast<size_t>(padIndex)];
-        params.push_back(std::make_unique<juce::AudioParameterFloat>(
-            juce::ParameterID { PadParameterSpecs::parameterID(padIndex, padVolumeSpec.param), 1 },
-            PadParameterSpecs::parameterName(padIndex, pad, padVolumeSpec.param),
-            rangeFor(padVolumeSpec),
-            padVolumeSpec.defaultValue));
+        const auto& spec = PadParameterSpecs::specFor(appendedParam);
+        for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+        {
+            const auto& pad = defaultKit.pads[static_cast<size_t>(padIndex)];
+            params.push_back(std::make_unique<juce::AudioParameterFloat>(
+                juce::ParameterID { PadParameterSpecs::parameterID(padIndex, spec.param), 1 },
+                PadParameterSpecs::parameterName(padIndex, pad, spec.param),
+                rangeFor(spec),
+                spec.defaultValue));
+        }
     }
 
     return { params.begin(), params.end() };
@@ -1767,6 +1778,8 @@ float DrumSamplerAudioProcessor::getKitValueForParameter(int padIndex,
         case PadParameterSpecs::Param::Humanize: return pad.humanize;
         case PadParameterSpecs::Param::Velocity: return pad.velocitySens;
         case PadParameterSpecs::Param::PadVolume: return pad.padVolume;
+        case PadParameterSpecs::Param::PadPan: return pad.padPan;
+        case PadParameterSpecs::Param::PadPitch: return pad.padPitch;
     }
 
     return 0.0f;
@@ -1806,11 +1819,15 @@ void DrumSamplerAudioProcessor::setKitValueFromParameter(int padIndex,
         case PadParameterSpecs::Param::Humanize: pad.humanize     = v; break;
         case PadParameterSpecs::Param::Velocity: pad.velocitySens = v; break;
         case PadParameterSpecs::Param::PadVolume: pad.padVolume   = v; break;
+        case PadParameterSpecs::Param::PadPan: pad.padPan         = v; break;
+        case PadParameterSpecs::Param::PadPitch: pad.padPitch     = v; break;
     }
 
-    // PadVolume is a separate gain stage after the layer sum. All legacy flat
-    // parameters still mirror into Layer 0 for backwards compatibility.
-    if (param != PadParameterSpecs::Param::PadVolume)
+    // Pad-level controls are separate stages after Layer processing. Legacy
+    // flat parameters still mirror into Layer 0 for backwards compatibility.
+    if (param != PadParameterSpecs::Param::PadVolume
+        && param != PadParameterSpecs::Param::PadPan
+        && param != PadParameterSpecs::Param::PadPitch)
         pad.syncLayer0FromFlat();
 }
 

@@ -2,14 +2,15 @@ import { memo, useState } from 'react';
 import styles from './PadEditorTabs.module.css';
 import { TrimTab } from './tabs/TrimTab';
 import { PlaybackTab } from './tabs/PlaybackTab';
+import { PadTab } from './tabs/PadTab';
 import { DynamicsTab } from './tabs/DynamicsTab';
 import { FxTab } from './tabs/FxTab';
 import { selectedLayerIndexOf } from '../../utils/layerView';
 import type { PadParams } from '../../types';
 
-export type PadEditorTabId = 'TRIM' | 'PLAYBACK' | 'DYNAMICS' | 'FX';
+export type PadEditorTabId = 'TRIM' | 'PLAYBACK' | 'PAD' | 'DYNAMICS' | 'FX';
 
-const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PLAYBACK', 'DYNAMICS', 'FX'];
+const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PLAYBACK', 'PAD', 'DYNAMICS', 'FX'];
 
 interface Props {
   pad: PadParams;
@@ -47,6 +48,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
       <div className={styles.body} data-accent={layerIdx >= 1 ? 'gold' : undefined}>
         {active === 'TRIM'     && <TrimTab     pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} liveVelocity={liveVelocity} />}
+        {active === 'PAD'      && <PadTab      pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'DYNAMICS' && <DynamicsTab pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'FX'       && <FxTab       pad={pad}                     onChange={onChange} />}
       </div>

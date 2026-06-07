@@ -76,9 +76,10 @@ namespace PadDataJson
             obj->setProperty("velCurve", juce::var(vc));
         }
 
-        // Pad-level Vol / Pan（Q3: Layer Vol との二段ボリューム）
+        // Pad-level Vol / Pan / Pitch
         obj->setProperty("padVolume",    (double) pad.padVolume);
         obj->setProperty("padPan",       (double) pad.padPan);
+        obj->setProperty("padPitch",     (double) pad.padPitch);
 
         // ── Layers ─────────────────────────────────────────────────────────
         juce::Array<juce::var> layerArr;

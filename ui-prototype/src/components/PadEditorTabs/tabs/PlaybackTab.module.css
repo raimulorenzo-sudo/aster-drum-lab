@@ -6,7 +6,7 @@
   min-height: 0;
 }
 
-/* Layer Vol / Pad Vol / Pan / Pitch / Phase / Output を均等配置 */
+/* 選択中 Layer の再生パラメータを均等配置 */
 .controlsRow {
   display: flex;
   align-items: flex-start;
@@ -16,29 +16,9 @@
   width: 100%;
 }
 
-/* 上段ノブと下段トリガー設定の区切り */
-.divider {
-  height: 1px;
-  background: var(--border-faint, rgba(255, 255, 255, 0.06));
-}
-
-/* 下段: 左 トリガー設定 / 右 VEL RANGE。単 Layer 時は 1 カラムで全幅。 */
-.lower {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 260px);
-  gap: 24px;
-  align-items: start;
-}
-.lowerSingle {
-  grid-template-columns: 1fr;
-}
-
-/* MODE / CHOKE / VOICES を縦に積む。行間にゆとりを持たせて窮屈さを解消 */
-.segStack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.velocitySection {
+  padding-top: 12px;
+  border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
 
 /* Phase / Output 用のラベル付きスロット (Knob の wrap と並べても自然な見た目) */
@@ -80,85 +60,6 @@
   border-color: rgba(82, 200, 232, 0.55);
   background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
   box-shadow: 0 0 8px var(--accent-blue-glow-soft);
-}
-
-/* ── Bottom blocks (left col): Mode 上 / Choke 下 ──────────── */
-/* ラベルとセグメントボタンを横一列に並べたコンパクトな行構成 */
-.modeBlock,
-.chokeBlock {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.inlineLabel {
-  min-width: 50px;   /* "MODE" / "CHOKE" を等幅で揃える */
-  font-size: var(--fs-9, 9px);
-  letter-spacing: 0.14em;
-  opacity: 0.78;
-}
-
-/* セグメントボタン群: 隣接して 1 連の bar に見せる */
-.segGroup {
-  display: inline-flex;
-}
-
-.segBtn {
-  height: 20px;
-  min-width: 56px;
-  padding: 0 10px;
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  font-weight: 650;
-  color: var(--text-soft);
-  background:
-    var(--noise-warm),
-    var(--panel-inset);
-  background-size: 200px 200px, auto;
-  background-blend-mode: soft-light, normal;
-  border: 1px solid var(--border-strong);
-  border-left-width: 0;
-  border-radius: 0;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color 140ms, border-color 140ms, background 140ms, box-shadow 160ms;
-}
-
-.segBtn:first-child {
-  border-left-width: 1px;
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-.segBtn:last-child {
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
-.segBtnNarrow {
-  min-width: 34px;
-  padding: 0 6px;
-}
-
-.segBtnActive {
-  color: var(--accent-cyan);
-  border-color: rgba(82, 200, 232, 0.48);
-  background: linear-gradient(180deg, rgba(82, 200, 232, 0.10), rgba(82, 200, 232, 0.02));
-  box-shadow:
-    inset 0 0 0 1px rgba(120, 216, 240, 0.06),
-    0 0 6px var(--accent-blue-glow-soft);
-}
-
-.segBtnDimmed {
-  opacity: 0.36;
-  cursor: not-allowed;
-}
-
-.stealLabel {
-  font-size: var(--fs-9, 9px);
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  color: var(--text-sub);
-  opacity: 0.72;
-  margin-left: 6px;
 }
 
 /* ── Right: VEL RANGE ─────────────────────────────────────────── */

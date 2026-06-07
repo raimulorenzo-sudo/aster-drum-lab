@@ -348,9 +348,10 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("velCurveP2X",     velCurve.p2x,                  nullptr);
     vt.setProperty("velCurveP2Y",     velCurve.p2y,                  nullptr);
 
-    // Pad-level Vol/Pan（新）。古いバージョンは無視する。
+    // Pad-level Vol/Pan/Pitch。古いバージョンは無視する。
     vt.setProperty("padVolume",       padVolume,                     nullptr);
     vt.setProperty("padPan",          padPan,                        nullptr);
+    vt.setProperty("padPitch",        padPitch,                      nullptr);
 
     // ── Legacy flat fields（ダウングレード互換のためミラー保存） ─────────────
     //   Layer 0 と内容が一致していることを保証してから書き出す。
@@ -406,9 +407,10 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     // 安全: p1.x < p2.x を保証
     if (velCurve.p1x > velCurve.p2x) std::swap(velCurve.p1x, velCurve.p2x);
 
-    // Pad-level Vol/Pan（v6 で追加。無ければ unity / center で互換）
+    // Pad-level Vol/Pan/Pitch（無ければ unity / center / 0 で互換）
     padVolume      = juce::jlimit(0.0f, 1.0f, static_cast<float>(vt.getProperty("padVolume", 0.75f)));
     padPan         = juce::jlimit(-1.0f, 1.0f, static_cast<float>(vt.getProperty("padPan",    0.0f)));
+    padPitch       = juce::jlimit(-24.0f, 24.0f, static_cast<float>(vt.getProperty("padPitch", 0.0f)));
 
     // ── Legacy flat fields ────────────────────────────────────────────────
     sampleFileName = vt.getProperty("sampleFileName", sampleFileName);

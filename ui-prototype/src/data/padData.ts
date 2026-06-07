@@ -125,6 +125,8 @@ function defaultPad(i: number): PadParams {
     midiNote: 36 + i,
     volume: 0.75,  // fader position 0..1 — 0.75 == 0 dB unity (utils/fader.ts)
     padVolume: 0.75,
+    padPan: 0,
+    padPitch: 0,
     pan: 0,
     pitch: 0,
     attack: 0.002,

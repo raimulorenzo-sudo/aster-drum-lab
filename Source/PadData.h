@@ -277,14 +277,14 @@ struct PadData
     VelCurve velCurve;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Pad-level Volume / Pan（Layer Volume/Pan の上位段。デフォルト = unity / center）
+    // Pad-level Volume / Pan / Pitch（Layer パラメータの上位段）
     //
-    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan → Output Routing
-    // 既存プリセット互換のため初期値はそれぞれ unity / center にしてある（=何もしない）。
-    // 古い保存データは Layer 0 = legacy flat fields に入り、Pad Vol/Pan は unity のまま。
+    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan/Pitch → Output Routing
+    // 既存プリセット互換のため初期値は unity / center / 0 semitone。
     // ─────────────────────────────────────────────────────────────────────────
     float padVolume { 0.75f };  // fader position（0.75 = 0 dB unity）
     float padPan    { 0.0f  };  // -1.0〜1.0
+    float padPitch  { 0.0f  };  // semitones
 
     // ── Layers（1 つ以上、最大 MAX_LAYERS_PER_PAD） ───────────────────────────
     // 既存の flat fields（sampleFilePath / volume / pan / ... など）は

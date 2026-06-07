@@ -222,6 +222,8 @@ export interface PadParams {
   padVolume?: number;
   /** Pad-level Pan。デフォルト 0 = center */
   padPan?: number;
+  /** Pad-level Pitch。全 Layer の相対音程を保ったまま移調する */
+  padPitch?: number;
 
   /**
    * Layer 一覧。1 Pad は常に最低 1 Layer を持つ。

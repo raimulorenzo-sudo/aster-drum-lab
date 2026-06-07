@@ -21,6 +21,8 @@ namespace
         { PadParameterSpecs::Param::Velocity, "velocity", "Velocity", 1.0f, 0.0f, 1.0f, false },
         // createParameterLayout appends these after the complete legacy layout.
         { PadParameterSpecs::Param::PadVolume, "padVolume", "Pad Volume", 0.75f, 0.0f, 1.0f, false },
+        { PadParameterSpecs::Param::PadPan, "padPan", "Pad Pan", 0.0f, -1.0f, 1.0f, false },
+        { PadParameterSpecs::Param::PadPitch, "padPitch", "Pad Pitch", 0.0f, -24.0f, 24.0f, false },
     }};
 
     juce::String pagePrefix(int padIndex)

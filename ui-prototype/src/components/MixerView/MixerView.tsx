@@ -161,7 +161,7 @@ function MixerViewComponent({
       for (const idx of targets) {
         const p = padsRef.current[idx];
         if (!p) continue;
-        startById.set(idx, kind === 'volume' ? (p.padVolume ?? 0.75) : p.pan);
+        startById.set(idx, kind === 'volume' ? (p.padVolume ?? 0.75) : (p.padPan ?? 0));
       }
       gestureRef.current = { kind, origin, batch, startById };
     },
@@ -201,14 +201,14 @@ function MixerViewComponent({
     (origin: number, newPan: number) => {
       const g = gestureRef.current;
       if (!g || g.kind !== 'pan' || !g.startById.has(origin)) {
-        onChangePad(origin, { pan: newPan });
+        onChangePad(origin, { padPan: newPan });
         return;
       }
       const deltaPan = newPan - g.startById.get(origin)!;
       const changes: { index: number; patch: Partial<PadParams> }[] = [];
       g.startById.forEach((startP, idx) => {
         const pan = idx === origin ? newPan : Math.max(-1, Math.min(1, startP + deltaPan));
-        changes.push({ index: idx, patch: { pan } });
+        changes.push({ index: idx, patch: { padPan: pan } });
       });
       onChangePads(changes);
     },
@@ -238,7 +238,7 @@ function MixerViewComponent({
       const sel = selectionRef.current;
       const batch = sel.has(origin) && sel.size >= 2;
       const def = kind === 'volume' ? defaultPadParam('volume') : defaultPadParam('pan');
-      const patch: Partial<PadParams> = kind === 'volume' ? { padVolume: def } : { pan: def };
+      const patch: Partial<PadParams> = kind === 'volume' ? { padVolume: def } : { padPan: def };
       if (batch) {
         onChangePads([...sel].map(idx => ({ index: idx, patch })));
       } else {
@@ -521,7 +521,7 @@ function ChannelStripBodyImpl({
   const [editingVolume, setEditingVolume] = useState(false);
   const [volumeDraft, setVolumeDraft] = useState('');
 
-  const pan = pad.pan;
+  const pan = pad.padPan ?? 0;
   const panLabel = formatPan(pan);
 
   const sampleName = pad.sampleFileName;

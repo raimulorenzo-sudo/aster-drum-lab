@@ -116,9 +116,10 @@ export interface JucePadData {
   // VEL Curve (v7+). Optional for backward compat.
   velCurve?: { preset: number; p1x: number; p1y: number; p2x: number; p2y: number };
 
-  // Pad-level Vol/Pan (v6+; Q3 signal flow). Optional for backward compat.
+  // Pad-level Vol/Pan/Pitch. Optional for backward compat.
   padVolume?: number;
   padPan?: number;
+  padPitch?: number;
 
   // Layers (v6+). Optional for backward compat with older C++ builds.
   layers?: JuceLayerData[];
@@ -428,6 +429,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     } : existing.velCurve,
     padVolume:      typeof jp.padVolume === 'number' ? jp.padVolume : 0.75,
     padPan:         typeof jp.padPan === 'number' ? jp.padPan : 0.0,
+    padPitch:       typeof jp.padPitch === 'number' ? jp.padPitch : 0.0,
     layers,
     selectedLayerIndex: existing.selectedLayerIndex ?? 0,
   };
@@ -505,6 +507,8 @@ export function sendPadPatchToJuce(
   }
   if (patch.volume       !== undefined) sendToJuce('setVolume',       { index, value: patch.volume });
   if (patch.padVolume    !== undefined) sendToJuce('setPadVolume',    { index, value: patch.padVolume });
+  if (patch.padPan       !== undefined) sendToJuce('setPadPan',       { index, value: patch.padPan });
+  if (patch.padPitch     !== undefined) sendToJuce('setPadPitch',     { index, value: patch.padPitch });
   if (patch.pan          !== undefined) sendToJuce('setPan',          { index, value: patch.pan });
   if (patch.pitch        !== undefined) sendToJuce('setPitch',        { index, value: patch.pitch });
   if (patch.mute         !== undefined) sendToJuce('setMute',         { index, value: patch.mute });

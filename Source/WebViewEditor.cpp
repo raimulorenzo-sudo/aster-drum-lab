@@ -1011,10 +1011,22 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                                   PadParameterSpecs::Param::Pan,
                                                   getFloat());
     }
+    else if (type == "setPadPan")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadPan,
+                                                  getFloat());
+    }
     else if (type == "setPitch")
     {
         audioProcessor.setAutomatablePadParameter(getIndex(),
                                                   PadParameterSpecs::Param::Pitch,
+                                                  getFloat());
+    }
+    else if (type == "setPadPitch")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadPitch,
                                                   getFloat());
     }
     else if (type == "setMute")

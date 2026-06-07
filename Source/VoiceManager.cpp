@@ -200,6 +200,23 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
     if (! enforcePolyphonyForPad(padIndex, pad, hostSampleRate))
         return;
 
+    // Humanize is generated once per Pad trigger. Every Layer receives the
+    // same musical movement, preserving phase and transient relationships.
+    PadHumanize humanize;
+    const float amount = juce::jlimit(0.0f, 1.0f, pad.humanize);
+    if (amount > 0.0f)
+    {
+        const auto bipolarRandom = [this]() noexcept
+        {
+            return random.nextFloat() * 2.0f - 1.0f;
+        };
+        humanize.velocityMultiplier = 1.0f + bipolarRandom() * 0.12f * amount;
+        humanize.panOffset          = bipolarRandom() * 0.12f * amount;
+        humanize.pitchOffset        = bipolarRandom() * 0.35f * amount;
+        humanize.startOffsetAmount  = random.nextFloat() * amount;
+        humanize.delayAmount        = random.nextFloat() * amount;
+    }
+
     bool triggeredAny = false;
     const int layerCount = pad.layerCount();
     for (int li = 0; li < layerCount; ++li)
@@ -219,7 +236,8 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
         if (buf == nullptr || buf->getNumSamples() == 0)
             continue;
 
-        startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate, previewVoice);
+        startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate,
+                        previewVoice, humanize);
         triggeredAny = true;
     }
 
@@ -237,7 +255,8 @@ void VoiceManager::startLayerVoice(int                     padIndex,
                                    const KitData&          kit,
                                    const AudioFileManager& files,
                                    double                  hostSampleRate,
-                                   bool                    previewVoice)
+                                   bool                    previewVoice,
+                                   const PadHumanize&      humanize)
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
@@ -248,25 +267,14 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     const juce::AudioBuffer<float>* buf = files.getBufferNoLock(padIndex, layerIndex);
     if (buf == nullptr || buf->getNumSamples() == 0) return;
 
-    // ── Humanize は Pad-level（全 Layer 共通に適用） ───────────────────────
-    const float humanize = juce::jlimit(0.0f, 1.0f, pad.humanize);
-    const auto  bipolarRandom = [this]() noexcept { return random.nextFloat() * 2.0f - 1.0f; };
-
-    float  humanizedVelocity = velocity;
-    float  effectivePan      = juce::jlimit(-1.0f, 1.0f, L.pan + pad.padPan);
-    float  humanizedPitch    = L.pitch;
+    const float humanizedVelocity = juce::jlimit(
+        0.0f, 1.0f, velocity * humanize.velocityMultiplier);
+    const float effectivePan = juce::jlimit(
+        -1.0f, 1.0f, L.pan + pad.padPan + humanize.panOffset);
+    const float humanizedPitch = juce::jlimit(
+        -48.0f, 48.0f, L.pitch + pad.padPitch + humanize.pitchOffset);
     double startOffsetSamples = 0.0;
-    int    startDelaySamples  = 0;
-
-    if (humanize > 0.0f)
-    {
-        humanizedVelocity = juce::jlimit(0.0f, 1.0f,
-            velocity * (1.0f + bipolarRandom() * 0.12f * humanize));
-        effectivePan = juce::jlimit(-1.0f, 1.0f,
-            effectivePan + bipolarRandom() * 0.12f * humanize);
-        humanizedPitch = juce::jlimit(-24.0f, 24.0f,
-            L.pitch + bipolarRandom() * 0.35f * humanize);
-    }
+    int startDelaySamples = 0;
 
     // ── ゲイン計算 ───────────────────────────────────────────────────────
     //   Q3: 信号フロー = FaderCurve(layer.volume) × FaderCurve(pad.padVolume)
@@ -309,14 +317,15 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     double startSamp = totalSamples * static_cast<double>(L.startPosition);
     double endSamp   = totalSamples * static_cast<double>(L.endPosition);
 
-    if (humanize > 0.0f)
+    if (humanize.startOffsetAmount > 0.0f || humanize.delayAmount > 0.0f)
     {
         const double srcSampleRateForStart = files.getSampleRate(padIndex, layerIndex);
         const double samplesPerMs = (srcSampleRateForStart > 0.0) ? (srcSampleRateForStart / 1000.0) : 44.1;
         const double maxStartOffset = juce::jmin(8.0 * samplesPerMs,
                                                  (endSamp - startSamp) * 0.02);
-        startOffsetSamples = random.nextFloat() * maxStartOffset * static_cast<double>(humanize);
-        startDelaySamples  = static_cast<int>(random.nextFloat() * 4.0f * static_cast<float>(hostSampleRate / 1000.0) * humanize);
+        startOffsetSamples = maxStartOffset * static_cast<double>(humanize.startOffsetAmount);
+        startDelaySamples  = static_cast<int>(
+            4.0f * static_cast<float>(hostSampleRate / 1000.0) * humanize.delayAmount);
 
         if (L.reverse)
             endSamp = juce::jmax(startSamp + 1.0, endSamp - startOffsetSamples);
