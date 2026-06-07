@@ -1679,6 +1679,11 @@ DrumSamplerAudioProcessor::createParameterLayout()
 
         for (const auto& spec : PadParameterSpecs::all())
         {
+            // New parameters are appended after the complete legacy layout so
+            // existing AU/VST3 parameter indices remain stable.
+            if (spec.param == PadParameterSpecs::Param::PadVolume)
+                continue;
+
             const auto id   = PadParameterSpecs::parameterID(padIndex, spec.param);
             const auto name = PadParameterSpecs::parameterName(padIndex, pad, spec.param);
 
@@ -1725,6 +1730,17 @@ DrumSamplerAudioProcessor::createParameterLayout()
         }
     }
 
+    const auto& padVolumeSpec = PadParameterSpecs::specFor(PadParameterSpecs::Param::PadVolume);
+    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+    {
+        const auto& pad = defaultKit.pads[static_cast<size_t>(padIndex)];
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { PadParameterSpecs::parameterID(padIndex, padVolumeSpec.param), 1 },
+            PadParameterSpecs::parameterName(padIndex, pad, padVolumeSpec.param),
+            rangeFor(padVolumeSpec),
+            padVolumeSpec.defaultValue));
+    }
+
     return { params.begin(), params.end() };
 }
 
@@ -1750,6 +1766,7 @@ float DrumSamplerAudioProcessor::getKitValueForParameter(int padIndex,
         case PadParameterSpecs::Param::Solo:    return pad.solo    ? 1.0f : 0.0f;
         case PadParameterSpecs::Param::Humanize: return pad.humanize;
         case PadParameterSpecs::Param::Velocity: return pad.velocitySens;
+        case PadParameterSpecs::Param::PadVolume: return pad.padVolume;
     }
 
     return 0.0f;
@@ -1788,11 +1805,13 @@ void DrumSamplerAudioProcessor::setKitValueFromParameter(int padIndex,
         case PadParameterSpecs::Param::Solo:    pad.solo    = v >= 0.5f; break;
         case PadParameterSpecs::Param::Humanize: pad.humanize     = v; break;
         case PadParameterSpecs::Param::Velocity: pad.velocitySens = v; break;
+        case PadParameterSpecs::Param::PadVolume: pad.padVolume   = v; break;
     }
 
-    // VoiceManager は pad.layers[0] を読むので、flat fields の変更後に Layer 0 へ
-    // ミラーする (MAIN レイヤーの knob 操作を実際の発音に反映するため)。
-    pad.syncLayer0FromFlat();
+    // PadVolume is a separate gain stage after the layer sum. All legacy flat
+    // parameters still mirror into Layer 0 for backwards compatibility.
+    if (param != PadParameterSpecs::Param::PadVolume)
+        pad.syncLayer0FromFlat();
 }
 
 void DrumSamplerAudioProcessor::setAutomatablePadParameter(int padIndex,

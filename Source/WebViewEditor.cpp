@@ -999,6 +999,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                                   PadParameterSpecs::Param::Volume,
                                                   getFloat());
     }
+    else if (type == "setPadVolume")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadVolume,
+                                                  getFloat());
+    }
     else if (type == "setPan")
     {
         audioProcessor.setAutomatablePadParameter(getIndex(),

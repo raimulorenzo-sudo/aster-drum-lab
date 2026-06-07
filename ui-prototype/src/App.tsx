@@ -939,7 +939,7 @@ export default function App() {
   // 各 Pad を JUCE へ送信しつつ、React state は 1 回の setPads でまとめて更新する。
   // これにより useUndoRedo の debounce スナップショットが「1 ジェスチャ = 1 Undo」に
   // 収束する (個別 updatePad を N 回呼ぶより re-render も少ない)。
-  // 想定する patch は volume / pan / outputAssign のみ (midiNote / trim 等の特殊処理は
+  // 想定する patch は padVolume / pan / outputAssign のみ (midiNote / trim 等の特殊処理は
   // 含めない — Mixer の一括編集はこの 3 つに限定)。
   const updatePads = useCallback(
     (changes: { index: number; patch: Partial<PadParams> }[]) => {

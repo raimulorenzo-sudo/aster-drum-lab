@@ -124,6 +124,7 @@ function defaultPad(i: number): PadParams {
     categoryColor: DEFAULT_PAD_COLORS[i % 16],
     midiNote: 36 + i,
     volume: 0.75,  // fader position 0..1 — 0.75 == 0 dB unity (utils/fader.ts)
+    padVolume: 0.75,
     pan: 0,
     pitch: 0,
     attack: 0.002,

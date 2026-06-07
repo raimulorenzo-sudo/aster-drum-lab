@@ -20,6 +20,7 @@ namespace PadParameterSpecs
         Solo,
         Humanize,   // v7+ DAW automation
         Velocity,   // v7+ DAW automation (velocitySens)
+        PadVolume,  // Pad total volume, after all layer volumes
     };
 
     struct Spec
@@ -33,7 +34,7 @@ namespace PadParameterSpecs
         bool         isBoolean;
     };
 
-    constexpr int numAutomatableParams = 14;
+    constexpr int numAutomatableParams = 15;
 
     const std::array<Spec, numAutomatableParams>& all() noexcept;
 

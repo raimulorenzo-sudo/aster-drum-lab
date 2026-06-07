@@ -161,7 +161,7 @@ function MixerViewComponent({
       for (const idx of targets) {
         const p = padsRef.current[idx];
         if (!p) continue;
-        startById.set(idx, kind === 'volume' ? p.volume : p.pan);
+        startById.set(idx, kind === 'volume' ? (p.padVolume ?? 0.75) : p.pan);
       }
       gestureRef.current = { kind, origin, batch, startById };
     },
@@ -177,7 +177,7 @@ function MixerViewComponent({
     (origin: number, newPos: number) => {
       const g = gestureRef.current;
       if (!g || g.kind !== 'volume' || !g.startById.has(origin)) {
-        onChangePad(origin, { volume: newPos });
+        onChangePad(origin, { padVolume: newPos });
         return;
       }
       const startOrigin = g.startById.get(origin)!;
@@ -185,10 +185,10 @@ function MixerViewComponent({
       const changes: { index: number; patch: Partial<PadParams> }[] = [];
       g.startById.forEach((startV, idx) => {
         if (idx === origin) {
-          changes.push({ index: idx, patch: { volume: newPos } });
+          changes.push({ index: idx, patch: { padVolume: newPos } });
         } else {
           const db = Math.max(FADER_DB_FLOOR, Math.min(FADER_DB_TOP, positionToDb(startV) + deltaDb));
-          changes.push({ index: idx, patch: { volume: dbToPosition(db) } });
+          changes.push({ index: idx, patch: { padVolume: dbToPosition(db) } });
         }
       });
       onChangePads(changes);
@@ -238,7 +238,7 @@ function MixerViewComponent({
       const sel = selectionRef.current;
       const batch = sel.has(origin) && sel.size >= 2;
       const def = kind === 'volume' ? defaultPadParam('volume') : defaultPadParam('pan');
-      const patch: Partial<PadParams> = kind === 'volume' ? { volume: def } : { pan: def };
+      const patch: Partial<PadParams> = kind === 'volume' ? { padVolume: def } : { pan: def };
       if (batch) {
         onChangePads([...sel].map(idx => ({ index: idx, patch })));
       } else {
@@ -515,8 +515,9 @@ function ChannelStripBodyImpl({
 }) {
   // 単体編集用エイリアス (mute/solo/テキスト入力/リセット等は従来どおり単一チャンネル)
   const onChange = onChangeSingle;
-  // pad.volume is already the fader position [0..1] (see utils/fader.ts).
-  const fader = clamp(pad.volume, 0, 1);
+  // padVolume is the Pad-wide gain stage after all layer volumes.
+  const padVolume = pad.padVolume ?? 0.75;
+  const fader = clamp(padVolume, 0, 1);
   const [editingVolume, setEditingVolume] = useState(false);
   const [volumeDraft, setVolumeDraft] = useState('');
 
@@ -555,7 +556,7 @@ function ChannelStripBodyImpl({
     const track = e.currentTarget;
     track.setPointerCapture(e.pointerId);
     const startY = e.clientY;
-    const startVolume = pad.volume;
+    const startVolume = padVolume;
     let lastSentAt = 0;
     let lastSentValue = startVolume;
     let latestValue = startVolume;
@@ -585,13 +586,13 @@ function ChannelStripBodyImpl({
   };
 
   const beginVolumeEdit = () => {
-    setVolumeDraft(formatFaderDb(pad.volume));
+    setVolumeDraft(formatFaderDb(padVolume));
     setEditingVolume(true);
   };
 
   const commitVolumeDraft = () => {
     const parsed = parseNumericText(volumeDraft);
-    if (parsed !== null) onChange({ volume: dbToPosition(parsed) });
+    if (parsed !== null) onChange({ padVolume: dbToPosition(parsed) });
     setEditingVolume(false);
   };
 
@@ -689,10 +690,10 @@ function ChannelStripBodyImpl({
             onPointerDown={handleFaderPointerDown}
             onDoubleClick={handleFaderDoubleClick}
             role="slider"
-            aria-label={`${padName} volume`}
+            aria-label={`${padName} pad volume`}
             aria-valuemin={0}
             aria-valuemax={1}
-            aria-valuenow={pad.volume}
+            aria-valuenow={padVolume}
             tabIndex={0}
           >
             <span className={styles.faderUnity} />
@@ -734,7 +735,7 @@ function ChannelStripBodyImpl({
               beginVolumeEdit();
             }}
           >
-            {formatFaderDb(pad.volume)}
+            {formatFaderDb(padVolume)}
           </span>
         )}
         <span className={styles.dbUnit}>dB</span>

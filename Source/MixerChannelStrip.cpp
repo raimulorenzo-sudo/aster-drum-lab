@@ -95,7 +95,7 @@ void MixerChannelStrip::wireCallbacks()
     volumeFader.onValueChange = [this]
     {
         proc.setAutomatablePadParameter(padIdx,
-                                        PadParameterSpecs::Param::Volume,
+                                        PadParameterSpecs::Param::PadVolume,
                                         static_cast<float>(volumeFader.getValue()));
     };
 
@@ -148,7 +148,7 @@ void MixerChannelStrip::refreshFromKit()
     const auto& pad = kit.pads[static_cast<size_t>(padIdx)];
 
     panKnob    .setValue(pad.pan,    juce::dontSendNotification);
-    volumeFader.setValue(pad.volume, juce::dontSendNotification);
+    volumeFader.setValue(pad.padVolume, juce::dontSendNotification);
     btnMute    .setToggleState(pad.mute, juce::dontSendNotification);
     btnSolo    .setToggleState(pad.solo, juce::dontSendNotification);
 

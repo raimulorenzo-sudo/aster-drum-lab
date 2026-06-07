@@ -6,12 +6,12 @@
   min-height: 0;
 }
 
-/* Volume / Pan / Pitch / Phase / Output を全幅で均等配置 (DYNAMICS と同方針) */
+/* Layer Vol / Pad Vol / Pan / Pitch / Phase / Output を均等配置 */
 .controlsRow {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   flex-wrap: wrap;
   width: 100%;
 }

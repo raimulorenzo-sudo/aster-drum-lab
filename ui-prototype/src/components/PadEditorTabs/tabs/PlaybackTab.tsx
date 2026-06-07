@@ -60,13 +60,18 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
   return (
     <div className={styles.root}>
 
-      {/* ─── 上段: Vol / Pan / Pitch / Phase / Output を全幅で均等配置 ─── */}
+      {/* ─── 上段: Layer / Pad volume と音作り・出力を全幅で均等配置 ─── */}
       <div className={styles.controlsRow}>
-        <Knob ownerKey={ownerKey} size={60} label="VOLUME"
+        <Knob ownerKey={ownerKey} size={60} label="LAYER VOL"
           value={pad.volume} defaultValue={defaultPadParam('volume')}
           valueText={formatVolume(pad.volume)}
           parseInput={text => { const v = parseNumericText(text); return v == null ? null : dbToPosition(v); }}
           onChange={v => onChange({ volume: v })} />
+        <Knob ownerKey={ownerKey} size={48} label="PAD VOL"
+          value={pad.padVolume ?? 0.75} defaultValue={defaultPadParam('volume')}
+          valueText={formatVolume(pad.padVolume ?? 0.75)}
+          parseInput={text => { const v = parseNumericText(text); return v == null ? null : dbToPosition(v); }}
+          onChange={v => onChange({ padVolume: v })} />
         <Knob ownerKey={ownerKey} size={54} label="PAN" bipolar
           value={pad.pan} min={-1} max={1} defaultValue={defaultPadParam('pan')}
           valueText={formatPan(pad.pan)}

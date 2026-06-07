@@ -19,6 +19,8 @@ namespace
         // v7+: Humanize / Velocity (UI 上は DYNAMICS タブ)
         { PadParameterSpecs::Param::Humanize, "humanize", "Humanize", 0.0f, 0.0f, 1.0f, false },
         { PadParameterSpecs::Param::Velocity, "velocity", "Velocity", 1.0f, 0.0f, 1.0f, false },
+        // createParameterLayout appends these after the complete legacy layout.
+        { PadParameterSpecs::Param::PadVolume, "padVolume", "Pad Volume", 0.75f, 0.0f, 1.0f, false },
     }};
 
     juce::String pagePrefix(int padIndex)

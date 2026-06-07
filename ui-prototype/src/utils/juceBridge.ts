@@ -504,6 +504,7 @@ export function sendPadPatchToJuce(
     }
   }
   if (patch.volume       !== undefined) sendToJuce('setVolume',       { index, value: patch.volume });
+  if (patch.padVolume    !== undefined) sendToJuce('setPadVolume',    { index, value: patch.padVolume });
   if (patch.pan          !== undefined) sendToJuce('setPan',          { index, value: patch.pan });
   if (patch.pitch        !== undefined) sendToJuce('setPitch',        { index, value: patch.pitch });
   if (patch.mute         !== undefined) sendToJuce('setMute',         { index, value: patch.mute });
