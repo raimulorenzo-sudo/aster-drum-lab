@@ -794,65 +794,60 @@
 }
 
 .faderThumb {
+  /* 半透明グラスキャップ — 下のフィルライン/溝が透けて見える */
   position: absolute;
   left: 50%;
   bottom: 0;
-  width: 24px;
-  height: 14px;
+  width: 28px;
+  height: 18px;
   transform: translate(-50%, 50%);
   will-change: transform;
-  border-radius: 2.5px;
-  background:
-    linear-gradient(180deg,
-      rgba(168, 162, 152, 0.78) 0%,
-      rgba(70, 66, 60, 0.96) 38%,
-      rgba(24, 22, 20, 1) 76%,
-      rgba(10, 9, 8, 1) 100%);
-  border: 1px solid rgba(6, 5, 4, 0.96);
+  border-radius: 4px;
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.13) 0%,
+    rgba(255, 255, 255, 0.05) 45%,
+    rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(1.5px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 248, 235, 0.30),
-    inset 0 -4px 5px rgba(0, 0, 0, 0.42),
-    0 3px 6px rgba(0, 0, 0, 0.52),
-    0 6px 12px rgba(0, 0, 0, 0.28);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  gap: 1.5px;
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.25),
+    0 3px 7px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   z-index: 2;
 }
 
-/* グリップ線 */
+/* グリップ線はグラスキャップでは使わない (DOM は残す) */
 .faderThumb i {
-  width: 14px;
-  height: 1px;
-  background: rgba(255, 248, 235, 0.22);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.42);
+  display: none;
 }
 
 .faderThumb::before {
-  /* 中央の薄い金色ライン（ユニティ印） */
+  /* 中央の発光LEDライン (ウォームホワイト / 電球色) */
   content: '';
   position: absolute;
   left: 4px;
   right: 4px;
   top: 50%;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    rgba(191, 163, 106, 0.42),
-    transparent);
+  height: 2px;
+  border-radius: 1px;
+  background: #e8e2d4;
+  box-shadow:
+    0 0 2px rgba(232, 226, 212, 0.5),
+    0 0 7px rgba(216, 210, 195, 0.45),
+    0 0 12px rgba(216, 210, 195, 0.18);
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .channelSelected .faderThumb {
+  border-color: rgba(255, 255, 255, 0.30);
   box-shadow:
-    inset 0 1px 0 rgba(255, 248, 235, 0.34),
-    inset 0 -4px 5px rgba(0, 0, 0, 0.42),
-    0 3px 6px rgba(0, 0, 0, 0.52),
-    0 0 8px rgba(191, 163, 106, 0.20);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.25),
+    0 3px 7px rgba(0, 0, 0, 0.45),
+    0 0 10px rgba(216, 210, 195, 0.28);
 }
 
 /* ═══════════════════════════════════════════════════════════════════

@@ -22,9 +22,13 @@
 }
 
 .graphWrap {
+  /* 可変幅: 親に収まる範囲で 160〜240px に伸縮 (PRESET 列の見切れ防止) */
   position: relative;
-  width: 160px;
-  height: 92px;
+  flex: 1 1 150px;
+  min-width: 150px;
+  max-width: 200px;
+  width: auto;
+  height: 102px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.32);

@@ -30,17 +30,17 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
       <div className={styles.columns}>
         <div className={styles.leftColumn}>
           <div className={styles.mixRow}>
-            <Knob ownerKey={padIndex} size={56} label="PAD VOL"
+            <Knob ownerKey={padIndex} size={68} label="PAD VOL"
               value={pad.padVolume ?? 0.75} defaultValue={defaultPadParam('volume')}
               valueText={formatVolume(pad.padVolume ?? 0.75)}
               parseInput={text => { const v = parseNumericText(text); return v == null ? null : dbToPosition(v); }}
               onChange={v => onChange({ padVolume: v })} />
-            <Knob ownerKey={padIndex} size={56} label="PAD PAN" bipolar
+            <Knob ownerKey={padIndex} size={68} label="PAD PAN" bipolar
               value={pad.padPan ?? 0} min={-1} max={1} defaultValue={defaultPadParam('pan')}
               valueText={formatPan(pad.padPan ?? 0)}
               parseInput={parsePanInput}
               onChange={v => onChange({ padPan: v })} />
-            <Knob ownerKey={padIndex} size={56} label="PAD PITCH" bipolar
+            <Knob ownerKey={padIndex} size={68} label="PAD PITCH" bipolar
               value={pad.padPitch ?? 0} min={-24} max={24} defaultValue={defaultPadParam('pitch')}
               valueText={formatPitch(pad.padPitch ?? 0)}
               parseInput={parseNumericText}
@@ -125,12 +125,12 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
             <span className={styles.responseLabel}>PAD RESPONSE</span>
             <div className={styles.responseBody}>
               <div className={styles.responseKnobs}>
-                <Knob ownerKey={padIndex} size={48} label="VELOCITY"
+                <Knob ownerKey={padIndex} size={56} label="VELOCITY"
                   value={pad.velocitySens} defaultValue={defaultPadParam('velocitySens')}
                   valueText={`${Math.round(pad.velocitySens * 100)} %`}
                   parseInput={parsePercentInput}
                   onChange={v => onChange({ velocitySens: v })} />
-                <Knob ownerKey={padIndex} size={48} label="HUMANIZE"
+                <Knob ownerKey={padIndex} size={56} label="HUMANIZE"
                   value={pad.humanize} defaultValue={defaultPadParam('humanize')}
                   valueText={`${Math.round(pad.humanize * 100)} %`}
                   parseInput={parsePercentInput}

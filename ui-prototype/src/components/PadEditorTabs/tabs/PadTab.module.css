@@ -4,8 +4,8 @@
 
 .columns {
   display: grid;
-  grid-template-columns: 260px minmax(390px, 1fr);
-  gap: 16px;
+  grid-template-columns: 300px minmax(390px, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -17,14 +17,14 @@
 .leftColumn {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .rightColumn {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-left: 12px;
+  gap: 14px;
+  padding-left: 16px;
   border-left: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
 
@@ -32,7 +32,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: 20px;
+  gap: 30px;
   padding-left: 6px;
 }
 
@@ -55,21 +55,21 @@
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 13px;
 }
 
 .settingRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
 .response {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding-top: 9px;
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
 }
 
@@ -82,15 +82,17 @@
 
 .responseBody {
   display: grid;
-  grid-template-columns: 100px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 124px minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
 .responseKnobs {
   display: flex;
   align-items: flex-start;
-  gap: 4px;
+  gap: 10px;
+  /* カーブグラフの縦中心に合わせて少し下げる */
+  padding-top: 20px;
 }
 
 .curveSlot {
@@ -98,7 +100,7 @@
 }
 
 .inlineLabel {
-  min-width: 45px;
+  min-width: 48px;
   font-size: var(--fs-9, 9px);
   letter-spacing: 0.14em;
   opacity: 0.78;
@@ -109,7 +111,7 @@
 }
 
 .segBtn {
-  height: 20px;
+  height: 22px;
   min-width: 56px;
   padding: 0 10px;
   font-size: 9.5px;
@@ -134,7 +136,7 @@
 }
 
 .segBtnNarrow {
-  min-width: 34px;
+  min-width: 36px;
   padding: 0 6px;
 }
 
