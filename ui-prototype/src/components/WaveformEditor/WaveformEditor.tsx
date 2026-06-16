@@ -18,6 +18,7 @@ interface WaveformEditorProps {
   onRelinkSample?: () => void;
   previewPlayback: PreviewPlayback;
   onPreviewFinished: (triggerId: number) => void;
+  onWaveformAudition?: () => void;
 }
 
 // 60 Hz throttle: ドラッグハンドルや onChange 経由 JUCE 送信用。
@@ -42,6 +43,7 @@ function WaveformEditorComponent({
   onRelinkSample,
   previewPlayback,
   onPreviewFinished,
+  onWaveformAudition,
 }: WaveformEditorProps) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(pad.padName);
@@ -60,6 +62,7 @@ function WaveformEditorComponent({
     setViewStartPct(0);
     setViewEndPct(1);
   }, [padIndex, pad.sampleFilePath]);
+
   // Preview playhead position is updated around 30fps by requestAnimationFrame.
   // Storing it in React state would re-render the entire SVG every frame
   // (>500 path nodes). Instead we keep a ref to the <line> element and
@@ -434,6 +437,16 @@ function WaveformEditorComponent({
     [onChange, totalMs],
   );
 
+  const triggerWaveformAudition = useCallback(
+    (e: ReactMouseEvent<SVGSVGElement>) => {
+      if (!hasWaveform || !onWaveformAudition || draggingHandle) return;
+      if (e.button !== 0 || e.detail > 1) return;
+
+      onWaveformAudition();
+    },
+    [draggingHandle, hasWaveform, onWaveformAudition],
+  );
+
   return (
     <div className={styles.editor}>
       {/* ── タイトル行 ────────────────────────────────────────────────── */}
@@ -599,9 +612,10 @@ function WaveformEditorComponent({
           onDrop={handleSampleDrop}
         >
         <svg
-          className={styles.svg}
+          className={`${styles.svg} ${hasWaveform && onWaveformAudition ? styles.svgAudition : ''}`}
           viewBox={viewBoxAttr}
           preserveAspectRatio="none"
+          onMouseDown={triggerWaveformAudition}
           onDoubleClick={(e) => {
             // ハンドル系の dblclick はそれぞれ stopPropagation していないが、
             // resetHandle 側で preventDefault + stopPropagation しているので

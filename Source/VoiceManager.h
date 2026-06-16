@@ -39,7 +39,9 @@ public:
                        const KitData&       kit,
                        const AudioFileManager& files,
                        double               hostSampleRate,
-                       int                  layerIndex = 0);
+                       int                  layerIndex = 0,
+                       float                startPosition = -1.0f,
+                       bool                 ignoreMuteSoloAndVelocityRange = false);
 
     // ── Note Off ───────────────────────────────────────────────────────────
     void noteOff(int padIndex);
@@ -135,7 +137,9 @@ private:
                            const AudioFileManager& files,
                            double               hostSampleRate,
                            bool                 previewVoice,
-                           int                  previewLayerIndex);
+                           int                  previewLayerIndex,
+                           float                previewStartPosition,
+                           bool                 ignoreMuteSoloAndVelocityRange);
 
     // 1 つの Layer を起動する。Pad/Layer mute/solo/velocity range などの
     // フィルタは呼び出し側で済ませてから呼ぶ。
@@ -146,5 +150,6 @@ private:
                          const AudioFileManager& files,
                          double               hostSampleRate,
                          bool                 previewVoice,
-                         const PadHumanize&   humanize);
+                         const PadHumanize&   humanize,
+                         float                previewStartPosition);
 };

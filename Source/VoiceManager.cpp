@@ -138,7 +138,9 @@ void VoiceManager::noteOn(int                     padIndex,
 {
     startVoicesForPad(padIndex, velocity, kit, files, hostSampleRate,
                       /*previewVoice=*/ false,
-                      /*previewLayerIndex=*/ -1);
+                      /*previewLayerIndex=*/ -1,
+                      /*previewStartPosition=*/ -1.0f,
+                      /*ignoreMuteSoloAndVelocityRange=*/ false);
 }
 
 // v7+: Pad の視覚フラッシュだけ発火 (Voice 生成しない)。
@@ -158,12 +160,16 @@ void VoiceManager::previewNoteOn(int                     padIndex,
                                  const KitData&          kit,
                                  const AudioFileManager& files,
                                  double                  hostSampleRate,
-                                 int                     layerIndex)
+                                 int                     layerIndex,
+                                 float                   startPosition,
+                                 bool                    ignoreMuteSoloAndVelocityRange)
 {
     stopPreviewVoices(hostSampleRate);
     startVoicesForPad(padIndex, velocity, kit, files, hostSampleRate,
                       /*previewVoice=*/ true,
-                      /*previewLayerIndex=*/ layerIndex);
+                      /*previewLayerIndex=*/ layerIndex,
+                      startPosition,
+                      ignoreMuteSoloAndVelocityRange);
 }
 
 void VoiceManager::startVoicesForPad(int                     padIndex,
@@ -172,18 +178,23 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
                                      const AudioFileManager& files,
                                      double                  hostSampleRate,
                                      bool                    previewVoice,
-                                     int                     previewLayerIndex)
+                                     int                     previewLayerIndex,
+                                     float                   previewStartPosition,
+                                     bool                    ignoreMuteSoloAndVelocityRange)
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     const PadData& pad = kit.pads[static_cast<size_t>(padIndex)];
+    const bool forcePreviewLayer = previewVoice
+                                && previewLayerIndex >= 0
+                                && ignoreMuteSoloAndVelocityRange;
 
     // Pad-level Mute / Solo は全 Layer を一括スキップ
-    if (pad.mute) return;
+    if (! forcePreviewLayer && pad.mute) return;
 
     const bool anySoloActive = std::any_of(kit.pads.begin(), kit.pads.end(),
                                            [] (const PadData& p) { return p.solo; });
-    if (anySoloActive && ! pad.solo) return;
+    if (! forcePreviewLayer && anySoloActive && ! pad.solo) return;
 
     // ── Pad 内で Layer Solo が立っていれば、その Layer 群だけ通す ───────────
     bool anyLayerSolo = false;
@@ -204,7 +215,8 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
     // same musical movement, preserving phase and transient relationships.
     PadHumanize humanize;
     const float amount = juce::jlimit(0.0f, 1.0f, pad.humanize);
-    if (amount > 0.0f)
+    const bool exactPreviewStart = previewVoice && previewStartPosition >= 0.0f;
+    if (! exactPreviewStart && amount > 0.0f)
     {
         const auto bipolarRandom = [this]() noexcept
         {
@@ -227,9 +239,12 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
 
         const auto& L = pad.layers[(size_t) li];
 
-        if (L.mute)                                              continue;
-        if (anyLayerSolo && ! L.solo)                            continue;
-        if (velMidi < L.velocityMin || velMidi > L.velocityMax)  continue;
+        if (! forcePreviewLayer)
+        {
+            if (L.mute)                                             continue;
+            if (anyLayerSolo && ! L.solo)                           continue;
+            if (velMidi < L.velocityMin || velMidi > L.velocityMax) continue;
+        }
 
         // サンプルが読み込まれていなければ Skip（CPU を使わない）
         const juce::AudioBuffer<float>* buf = files.getBufferNoLock(padIndex, li);
@@ -237,7 +252,7 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
             continue;
 
         startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate,
-                        previewVoice, humanize);
+                        previewVoice, humanize, previewStartPosition);
         triggeredAny = true;
     }
 
@@ -256,7 +271,8 @@ void VoiceManager::startLayerVoice(int                     padIndex,
                                    const AudioFileManager& files,
                                    double                  hostSampleRate,
                                    bool                    previewVoice,
-                                   const PadHumanize&      humanize)
+                                   const PadHumanize&      humanize,
+                                   float                   previewStartPosition)
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
@@ -272,7 +288,9 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     const float effectivePan = juce::jlimit(
         -1.0f, 1.0f, L.pan + pad.padPan + humanize.panOffset);
     const float humanizedPitch = juce::jlimit(
-        -48.0f, 48.0f, L.pitch + pad.padPitch + humanize.pitchOffset);
+        -48.0f, 48.0f, L.pitch + (L.fine / 100.0f)
+                         + pad.padPitch + (pad.padFine / 100.0f)
+                         + humanize.pitchOffset);
     double startOffsetSamples = 0.0;
     int startDelaySamples = 0;
 
@@ -316,6 +334,16 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     const double totalSamples = static_cast<double>(buf->getNumSamples());
     double startSamp = totalSamples * static_cast<double>(L.startPosition);
     double endSamp   = totalSamples * static_cast<double>(L.endPosition);
+
+    if (previewVoice && previewStartPosition >= 0.0f)
+    {
+        const double previewSamp = totalSamples
+                                 * static_cast<double>(juce::jlimit(0.0f, 1.0f, previewStartPosition));
+        if (L.reverse)
+            endSamp = juce::jlimit(startSamp + 1.0, endSamp, previewSamp);
+        else
+            startSamp = juce::jlimit(startSamp, endSamp - 1.0, previewSamp);
+    }
 
     if (humanize.startOffsetAmount > 0.0f || humanize.delayAmount > 0.0f)
     {
@@ -375,7 +403,8 @@ void VoiceManager::startLayerVoice(int                     padIndex,
             totalSamples,
             ++triggerSerialCounter,
             startDelaySamples,
-            previewVoice);
+            previewVoice,
+            pad.swapLR);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -450,7 +479,7 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
 
         // ── どのバスに送るか決める ────────────────────────────────────────
         const auto& pad = kit.pads[static_cast<size_t>(voice.padIndex)];
-        if (pad.mute || (anySoloActive && ! pad.solo))
+        if (! voice.isPreview && (pad.mute || (anySoloActive && ! pad.solo)))
             continue;
 
         int busIdx = forceMain ? 0 : pad.outputAssign;

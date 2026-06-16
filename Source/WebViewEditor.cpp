@@ -984,6 +984,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const float velocity = (float) (double) payload.getProperty("velocity", 0.9);
         audioProcessor.auditionPadOn(getIndex(), velocity);
     }
+    else if (type == "auditionLayer")
+    {
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const float velocity = (float) (double) payload.getProperty("velocity", 1.0);
+        audioProcessor.auditionLayerOn(getIndex(), layerIdx, velocity);
+    }
     else if (type == "auditionOff")
     {
         audioProcessor.auditionPadOff(getIndex());
@@ -1027,6 +1033,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     {
         audioProcessor.setAutomatablePadParameter(getIndex(),
                                                   PadParameterSpecs::Param::PadPitch,
+                                                  getFloat());
+    }
+    else if (type == "setPadFine")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadFine,
                                                   getFloat());
     }
     else if (type == "setMute")
@@ -1287,6 +1299,16 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         if (idx >= 0 && idx < NUM_PADS)
         {
             audioProcessor.getKit().pads[(size_t) idx].outputAssign = juce::jlimit(0, 47, v);
+            audioProcessor.markKitDirty();
+            broadcastPadUpdate(idx);
+        }
+    }
+    else if (type == "setPadSwapLR")
+    {
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            audioProcessor.getKit().pads[(size_t) idx].swapLR = getBool();
             audioProcessor.markKitDirty();
             broadcastPadUpdate(idx);
         }
@@ -1885,6 +1907,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     // Layer 0 (MAIN) は既存の flat-field 経由ハンドラで処理されるので、こちらは
     // L2+ 用と考えてよい。ただし layerIdx を明示するため layerIdx==0 も受ける。
     else if (type == "setLayerVolume" || type == "setLayerPan" || type == "setLayerPitch"
+          || type == "setLayerFine"
           || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
     {
         const int idx = getIndex();
@@ -1901,6 +1924,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pan, getFloat(), true);
                 else if (type == "setLayerPitch")
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pitch, getFloat(), true);
+                else if (type == "setLayerFine")
+                    audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Fine, getFloat(), true);
                 else if (type == "setLayerAttack")  L.attack  = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerRelease") L.release = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerReverse") L.reverse = getBool();

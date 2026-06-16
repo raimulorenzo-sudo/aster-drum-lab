@@ -1001,6 +1001,43 @@ export default function App() {
     );
   }, []);
 
+  const auditionSelectedLayerFromWaveform = useCallback((layerIndex: number) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layers = ensureLayers(pad);
+    const safeLayerIndex = Math.max(0, Math.min(layers.length - 1, layerIndex));
+    const layer = layers[safeLayerIndex];
+    if (!layer?.sampleFileName || layer.sampleMissing) {
+      setPreviewPlayback(prev => ({ ...prev, isPreviewPlaying: false }));
+      return;
+    }
+
+    const viewPad = {
+      ...pad,
+      ...layer,
+      selectedLayerIndex: safeLayerIndex,
+    };
+    const trim = trimFromPad(viewPad);
+    const normalized = trimToNormalized(trim);
+
+    sendToJuce('auditionLayer', {
+      index: selectedIndex,
+      layerIndex: safeLayerIndex,
+      velocity: 1.0,
+    });
+
+    setPreviewPlayback(prev => ({
+      isPreviewPlaying: true,
+      padIndex: selectedIndex,
+      previewStartedAt: performance.now(),
+      previewDurationMs: Math.max(30, trim.endMs - trim.startMs),
+      previewStartPercent: normalized.startPosition,
+      previewEndPercent: normalized.endPosition,
+      reverseEnabled: Boolean(layer.reverse),
+      triggerId: prev.triggerId + 1,
+    }));
+  }, [selectedIndex]);
+
   // ── Master output knob ───────────────────────────────────────────────
   const handleMasterKnobChange = useCallback((v: number) => {
     setMasterKnob(v);
@@ -1320,6 +1357,7 @@ export default function App() {
     volume: 0.75,
     pan: 0,
     pitch: 0,
+    fine: 0,
     attack: 0.002,
     release: 0.05,
     startMs: 0,
@@ -1754,6 +1792,7 @@ export default function App() {
                 onRelinkSelected={handleRelinkSelected}
                 previewPlayback={previewPlayback}
                 onPreviewFinished={handlePreviewFinished}
+                onWaveformAudition={auditionSelectedLayerFromWaveform}
                 liveVelocity={liveVelocities[selectedIndex] ?? null}
                 masterKnob={masterKnob}
                 onMasterKnobChange={handleMasterKnobChange}

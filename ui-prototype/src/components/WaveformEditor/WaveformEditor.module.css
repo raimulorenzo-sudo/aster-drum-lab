@@ -304,6 +304,10 @@
   display: block;
 }
 
+.svgAudition {
+  cursor: pointer;
+}
+
 .waveform {
   filter:
     drop-shadow(0 0 3px rgba(82, 200, 232, 0.32))

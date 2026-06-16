@@ -422,7 +422,8 @@ void DrumVoice::start(int    padIdx,
                       double sourceLen,
                       uint64_t serial,
                       int    startDelaySamp,
-                      bool   previewVoice) noexcept
+                      bool   previewVoice,
+                      bool   swapChannels) noexcept
 {
     padIndex      = padIdx;
     isActive      = true;
@@ -433,6 +434,7 @@ void DrumVoice::start(int    padIdx,
     sourceLength  = (sourceLen > 1.0) ? sourceLen : 1.0;
     gainL         = gainLeft;
     gainR         = gainRight;
+    swapLR        = swapChannels;
     isOneShot     = oneShot;
     isReleasing   = false;
     playbackRatio = (pRatio > 0.001) ? pRatio : 0.001;   // ゼロ除算ガード
@@ -638,8 +640,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                            : rawR;
             const float outSampleL = sL * gainL;
             const float outSampleR = sR * gainR;
-            outL[i] += outSampleL;
-            outR[i] += outSampleR;
+            outL[i] += swapLR ? outSampleR : outSampleL;
+            outR[i] += swapLR ? outSampleL : outSampleR;
             lastPeakLevel = std::max(lastPeakLevel,
                                      std::max(std::abs(outSampleL), std::abs(outSampleR)));
         }
@@ -741,8 +743,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                         : sR;
         const float outSampleL = fxL * gainL * envelope * fadeGain;
         const float outSampleR = fxR * gainR * envelope * fadeGain;
-        outL[i] += outSampleL;
-        outR[i] += outSampleR;
+        outL[i] += swapLR ? outSampleR : outSampleL;
+        outR[i] += swapLR ? outSampleL : outSampleR;
         lastPeakLevel = std::max(lastPeakLevel,
                                  std::max(std::abs(outSampleL), std::abs(outSampleR)));
 

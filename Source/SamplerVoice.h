@@ -119,6 +119,7 @@ struct DrumVoice
     // ── ゲイン（パンと音量を事前計算して保持） ───────────────────────────
     float gainL        { 1.0f  };
     float gainR        { 1.0f  };
+    bool  swapLR       { false };
 
     // ── 再生モード ────────────────────────────────────────────────────────
     bool  isOneShot    { true  };    // true = Note Off を無視
@@ -162,7 +163,8 @@ struct DrumVoice
                double sourceLen   = 1.0,    // 元サンプル長
                uint64_t serial    = 0,      // 発音順
                int    startDelaySamp = 0,   // Humanize タイミング揺れ
-               bool   previewVoice = false  // UI preview専用voice
+               bool   previewVoice = false, // UI preview専用voice
+               bool   swapChannels = false  // Pad output L/R swap
                ) noexcept;
 
     // ── リリース開始（Gate モード専用） ────────────────────────────────────
