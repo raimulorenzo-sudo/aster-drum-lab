@@ -1942,7 +1942,6 @@ export default function App() {
           })()}
           onRenamePad={() => renamePad(contextMenu.index)}
           onSetMidiNote={() => openMidiNoteDialog(contextMenu.index)}
-          onChangePadColor={(color) => updatePad(contextMenu.index, { padColor: color })}
           onOpenCustomColorPicker={() => {
             const p = pads[contextMenu.index];
             setColorPickerTarget({

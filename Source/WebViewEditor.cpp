@@ -1357,8 +1357,20 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 missing = pad.sampleMissing;
             }
             const juce::File file(path);
-            if (path.isNotEmpty() && ! missing && file.existsAsFile())
+            if (path.isEmpty() || missing || ! file.existsAsFile())
+            {
+                juce::Logger::writeToLog("[ASTER REVEAL] cannot reveal sample: "
+                                         + (path.isEmpty() ? "empty path" : path));
+                return;
+            }
+
+            // Native-integration callbacks are not guaranteed to run on JUCE's
+            // message thread. Finder/Explorer must be opened from that thread.
+            juce::Logger::writeToLog("[ASTER REVEAL] revealing sample: " + file.getFullPathName());
+            juce::MessageManager::callAsync([file]
+            {
                 file.revealToUser();
+            });
         }
     }
     else if (type == "clearPadSample")
