@@ -421,6 +421,7 @@
    ヘッダー（番号・名前・サンプル名）
    ═══════════════════════════════════════════════════════════════════ */
 .head {
+  position: relative;
   display: grid;
   grid-template-rows: auto auto auto;
   gap: 2px;
@@ -428,7 +429,14 @@
   text-align: center;
   cursor: pointer;
   border-radius: var(--radius-sm);
+  isolation: isolate;
+  overflow: hidden;
   transition: background 120ms ease;
+}
+
+.head > * {
+  position: relative;
+  z-index: 1;
 }
 
 .head:hover {
@@ -479,10 +487,21 @@
 .channelLoaded .head,
 .channelLoaded .head:hover {
   background:
-    linear-gradient(180deg, rgba(255, 248, 235, 0.082), rgba(255, 248, 235, 0.024));
+    linear-gradient(180deg, rgba(255, 248, 235, 0.052), rgba(255, 248, 235, 0.016));
   box-shadow:
     inset 0 1px 0 rgba(255, 248, 235, 0.10),
-    inset 0 -1px 0 rgba(191, 163, 106, 0.34);
+    inset 0 -1px 0 rgba(255, 248, 235, 0.12);
+}
+
+.channelLoaded .head::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--channel-color);
+  opacity: 0.20;
+  pointer-events: none;
 }
 
 .channelLoaded .numBadge {
@@ -491,11 +510,9 @@
 }
 
 .channelLoaded .name {
-  color: #f0eadb;
-  font-weight: 600;
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.56),
-    0 0 6px rgba(212, 192, 138, 0.10);
+  font-weight: 500;
+  filter: brightness(1.22) saturate(1.08);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.56);
 }
 
 .channelLoaded .sample {

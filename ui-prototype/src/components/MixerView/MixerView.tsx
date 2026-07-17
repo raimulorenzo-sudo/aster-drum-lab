@@ -9,6 +9,7 @@ import { clamp, formatPan } from '../../utils/parameterFormat';
 import { dbToPosition, positionToDb, FADER_DB_FLOOR, FADER_DB_TOP, FADER_SCALE_MARKS, formatFaderDb } from '../../utils/fader';
 import { parseNumericText, parsePanInput } from '../../utils/numericInput';
 import type { PadParams, KitPage, OutputMode } from '../../types';
+import type { CSSProperties } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { MASTER_UNITY } from '../../App';
@@ -543,6 +544,7 @@ function ChannelStripBodyImpl({
 
   const sampleName = pad.sampleFileName;
   const padName = pad.padName;
+  const channelColor = pad.padColor ?? pad.categoryColor;
   const hasLoadedSample = Boolean(sampleName || pad.sampleFilePath) && !pad.sampleMissing;
   const isEmpty = !hasLoadedSample;
 
@@ -646,6 +648,7 @@ function ChannelStripBodyImpl({
       {/* ── 番号 + 名前 + サンプル ─────────────────────────────── */}
       <div
         className={styles.head}
+        style={{ '--channel-color': channelColor } as CSSProperties}
         onMouseDown={onMouseDownAudition}
         role="button"
         tabIndex={0}
@@ -654,7 +657,7 @@ function ChannelStripBodyImpl({
         <div className={styles.numBadge}>{String(absoluteIndex + 1).padStart(2, '0')}</div>
         <div
           className={styles.name}
-          style={hasLoadedSample ? undefined : { color: pad.padColor ?? pad.categoryColor }}
+          style={{ color: channelColor }}
           title={padName}
         >
           {padName}
