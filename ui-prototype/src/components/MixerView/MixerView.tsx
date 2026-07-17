@@ -543,7 +543,8 @@ function ChannelStripBodyImpl({
 
   const sampleName = pad.sampleFileName;
   const padName = pad.padName;
-  const isEmpty = !sampleName;
+  const hasLoadedSample = Boolean(sampleName || pad.sampleFilePath) && !pad.sampleMissing;
+  const isEmpty = !hasLoadedSample;
 
   const volumeFromDragDelta = (
     clientY: number,
@@ -626,6 +627,7 @@ function ChannelStripBodyImpl({
   const channelClass = [
     styles.channel,
     selected ? styles.channelSelected : '',
+    hasLoadedSample ? styles.channelLoaded : '',
     isEmpty ? styles.channelEmpty : '',
     pad.mute ? styles.channelMuted : '',
   ].join(' ');
