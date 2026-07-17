@@ -654,7 +654,7 @@ function ChannelStripBodyImpl({
         <div className={styles.numBadge}>{String(absoluteIndex + 1).padStart(2, '0')}</div>
         <div
           className={styles.name}
-          style={{ color: pad.padColor ?? pad.categoryColor }}
+          style={hasLoadedSample ? undefined : { color: pad.padColor ?? pad.categoryColor }}
           title={padName}
         >
           {padName}
