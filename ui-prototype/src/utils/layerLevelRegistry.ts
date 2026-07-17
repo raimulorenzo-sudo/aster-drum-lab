@@ -103,11 +103,16 @@ export function triggerLayerFlash(padIndex: number, layerIndex: number) {
   if (!layerMap) return;
 
   layerMap.forEach(target => {
-    // Cancel any in-progress animation before restarting (rapid retriggering)
-    target.flashAnim?.cancel();
-    if (target.flashOverlay) {
+    // Reuse the compositor animation for rapid retriggering.
+    if (!target.flashOverlay) return;
+
+    if (!target.flashAnim) {
       target.flashAnim = target.flashOverlay.animate(flashKeyframes, flashOptions);
+      return;
     }
+
+    target.flashAnim.currentTime = 0;
+    target.flashAnim.play();
   });
 }
 

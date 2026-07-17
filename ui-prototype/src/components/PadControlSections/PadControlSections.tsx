@@ -27,11 +27,9 @@ interface PadControlSectionsProps {
    */
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
-  /** 直近に発音された MIDI velocity (0..127)。VelocityRangeSlider に流す。 */
-  liveVelocity?: number | null;
 }
 
-function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: PadControlSectionsProps) {
+function PadControlSectionsComponent({ pad, padIndex, onChange }: PadControlSectionsProps) {
   const trim = trimFromPad(pad);
   const totalMs = trim.sampleLengthMs;
   const playbackRangeMs = Math.max(1, trim.endMs - trim.startMs);
@@ -211,12 +209,12 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
           {isMultiLayer && (
             <div className={styles.velocityRangeBlock}>
               <VelocityRangeSlider
+                padIndex={padIndex}
                 layers={layers}
                 activeLayerIndex={layerIdx}
                 onSelectLayer={onSelectLayer}
                 onChangeRange={onChangeRange}
                 onAutoSplit={onAutoSplit}
-                liveVelocity={liveVelocity}
               />
             </div>
           )}

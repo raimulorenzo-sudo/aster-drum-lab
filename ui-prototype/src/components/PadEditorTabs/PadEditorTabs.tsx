@@ -15,10 +15,9 @@ interface Props {
   pad: PadParams;
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
-  liveVelocity?: number | null;
 }
 
-function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props) {
+function PadEditorTabsComponent({ pad, padIndex, onChange }: Props) {
   const [active, setActive] = useState<PadEditorTabId>('TRIM');
   const layerIdx = selectedLayerIndexOf(pad);
 
@@ -46,7 +45,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
 
       <div className={styles.body} data-accent={layerIdx >= 1 ? 'gold' : undefined}>
         {active === 'TRIM'     && <TrimTab     pad={pad} padIndex={padIndex} onChange={onChange} />}
-        {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} liveVelocity={liveVelocity} />}
+        {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'PAD'      && <PadTab      pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'FX'       && <FxTab       pad={pad}                     onChange={onChange} />}
       </div>

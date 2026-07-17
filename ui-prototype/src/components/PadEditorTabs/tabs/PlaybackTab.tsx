@@ -19,10 +19,9 @@ interface Props {
   pad: PadParams;
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
-  liveVelocity?: number | null;
 }
 
-export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
+export function PlaybackTab({ pad, padIndex, onChange }: Props) {
   const ownerKey = padIndex;
   const layerIdx = selectedLayerIndexOf(pad);
   const layers   = ensureLayers(pad);
@@ -150,12 +149,12 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
           {velOpen && (
             <div className={styles.velSliderWrap}>
               <VelocityRangeSlider
+                padIndex={padIndex}
                 layers={layers}
                 activeLayerIndex={layerIdx}
                 onSelectLayer={onSelectLayer}
                 onChangeRange={onChangeRange}
                 onAutoSplit={onAutoSplit}
-                liveVelocity={liveVelocity}
               />
             </div>
           )}

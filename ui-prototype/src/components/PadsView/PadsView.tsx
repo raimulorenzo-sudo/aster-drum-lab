@@ -41,8 +41,6 @@ interface PadsViewProps {
   previewPlayback: PreviewPlayback;
   onPreviewFinished: (triggerId: number) => void;
   onWaveformAudition?: (layerIndex: number) => void;
-  /** 直近に発音された MIDI velocity (0..127)。VelocityRangeSlider のマーカー表示用。 */
-  liveVelocity?: number | null;
   /** Master output knob position 0..1.  60/66 ≈ 0.909 = 0 dB. */
   masterKnob: number;
   onMasterKnobChange: (v: number) => void;
@@ -70,7 +68,6 @@ function PadsViewComponent({
   previewPlayback,
   onPreviewFinished,
   onWaveformAudition,
-  liveVelocity,
   masterKnob,
   onMasterKnobChange,
   masterClipHit,
@@ -175,7 +172,6 @@ function PadsViewComponent({
             pad={viewPad}
             padIndex={selectedIndex}
             onChange={onChangeLayerAware}
-            liveVelocity={liveVelocity}
           />
         </section>
       </div>
