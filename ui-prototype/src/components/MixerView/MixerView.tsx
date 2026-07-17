@@ -544,7 +544,10 @@ function ChannelStripBodyImpl({
   const sampleName = pad.sampleFileName;
   const padName = pad.padName;
   const channelColor = pad.padColor ?? pad.categoryColor;
-  const hasLoadedSample = Boolean(sampleName || pad.sampleFilePath) && !pad.sampleMissing;
+  const hasLoadedSample = [
+    { sampleFileName: sampleName, sampleFilePath: pad.sampleFilePath, sampleMissing: pad.sampleMissing },
+    ...(pad.layers ?? []),
+  ].some(layer => Boolean(layer.sampleFileName || layer.sampleFilePath) && !layer.sampleMissing);
   const isEmpty = !hasLoadedSample;
 
   const volumeFromDragDelta = (

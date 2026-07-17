@@ -476,13 +476,14 @@
 }
 
 .channelLoaded .name {
-  font-weight: 500;
-  filter: brightness(1.22) saturate(1.08);
+  opacity: 1;
+  font-weight: 600;
+  filter: brightness(1.32) saturate(1.18);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.56);
 }
 
 .channelSelected .numBadge { color: var(--platinum-gold); opacity: 1; }
-.channelSelected .name { color: #ebe3d0; }
+.channelSelected:not(.channelLoaded) .name { color: #ebe3d0; }
 
 /* ═══════════════════════════════════════════════════════════════════
    Pan セクション
