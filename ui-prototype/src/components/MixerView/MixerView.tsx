@@ -9,7 +9,6 @@ import { clamp, formatPan } from '../../utils/parameterFormat';
 import { dbToPosition, positionToDb, FADER_DB_FLOOR, FADER_DB_TOP, FADER_SCALE_MARKS, formatFaderDb } from '../../utils/fader';
 import { parseNumericText, parsePanInput } from '../../utils/numericInput';
 import type { PadParams, KitPage, OutputMode } from '../../types';
-import type { CSSProperties } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { MASTER_UNITY } from '../../App';
@@ -648,7 +647,6 @@ function ChannelStripBodyImpl({
       {/* ── 番号 + 名前 + サンプル ─────────────────────────────── */}
       <div
         className={styles.head}
-        style={{ '--channel-color': channelColor } as CSSProperties}
         onMouseDown={onMouseDownAudition}
         role="button"
         tabIndex={0}
