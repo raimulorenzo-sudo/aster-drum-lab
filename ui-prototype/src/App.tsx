@@ -539,8 +539,11 @@ export default function App() {
       if (target >= current) return target;
       if (now - lastSignalTime < METER_HOLD_MS) return current;
 
+      // A sustained sample can keep sending a quiet, falling target for a long
+      // time. Release at a stable visual rate, but never fall below the actual
+      // signal level. This avoids a long tail repeatedly slowing the meter.
       const release = Math.exp(-dtMs / METER_RELEASE_MS);
-      const next = target + (current - target) * release;
+      const next = Math.max(target, current * release);
       return next < METER_FLOOR ? 0 : next;
     };
 
@@ -560,7 +563,10 @@ export default function App() {
         const ml = pendingMasterLevel;
         lastLevelDataTime = now;
         masterTargetLevel = ml;
-        if (ml > METER_FLOOR) masterLastSignalTime = now;
+        // Keep the tiny hold for a genuine upward hit, not for every quiet
+        // frame of a sustained sample's tail.
+        if (ml > METER_FLOOR && ml > masterDisplayLevel)
+          masterLastSignalTime = now;
 
         if (ml > 1.0 && !masterClipHitRef.current) {
           masterClipHitRef.current = true;
@@ -575,7 +581,8 @@ export default function App() {
             if (idx < 0 || idx >= 48) continue;
             const level = arr[offset];
             padTargetLevels[idx] = level;
-            if (level > METER_FLOOR) padLastSignalTimes[idx] = now;
+            if (level > METER_FLOOR && level > padDisplayLevels[idx])
+              padLastSignalTimes[idx] = now;
             if (level > padPeakHoldRef.current[idx]) {
               padPeakHoldRef.current[idx] = level;
               padPeakTimeRef.current[idx] = now;
@@ -605,7 +612,8 @@ export default function App() {
           for (let li = 0; li < la.length && li < MAX_LAYER_SLOTS; li++) {
             const lv = la[li];
             layerTargetLevels[li] = lv;
-            if (lv > METER_FLOOR) layerLastSignalTimes[li] = now;
+            if (lv > METER_FLOOR && lv > layerDisplayLevels[li])
+              layerLastSignalTimes[li] = now;
           }
           // Zero out slots beyond what C++ sent (layer count can shrink)
           for (let li = la.length; li < MAX_LAYER_SLOTS; li++) {
