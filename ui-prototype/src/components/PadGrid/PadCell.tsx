@@ -26,6 +26,7 @@ function isSupportedAudioFile(file: File): boolean {
 
 function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChange, onSampleDrop, onPadSwap }: PadCellProps) {
   const [dragOver, setDragOver] = useState(false);
+  const cellRef = useRef<HTMLDivElement | null>(null);
   const flashOverlayRef = useRef<HTMLSpanElement | null>(null);
   const waveformBars = useMemo(
     () => (pad.sampleFileName && !pad.sampleMissing && pad.waveformPeaks?.length
@@ -35,7 +36,7 @@ function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChan
   );
 
   useEffect(() =>
-    registerPadFlashTarget(index, flashOverlayRef.current),
+    registerPadFlashTarget(index, cellRef.current, flashOverlayRef.current),
     [index]);
 
   const handleMouseDown = () => {
@@ -67,6 +68,7 @@ function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChan
 
   return (
     <div
+      ref={cellRef}
       className={cls}
       draggable
       onMouseDown={handleMouseDown}

@@ -8,19 +8,47 @@
 //
 //   新実装は Web Animations API (`element.animate()`) を使い、
 //   - 強制リフローを起こさない
-//   - 連打時は同じ Animation を先頭から再生し直すので、ヒットごとの Animation
-//     生成と GC を避けられる
+//   - 連打時は前のアニメーションを `.cancel()` するだけで即座にやり直せる
 //   - keyframe は事前に const 化されているのでオブジェクト生成コストもゼロ
-//   - overlay の opacity だけを動かし、paint が必要な box-shadow animation を避ける
+//   - cell の box-shadow と overlay の opacity を並列に走らせ、compositor で
+//     合成されるため負荷も低い
 
 interface PadFlashTarget {
+  cellElement: HTMLElement | null;
   overlayElement: HTMLElement | null;
+  cellAnim?: Animation;
   overlayAnim?: Animation;
 }
 
 const padFlashTargets = new Map<number, Map<symbol, PadFlashTarget>>();
 
 const FLASH_DURATION_MS = 320;
+
+// 再利用される keyframe (毎フレーム allocate しない)
+const cellKeyframes: Keyframe[] = [
+  {
+    offset: 0,
+    boxShadow:
+      'inset 0 0 0 1px rgba(160, 210, 240, 0.70),' +
+      '0 0 0 2px rgba(82, 200, 232, 0.55),' +
+      '0 0 14px rgba(82, 200, 232, 0.60),' +
+      '0 0 28px rgba(82, 200, 232, 0.25)',
+  },
+  {
+    offset: 0.30,
+    boxShadow:
+      'inset 0 0 0 1px rgba(160, 210, 240, 0.40),' +
+      '0 0 0 1px rgba(82, 200, 232, 0.28),' +
+      '0 0 10px rgba(82, 200, 232, 0.30),' +
+      '0 0 18px rgba(82, 200, 232, 0.10)',
+  },
+  {
+    offset: 1,
+    boxShadow:
+      '0 0 0 1px rgba(191, 163, 106, 0.06),' +
+      '0 0 4px rgba(82, 200, 232, 0.04)',
+  },
+];
 
 const overlayKeyframes: Keyframe[] = [
   { offset: 0,    opacity: 1 },
@@ -36,12 +64,14 @@ const animOptions: KeyframeAnimationOptions = {
 
 /**
  * Pad のフラッシュターゲットを登録する。
+ * - `cellElement`: cell 本体 (box-shadow を animate する)
  * - `overlayElement`: 内側 overlay (opacity を animate する)
  *
  * unmount 時に呼ばれる cleanup 関数を返す。
  */
 export function registerPadFlashTarget(
   index: number,
+  cellElement: HTMLElement | null,
   overlayElement: HTMLElement | null,
 ) {
   const token = Symbol('pad-flash-target');
@@ -51,10 +81,11 @@ export function registerPadFlashTarget(
     padFlashTargets.set(index, targets);
   }
 
-  const target: PadFlashTarget = { overlayElement };
+  const target: PadFlashTarget = { cellElement, overlayElement };
   targets.set(token, target);
 
   return () => {
+    target.cellAnim?.cancel();
     target.overlayAnim?.cancel();
     targets?.delete(token);
     if (targets?.size === 0) padFlashTargets.delete(index);
@@ -66,16 +97,15 @@ export function triggerPadFlash(index: number) {
   if (!targets) return;
 
   targets.forEach(target => {
-    if (!target.overlayElement) return;
+    // 連打: 前のアニメーションを即座にキャンセル
+    target.cellAnim?.cancel();
+    target.overlayAnim?.cancel();
 
-    if (!target.overlayAnim) {
-      target.overlayAnim = target.overlayElement.animate(overlayKeyframes, animOptions);
-      return;
+    if (target.cellElement) {
+      target.cellAnim = target.cellElement.animate(cellKeyframes, animOptions);
     }
-
-    // Hit-dense patterns can retrigger this many times per second. Reusing the
-    // existing compositor animation avoids allocating a new Animation each hit.
-    target.overlayAnim.currentTime = 0;
-    target.overlayAnim.play();
+    if (target.overlayElement) {
+      target.overlayAnim = target.overlayElement.animate(overlayKeyframes, animOptions);
+    }
   });
 }

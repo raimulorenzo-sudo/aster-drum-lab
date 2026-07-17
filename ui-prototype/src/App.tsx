@@ -34,7 +34,6 @@ import { FALLBACK_SAMPLE_LENGTH_MS, hasSampleTrimPatch, normalizePadTrimPatch, t
 import { updateMasterMeter, updatePadMeter } from './utils/meterRegistry';
 import { triggerPadFlash } from './utils/padFlashRegistry';
 import { updatePadClipLatch } from './utils/clipRegistry';
-import { publishLiveVelocity } from './utils/liveVelocityRegistry';
 import { triggerLayerFlash, updateLayerMeter } from './utils/layerLevelRegistry';
 import { updateCompMeter } from './utils/compMeterRegistry';
 import { updateResourceStats } from './utils/resourceRegistry';
@@ -302,6 +301,11 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [undo, redo, canUndo, canRedo]);
+  // Live MIDI velocity (0..127) ごく直近に発音されたパッドだけ値を持つ。
+  // C++ から padTriggers イベントを受けて更新し、~700ms 後にクリアして fade-out。
+  // PadParams に乗せず別 state にすることで、Kit 保存や JUCE patch flow と干渉しない。
+  const [liveVelocities, setLiveVelocities] = useState<Record<number, number>>({});
+  const liveVelocityTimers = useRef<Record<number, number>>({});
   const [page, setPage] = useState<KitPage>('A');
   const [activeTab, setActiveTab] = useState<TabId>('PADS');
   const [kitName, setKitName] = useState<string>('Default');
@@ -673,17 +677,15 @@ export default function App() {
         }
       }
 
-      // 3) Peak hold decay. Scale the 60 Hz coefficient by elapsed time so a
-      // delayed browser frame never makes the meter visually slow down.
+      // 3) Peak hold decay (HOLD_MS 経過後、毎フレーム DECAY_PER_FRAME 倍率で減衰)
       let didDecay = false;
-      const peakDecay = Math.pow(DECAY_PER_FRAME, dtMs / (1000 / 60));
       if (activeTabRef.current === 'MIXER') {
         const pageStart = pageRef.current * 16;
         const pageEnd   = pageStart + 16;
         for (let i = pageStart; i < pageEnd; i++) {
           if (padPeakHoldRef.current[i] > 0.001 &&
               now - padPeakTimeRef.current[i] > HOLD_MS) {
-            padPeakHoldRef.current[i] *= peakDecay;
+            padPeakHoldRef.current[i] *= DECAY_PER_FRAME;
             if (padPeakHoldRef.current[i] < 0.001) padPeakHoldRef.current[i] = 0;
             updatePadMeter(i, padDisplayLevels[i], padPeakHoldRef.current[i]);
             didDecay = true;
@@ -693,7 +695,7 @@ export default function App() {
 
       if (masterPeakRef.current > 0.001 &&
           now - masterPeakTime.current > HOLD_MS) {
-        masterPeakRef.current *= peakDecay;
+        masterPeakRef.current *= DECAY_PER_FRAME;
         if (masterPeakRef.current < 0.001) masterPeakRef.current = 0;
         updateMasterMeter(masterDisplayLevel, masterPeakRef.current);
         didDecay = true;
@@ -764,14 +766,25 @@ export default function App() {
         if (typeof index === 'number' && index >= 0 && index < 48) {
           triggerPadFlash(index);
 
-          // Live velocity is routed only to an open Velocity Range panel.
-          // It must not force an App-wide React render for every drum hit.
+          // Live velocity (0..1 from C++) を 0..127 に変換して短時間保持。
+          // VelocityRangeSlider の縦線マーカー表示に使う。
           const velocity01 = typeof trigger === 'object' && typeof trigger.velocity === 'number'
             ? trigger.velocity
             : null;
           if (velocity01 !== null) {
             const vel127 = Math.max(0, Math.min(127, Math.round(velocity01 * 127)));
-            publishLiveVelocity(index, vel127);
+            setLiveVelocities(prev => ({ ...prev, [index]: vel127 }));
+            // 既存タイマーをクリアしてから新規スケジュール (チャタリング防止)
+            const existing = liveVelocityTimers.current[index];
+            if (existing) window.clearTimeout(existing);
+            liveVelocityTimers.current[index] = window.setTimeout(() => {
+              setLiveVelocities(prev => {
+                const next = { ...prev };
+                delete next[index];
+                return next;
+              });
+              delete liveVelocityTimers.current[index];
+            }, 700);
           }
         }
       }
@@ -1780,6 +1793,7 @@ export default function App() {
                 previewPlayback={previewPlayback}
                 onPreviewFinished={handlePreviewFinished}
                 onWaveformAudition={auditionSelectedLayerFromWaveform}
+                liveVelocity={liveVelocities[selectedIndex] ?? null}
                 masterKnob={masterKnob}
                 onMasterKnobChange={handleMasterKnobChange}
                 masterClipHit={masterClipHit}

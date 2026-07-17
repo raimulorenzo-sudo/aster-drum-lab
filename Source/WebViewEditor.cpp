@@ -624,18 +624,11 @@ void WebViewEditor::broadcastLevelData()
         count = PADS_PER_PAGE;
     }
 
-    const auto& vm = audioProcessor.getVoiceManager();
-
-    // Drain all Pad accumulators every UI frame. Values for off-page Pads are
-    // intentionally discarded so switching pages cannot reveal an old peak.
-    std::array<float, NUM_PADS> padLevels {};
-    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
-        padLevels[(size_t) padIndex] = vm.consumePadLevel(padIndex);
-
     juce::Array<juce::var> padArr;
     padArr.ensureStorageAllocated(count);
+    const auto& vm = audioProcessor.getVoiceManager();
     for (int i = 0; i < count; ++i)
-        padArr.add((double) padLevels[(size_t) (startPad + i)]);
+        padArr.add((double) vm.getPadLevel(startPad + i));
 
     obj->setProperty("start", startPad);
     obj->setProperty("pads", padArr);

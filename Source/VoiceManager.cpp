@@ -1,25 +1,8 @@
 #include "VoiceManager.h"
 #include "FaderCurve.h"
 
-namespace
-{
-void accumulatePeak(std::atomic<float>& destination, float value) noexcept
-{
-    auto current = destination.load(std::memory_order_relaxed);
-    while (value > current
-           && ! destination.compare_exchange_weak(current, value,
-                                                   std::memory_order_relaxed,
-                                                   std::memory_order_relaxed))
-    {
-    }
-}
-}
-
 VoiceManager::VoiceManager() noexcept
 {
-    for (auto& level : padPeakLevels)
-        level.store(0.0f, std::memory_order_relaxed);
-
     for (auto& level : padTriggerLevels)
         level.store(0.0f, std::memory_order_relaxed);
 
@@ -471,8 +454,8 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
                             int                              numSamples,
                             double                           hostSampleRate)
 {
-    // Pad peak levels accumulate until the UI consumes them. This prevents a
-    // short transient from falling between a UI timer's two reads.
+    // ── このブロックのレベルをリセット ──────────────────────────────────────
+    padPeakLevels.fill(0.0f);
     for (auto& pl : layerPeakLevels) pl.fill(0.0f);
     for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
 
@@ -541,7 +524,7 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
 
         // ── パッドのピークを集計 ──────────────────────────────────────────
         const auto pu = static_cast<size_t>(voice.padIndex);
-        accumulatePeak(padPeakLevels[pu], voice.lastPeakLevel);
+        padPeakLevels[pu] = std::max(padPeakLevels[pu], voice.lastPeakLevel);
         if (voice.lastPeakLevel >= 1.0f)
             padClipLatched[pu] = true;
 
@@ -559,16 +542,15 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
     }
 }
 
-float VoiceManager::consumePadLevel(int padIndex) const noexcept
+float VoiceManager::getPadLevel(int padIndex) const noexcept
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return 0.0f;
-    return padPeakLevels[static_cast<size_t>(padIndex)].exchange(0.0f, std::memory_order_relaxed);
+    return padPeakLevels[static_cast<size_t>(padIndex)];
 }
 
 void VoiceManager::clearPadLevels() noexcept
 {
-    for (auto& level : padPeakLevels)
-        level.store(0.0f, std::memory_order_relaxed);
+    padPeakLevels.fill(0.0f);
     for (auto& padLayers : layerPeakLevels)
         padLayers.fill(0.0f);
     for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);

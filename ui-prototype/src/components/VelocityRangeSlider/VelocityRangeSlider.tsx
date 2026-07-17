@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './VelocityRangeSlider.module.css';
-import { registerLiveVelocityListener } from '../../utils/liveVelocityRegistry';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VelocityRangeSlider — Pad 内全 Layer の velocity range を一覧表示する。
@@ -14,7 +13,7 @@ import { registerLiveVelocityListener } from '../../utils/liveVelocityRegistry';
 //  - 行ラベルをクリック        → アクティブ Layer 切替
 //  - [⇋ SPLIT] ボタン         → 現在の Layer 数で即時均等分割
 //  - [AUTO ▾] ドロップダウン   → 任意の分割数を選択
-//  - live velocity feed       → 全行に縦線 + 当該 Layer を発光
+//  - liveVelocity             → 全行に縦線 + 当該 Layer を発光
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LayerRange {
@@ -23,12 +22,12 @@ interface LayerRange {
 }
 
 interface VelocityRangeSliderProps {
-  padIndex: number;
   layers: LayerRange[];
   activeLayerIndex: number;
   onSelectLayer: (layerIndex: number) => void;
   onChangeRange: (layerIndex: number, next: { min: number; max: number }) => void;
   onAutoSplit?: (splits: number) => void;
+  liveVelocity?: number | null;
 }
 
 const RANGE = 127;
@@ -59,22 +58,16 @@ type MenuPos =
   | { kind: 'above'; bottom: number; right: number };
 
 function VelocityRangeSliderComponent({
-  padIndex,
   layers,
   activeLayerIndex,
   onSelectLayer,
   onChangeRange,
   onAutoSplit,
+  liveVelocity,
 }: VelocityRangeSliderProps) {
   const autoBtnRef = useRef<HTMLButtonElement | null>(null);
   const [autoOpen, setAutoOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<MenuPos>({ kind: 'above', bottom: 0, right: 0 });
-  const [liveVelocity, setLiveVelocity] = useState<number | null>(null);
-
-  useEffect(() => {
-    setLiveVelocity(null);
-    return registerLiveVelocityListener(padIndex, setLiveVelocity);
-  }, [padIndex]);
 
   useEffect(() => {
     if (!autoOpen) return;
