@@ -466,9 +466,9 @@ export default function App() {
     //     - バースト時もフレーム内で最新値だけが反映される (中間値は drop)
     //     - vsync 同期で動くので画面 tearing も発生しない
     //     - Peak hold decay もこのループで同時処理 (旧 setTimeout(60) を排除)
-    const HOLD_MS  = 1500;  // peak hold duration before decay starts
-    const DECAY_PER_FRAME = 0.978;  // 約 9 dB/s 減衰 @ 60fps (0.87^(60/15))
-    const METER_RELEASE_MS = 520;
+    const HOLD_MS  = 1000;  // peak hold duration before decay starts
+    const DECAY_PER_FRAME = 0.970;  // 約 16 dB/s 減衰 @ 60fps
+    const METER_RELEASE_MS = 380;
     const METER_HOLD_MS = 35;
     const METER_FLOOR = 0.001;
 
