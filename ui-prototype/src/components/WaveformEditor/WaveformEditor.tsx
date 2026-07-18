@@ -133,12 +133,10 @@ function WaveformEditorComponent({
     const tick = (now: number) => {
       const elapsedMs = now - previewPlayback.previewStartedAt;
       const progress = Math.min(1, elapsedMs / Math.max(1, previewPlayback.previewDurationMs));
-      const from = previewPlayback.reverseEnabled
-        ? previewPlayback.previewEndPercent
-        : previewPlayback.previewStartPercent;
-      const to = previewPlayback.reverseEnabled
-        ? previewPlayback.previewStartPercent
-        : previewPlayback.previewEndPercent;
+      // The waveform itself is mirrored in Reverse mode, so its visual
+      // playhead still advances from the displayed start toward the end.
+      const from = previewPlayback.previewStartPercent;
+      const to = previewPlayback.previewEndPercent;
 
       const percent = from + (to - from) * progress;
       const x = xFromMs(percent * totalMs);
@@ -178,7 +176,6 @@ function WaveformEditorComponent({
     previewPlayback.previewEndPercent,
     previewPlayback.previewStartPercent,
     previewPlayback.previewStartedAt,
-    previewPlayback.reverseEnabled,
     previewPlayback.triggerId,
   ]);
 

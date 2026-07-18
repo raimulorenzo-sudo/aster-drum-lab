@@ -765,6 +765,13 @@ float DrumVoice::getPlaybackPositionNormalized() const noexcept
     if (sourceLength <= 1.0)
         return 0.0f;
 
+    // Reverse mode mirrors the waveform display. Mirror the source position
+    // into the trimmed display range as well so the playhead always travels
+    // from the visible start marker to the end marker.
+    const double displayPosition = reversed
+        ? startSample + (endSample - samplePos)
+        : samplePos;
+
     return juce::jlimit(0.0f, 1.0f,
-                        static_cast<float>(samplePos / sourceLength));
+                        static_cast<float>(displayPosition / sourceLength));
 }
