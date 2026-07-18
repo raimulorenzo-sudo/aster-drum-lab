@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [switch]$Unsigned,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [string]$AaxSdkPath = $env:AAX_SDK_PATH
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,13 @@ $WebView2 = Join-Path $VendorDir "MicrosoftEdgeWebview2Setup.exe"
 $WebView2PackageVersion = "1.0.3967.48"
 $WebView2NuGetPackage = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.web.webview2\$WebView2PackageVersion"
 $WebView2JucePackage = Join-Path $VendorDir "Microsoft.Web.WebView2.$WebView2PackageVersion"
+if (-not $AaxSdkPath) {
+    $defaultAaxSdk = "C:\SDKs\aax-sdk-2-9-0"
+    if (Test-Path (Join-Path $defaultAaxSdk "Interfaces\ACF")) {
+        $AaxSdkPath = $defaultAaxSdk
+    }
+}
+$AaxEnabled = $AaxSdkPath -and (Test-Path (Join-Path $AaxSdkPath "Interfaces\ACF"))
 
 function Find-SignTool {
     $tool = Get-Command signtool.exe -ErrorAction SilentlyContinue
@@ -73,9 +81,16 @@ if (-not $SkipBuild) {
             Copy-Item (Join-Path $WebView2NuGetPackage "*") $WebView2JucePackage -Recurse -Force
         }
 
-        cmake -S . -B $BuildDir -G "Visual Studio 17 2022" -A x64 `
-            -DASTER_COPY_PLUGIN_AFTER_BUILD=OFF `
-            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$VendorDir"
+        $cmakeArgs = @(
+            "-S", ".",
+            "-B", $BuildDir,
+            "-G", "Visual Studio 17 2022",
+            "-A", "x64",
+            "-DASTER_COPY_PLUGIN_AFTER_BUILD=OFF",
+            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$VendorDir",
+            "-DASTER_AAX_SDK_PATH=$AaxSdkPath"
+        )
+        & cmake @cmakeArgs
         cmake --build $BuildDir --config Release --parallel
     }
     finally {
@@ -84,7 +99,11 @@ if (-not $SkipBuild) {
 }
 
 $VstBinary = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3\Contents\x86_64-win\ASTER Drum Lab.vst3"
-foreach ($file in @($VstBinary)) {
+$AaxBundle = Join-Path $Artefacts "AAX\ASTER Drum Lab.aaxplugin"
+$AaxBinary = Join-Path $AaxBundle "Contents\x64\ASTER Drum Lab.aaxplugin"
+$binaries = @($VstBinary)
+if ($AaxEnabled) { $binaries += $AaxBinary }
+foreach ($file in $binaries) {
     if (-not (Test-Path $file)) { throw "Missing build artefact: $file" }
     Sign-File $file
 }
@@ -97,6 +116,16 @@ $VstHash = (Get-FileHash -Algorithm SHA256 $VstArchive).Hash.ToLowerInvariant()
 "$VstHash  $([System.IO.Path]::GetFileName($VstArchive))" |
     Set-Content -Encoding ascii "$VstArchive.sha256"
 
+$AaxArchive = $null
+if ($AaxEnabled) {
+    $AaxArchive = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-AAX.zip"
+    Remove-Item $AaxArchive -Force -ErrorAction SilentlyContinue
+    Compress-Archive -Path $AaxBundle -DestinationPath $AaxArchive -CompressionLevel Optimal
+    $AaxHash = (Get-FileHash -Algorithm SHA256 $AaxArchive).Hash.ToLowerInvariant()
+    "$AaxHash  $([System.IO.Path]::GetFileName($AaxArchive))" |
+        Set-Content -Encoding ascii "$AaxArchive.sha256"
+}
+
 $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
 if (-not $iscc) {
     $defaultIscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
@@ -105,12 +134,15 @@ if (-not $iscc) {
 if (-not $iscc) { throw "Inno Setup 6 was not found." }
 
 $iss = Join-Path $PSScriptRoot "ASTER Drum Lab.iss"
-& $iscc `
-    "/DAppVersion=$Version" `
-    "/DBuildRoot=$Artefacts" `
-    "/DOutputDir=$DistDir" `
-    "/DWebView2Bootstrapper=$WebView2" `
-    $iss
+$isccArgs = @(
+    "/DAppVersion=$Version",
+    "/DBuildRoot=$Artefacts",
+    "/DOutputDir=$DistDir",
+    "/DWebView2Bootstrapper=$WebView2"
+)
+if ($AaxEnabled) { $isccArgs += "/DIncludeAAX=1" }
+$isccArgs += $iss
+& $iscc @isccArgs
 
 $Installer = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-Setup.exe"
 if (-not (Test-Path $Installer)) { throw "Installer was not created: $Installer" }
@@ -124,6 +156,10 @@ Write-Host "Created: $Installer"
 Write-Host "Checksum: $HashFile"
 Write-Host "Created: $VstArchive"
 Write-Host "Checksum: $VstArchive.sha256"
+if ($AaxEnabled) {
+    Write-Host "Created: $AaxArchive"
+    Write-Host "Checksum: $AaxArchive.sha256"
+}
 if ($Unsigned) {
     Write-Warning "This installer is unsigned and is only suitable for local testing."
 }

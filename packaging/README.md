@@ -26,6 +26,11 @@ For local installer testing only:
 packaging/macos/build-pkg.sh --unsigned
 ```
 
+Set `AAX_SDK_PATH` (or place AAX SDK 2.9 at
+`$HOME/SDKs/aax-sdk-2-9-0`) to include the universal AAX plug-in alongside AU
+and VST3. AAX distribution additionally requires Avid/PACE signing; ordinary
+Apple code signing alone is not sufficient for release in Pro Tools.
+
 ## Windows
 
 Run from a Visual Studio 2022 developer PowerShell on Windows with:
@@ -36,6 +41,7 @@ Run from a Visual Studio 2022 developer PowerShell on Windows with:
 - CMake
 - .NET SDK
 - Inno Setup 6
+- AAX SDK 2.9 (optional, for AAX builds)
 - An Authenticode code-signing certificate
 
 ```powershell
@@ -53,6 +59,10 @@ For local installer testing only:
 ```powershell
 .\packaging\windows\build-installer.ps1 -Unsigned
 ```
+
+Set `AAX_SDK_PATH` (or place the SDK at `C:\SDKs\aax-sdk-2-9-0`) to build
+VST3 and AAX from the same source and include both in the installer. Without an
+AAX SDK, the script continues to build the VST3-only installer.
 
 ## GitHub Actions
 

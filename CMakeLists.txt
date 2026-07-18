@@ -26,13 +26,27 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+set(ASTER_AAX_SDK_PATH "" CACHE PATH "Path to the licensed AAX SDK")
+if(NOT ASTER_AAX_SDK_PATH AND DEFINED ENV{AAX_SDK_PATH})
+    set(ASTER_AAX_SDK_PATH "$ENV{AAX_SDK_PATH}")
+endif()
+
+set(ASTER_PLUGIN_FORMATS VST3 AU)
+if(ASTER_AAX_SDK_PATH)
+    juce_set_aax_sdk_path("${ASTER_AAX_SDK_PATH}")
+    list(APPEND ASTER_PLUGIN_FORMATS AAX)
+    message(STATUS "AAX enabled with SDK: ${ASTER_AAX_SDK_PATH}")
+else()
+    message(STATUS "AAX disabled (set ASTER_AAX_SDK_PATH or AAX_SDK_PATH to enable)")
+endif()
+
 # ── プラグイン定義 ─────────────────────────────────────────────────────────────
 juce_add_plugin(DrumSampler
 
     PLUGIN_MANUFACTURER_CODE  Enig
     PLUGIN_CODE               Adlb
 
-    FORMATS                   VST3 AU
+    FORMATS                   ${ASTER_PLUGIN_FORMATS}
 
     PRODUCT_NAME              "ASTER Drum Lab"
     COMPANY_NAME              "ENIGMA"
