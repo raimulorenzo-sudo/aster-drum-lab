@@ -104,7 +104,7 @@ juce_add_binary_data(DrumSamplerWebUI
 target_compile_definitions(DrumSampler
     PUBLIC
         JUCE_WEB_BROWSER=1              # WebView を有効化
-        JUCE_USE_WIN_WEBVIEW2=1         # Windows: WebView2 を使用 (将来用)
+        $<$<PLATFORM_ID:Windows>:JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1>
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_REPORT_APP_USAGE=0

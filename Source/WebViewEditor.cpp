@@ -5,6 +5,10 @@
 #include "SmartTrim.h"
 #include "WebUIBinaryData.h"
 
+#if JUCE_WINDOWS && ! JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING
+ #error "Windows builds must statically link WebView2Loader."
+#endif
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 静的: BinaryData から MIME と本体を引く
 // ─────────────────────────────────────────────────────────────────────────────
