@@ -543,7 +543,12 @@ function ChannelStripBodyImpl({
 
   const sampleName = pad.sampleFileName;
   const padName = pad.padName;
-  const isEmpty = !sampleName;
+  const channelColor = pad.padColor ?? pad.categoryColor;
+  const hasLoadedSample = [
+    { sampleFileName: sampleName, sampleFilePath: pad.sampleFilePath, sampleMissing: pad.sampleMissing },
+    ...(pad.layers ?? []),
+  ].some(layer => Boolean(layer.sampleFileName || layer.sampleFilePath) && !layer.sampleMissing);
+  const isEmpty = !hasLoadedSample;
 
   const volumeFromDragDelta = (
     clientY: number,
@@ -626,6 +631,7 @@ function ChannelStripBodyImpl({
   const channelClass = [
     styles.channel,
     selected ? styles.channelSelected : '',
+    hasLoadedSample ? styles.channelLoaded : '',
     isEmpty ? styles.channelEmpty : '',
     pad.mute ? styles.channelMuted : '',
   ].join(' ');
@@ -652,7 +658,7 @@ function ChannelStripBodyImpl({
         <div className={styles.numBadge}>{String(absoluteIndex + 1).padStart(2, '0')}</div>
         <div
           className={styles.name}
-          style={{ color: pad.padColor ?? pad.categoryColor }}
+          style={{ color: channelColor }}
           title={padName}
         >
           {padName}

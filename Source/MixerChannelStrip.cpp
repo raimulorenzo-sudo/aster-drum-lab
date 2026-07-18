@@ -231,12 +231,20 @@ void MixerChannelStrip::paint(juce::Graphics& g)
     g.setColour(ColorPalette::border());
     g.drawVerticalLine(w - 1, 0.0f, static_cast<float>(bounds.getHeight()));
 
+    const bool hasSample = pad.hasSample();
+    const auto categoryColour = padCategoryColor(pad.padName);
+
     // ── 上部カラーバー（パッドカテゴリ色、3px） ──────────────────────────
-    g.setColour(padCategoryColor(pad.padName).withAlpha(0.85f));
+    g.setColour(categoryColour.withAlpha(hasSample ? 0.92f : 0.85f));
     g.fillRect(0, 0, w - 1, 3);
 
-    g.setColour(ColorPalette::surfaceHigh().withAlpha(0.52f));
+    g.setColour(ColorPalette::surfaceHigh().withAlpha(hasSample ? 0.58f : 0.52f));
     g.fillRect(1, 4, w - 3, 37);
+    if (hasSample)
+    {
+        g.setColour(categoryColour.withAlpha(0.12f));
+        g.fillRect(1, 39, w - 3, 1);
+    }
 
     // ── パッド番号（Champagne Gold） ─────────────────────────────────────
     g.setColour(ColorPalette::champagne());
@@ -251,7 +259,7 @@ void MixerChannelStrip::paint(juce::Graphics& g)
                2, 15, w - 4, 14, juce::Justification::centred, true);
 
     // ── ファイル名（小さく薄く） ─────────────────────────────────────────
-    if (pad.hasSample())
+    if (hasSample)
     {
         juce::String fname = pad.sampleFileName;
         if (fname.length() > 8)

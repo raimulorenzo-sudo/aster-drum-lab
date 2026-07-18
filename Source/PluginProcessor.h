@@ -114,6 +114,7 @@ public:
     // ── 試聴（Pad クリックから呼ばれる） ────────────────────────────────
     // UI スレッドから呼ぶ。read lock を取って VoiceManager::noteOn を発火する。
     void auditionPadOn(int padIndex, float velocity = 1.0f);
+    void auditionLayerOn(int padIndex, int layerIndex, float velocity = 1.0f);
     void auditionPadOff(int padIndex);
 
     // パッドのデータへのアクセス

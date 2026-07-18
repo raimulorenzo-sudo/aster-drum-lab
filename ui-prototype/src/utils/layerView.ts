@@ -7,7 +7,7 @@ export const MAX_LAYERS_PER_PAD = 8;
  * UI が「Layer N の値で Pad を編集している」ように見せるためのヘルパー。
  *
  * 信号フロー（types.ts に対応）:
- *   Layer Vol/Pan/Pitch → Pad Vol/Pan → Output Routing → Main/Multi Out
+ *   Layer Vol/Pan/Pitch/Fine → Pad Vol/Pan/Pitch/Fine → Output Routing
  *
  * 既存の WaveformEditor / PadControlSections は flat な PadParams を読む前提で
  * 書かれているので、選択中 Layer の値を flat フィールドに「上書き」した
@@ -26,6 +26,7 @@ const LAYER_LEVEL_KEYS = [
   'volume',
   'pan',
   'pitch',
+  'fine',
   'attack',
   'release',
   'startMs',
@@ -144,6 +145,7 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     volume: pad.volume,
     pan: pad.pan,
     pitch: pad.pitch,
+    fine: pad.fine,
     attack: pad.attack,
     release: pad.release,
     startMs: pad.startMs,
@@ -241,6 +243,7 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.volume = newLayer0.volume;
     patch.pan = newLayer0.pan;
     patch.pitch = newLayer0.pitch;
+    patch.fine = newLayer0.fine;
     patch.attack = newLayer0.attack;
     patch.release = newLayer0.release;
     patch.startMs = newLayer0.startMs;

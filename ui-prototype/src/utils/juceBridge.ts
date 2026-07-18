@@ -92,6 +92,7 @@ export interface JucePadData {
   volume: number;
   pan: number;
   pitch: number;
+  fine?: number;
   attack: number;
   release: number;
   startPosition: number;   // normalised 0..1 within sample
@@ -106,6 +107,7 @@ export interface JucePadData {
   mute: boolean;
   solo: boolean;
   outputAssign: number;
+  swapLR?: boolean;
   velocitySens: number;
   humanize: number;
 
@@ -116,10 +118,11 @@ export interface JucePadData {
   // VEL Curve (v7+). Optional for backward compat.
   velCurve?: { preset: number; p1x: number; p1y: number; p2x: number; p2y: number };
 
-  // Pad-level Vol/Pan/Pitch. Optional for backward compat.
+  // Pad-level Vol/Pan/Pitch/Fine. Optional for backward compat.
   padVolume?: number;
   padPan?: number;
   padPitch?: number;
+  padFine?: number;
 
   // Layers (v6+). Optional for backward compat with older C++ builds.
   layers?: JuceLayerData[];
@@ -137,6 +140,7 @@ export interface JuceLayerData {
   volume: number;
   pan: number;
   pitch: number;
+  fine?: number;
   attack: number;
   release: number;
   startPosition: number;
@@ -222,6 +226,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     volume:         jl.volume,
     pan:            jl.pan,
     pitch:          jl.pitch,
+    fine:           typeof jl.fine === 'number' ? jl.fine : 0,
     attack:         jl.attack,
     release:        jl.release,
     sampleLengthMs: layerLengthMs,
@@ -372,6 +377,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
         volume:         jp.volume,
         pan:            jp.pan,
         pitch:          jp.pitch,
+        fine:           typeof jp.fine === 'number' ? jp.fine : 0,
         attack:         jp.attack,
         release:        jp.release,
         sampleLengthMs,
@@ -400,6 +406,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     volume:         jp.volume,
     pan:            jp.pan,
     pitch:          jp.pitch,
+    fine:           typeof jp.fine === 'number' ? jp.fine : 0,
     attack:         jp.attack,
     release:        jp.release,
     sampleLengthMs,
@@ -416,6 +423,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     mute:           jp.mute,
     solo:           jp.solo,
     outputAssign:   jp.outputAssign,
+    swapLR:         jp.swapLR ?? false,
     velocitySens:   jp.velocitySens,
     humanize:       jp.humanize,
     polyphony:      typeof jp.polyphony  === 'number' ? jp.polyphony  : existing.polyphony,
@@ -430,6 +438,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     padVolume:      typeof jp.padVolume === 'number' ? jp.padVolume : 0.75,
     padPan:         typeof jp.padPan === 'number' ? jp.padPan : 0.0,
     padPitch:       typeof jp.padPitch === 'number' ? jp.padPitch : 0.0,
+    padFine:        typeof jp.padFine === 'number' ? jp.padFine : 0.0,
     layers,
     selectedLayerIndex: existing.selectedLayerIndex ?? 0,
   };
@@ -509,6 +518,7 @@ export function sendPadPatchToJuce(
   if (patch.padVolume    !== undefined) sendToJuce('setPadVolume',    { index, value: patch.padVolume });
   if (patch.padPan       !== undefined) sendToJuce('setPadPan',       { index, value: patch.padPan });
   if (patch.padPitch     !== undefined) sendToJuce('setPadPitch',     { index, value: patch.padPitch });
+  if (patch.padFine      !== undefined) sendToJuce('setPadFine',      { index, value: patch.padFine });
   if (patch.pan          !== undefined) sendToJuce('setPan',          { index, value: patch.pan });
   if (patch.pitch        !== undefined) sendToJuce('setPitch',        { index, value: patch.pitch });
   if (patch.mute         !== undefined) sendToJuce('setMute',         { index, value: patch.mute });
@@ -517,6 +527,7 @@ export function sendPadPatchToJuce(
   if (patch.playMode     !== undefined) sendToJuce('setPlaybackMode', { index, value: patch.playMode });
   if (patch.chokeGroup   !== undefined) sendToJuce('setChoke',        { index, value: patch.chokeGroup });
   if (patch.outputAssign !== undefined) sendToJuce('setOutput',       { index, value: patch.outputAssign });
+  if (patch.swapLR       !== undefined) sendToJuce('setPadSwapLR',    { index, value: patch.swapLR });
   if (patch.attack       !== undefined) sendToJuce('setAttack',       { index, value: patch.attack });
   if (patch.release      !== undefined) sendToJuce('setRelease',      { index, value: patch.release });
   if (patch.velocitySens !== undefined) sendToJuce('setVelocitySens', { index, value: patch.velocitySens });
@@ -629,6 +640,8 @@ function sendLayerPatches(
         slots: serializeFxChain(b.fxChain ?? []),
       });
     }
+    if ((a.fine ?? 0) !== (b.fine ?? 0))
+      sendToJuce('setLayerFine', { index, layerIndex: li, value: b.fine ?? 0 });
 
     // L2+ の音作りパラメータは flat 側を通らないので、ここから per-layer message
     // を出す。Layer 0 は flat 経由 (setVolume 等) で既に C++ に届いている。

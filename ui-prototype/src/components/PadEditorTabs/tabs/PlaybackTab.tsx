@@ -4,7 +4,7 @@ import styles from './PlaybackTab.module.css';
 import { Knob } from '../../Knob/Knob';
 import { VelocityRangeSlider } from '../../VelocityRangeSlider/VelocityRangeSlider';
 import { defaultPadParam } from '../../../data/parameterSpecs';
-import { formatMs, formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
+import { formatFine, formatMs, formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
 import { dbToPosition } from '../../../utils/fader';
 import { parseNumericText, parsePanInput } from '../../../utils/numericInput';
 import {
@@ -69,6 +69,11 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
           valueText={formatPitch(pad.pitch)}
           parseInput={parseNumericText}
           onChange={v => onChange({ pitch: v })} />
+        <Knob ownerKey={ownerKey} size={60} label="LAYER FINE" bipolar
+          value={pad.fine} min={-100} max={100} defaultValue={defaultPadParam('fine')}
+          valueText={formatFine(pad.fine)}
+          parseInput={parseNumericText}
+          onChange={v => onChange({ fine: v })} />
 
         {/* PHASE (内部名 polarityInvert, Layer 単位) */}
         <div className={styles.slot}>

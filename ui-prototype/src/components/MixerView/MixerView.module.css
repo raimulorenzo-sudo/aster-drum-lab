@@ -435,6 +435,11 @@
   background: rgba(255, 255, 255, 0.025);
 }
 
+.head:focus,
+.head:focus-visible {
+  outline: none;
+}
+
 .numBadge {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -470,8 +475,15 @@
   opacity: 0.78;
 }
 
+.channelLoaded .name {
+  opacity: 1;
+  font-weight: 600;
+  filter: brightness(1.32) saturate(1.18);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.56);
+}
+
 .channelSelected .numBadge { color: var(--platinum-gold); opacity: 1; }
-.channelSelected .name { color: #ebe3d0; }
+.channelSelected:not(.channelLoaded) .name { color: #ebe3d0; }
 
 /* ═══════════════════════════════════════════════════════════════════
    Pan セクション

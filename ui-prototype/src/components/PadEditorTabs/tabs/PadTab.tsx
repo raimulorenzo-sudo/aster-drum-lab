@@ -4,7 +4,7 @@ import { Knob } from '../../Knob/Knob';
 import { OutputAssignDropdown } from '../../OutputAssignDropdown/OutputAssignDropdown';
 import { VelCurveEditor } from '../../VelCurveEditor/VelCurveEditor';
 import { defaultPadParam } from '../../../data/parameterSpecs';
-import { formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
+import { formatFine, formatPan, formatPitch, formatVolume } from '../../../utils/parameterFormat';
 import { dbToPosition } from '../../../utils/fader';
 import { parseNumericText, parsePanInput, parsePercentInput } from '../../../utils/numericInput';
 import type { PadParams, PlayMode, VelCurveState } from '../../../types';
@@ -45,6 +45,11 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
               valueText={formatPitch(pad.padPitch ?? 0)}
               parseInput={parseNumericText}
               onChange={v => onChange({ padPitch: v })} />
+            <Knob ownerKey={padIndex} size={68} label="PAD FINE" bipolar
+              value={pad.padFine ?? 0} min={-100} max={100} defaultValue={defaultPadParam('padFine') ?? 0}
+              valueText={formatFine(pad.padFine ?? 0)}
+              parseInput={parseNumericText}
+              onChange={v => onChange({ padFine: v })} />
           </div>
 
           <div className={styles.settings}>
@@ -112,13 +117,28 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
         </div>
 
         <div className={styles.rightColumn}>
-          <div className={styles.outputSlot}>
-            <span className={styles.slotLabel}>OUTPUT</span>
-            <OutputAssignDropdown
-              width={120}
-              value={pad.outputAssign}
-              onChange={v => onChange({ outputAssign: v })}
-            />
+          <div className={styles.outputRow}>
+            <div className={styles.outputSlot}>
+              <span className={styles.slotLabel}>OUTPUT</span>
+              <OutputAssignDropdown
+                width={120}
+                value={pad.outputAssign}
+                onChange={v => onChange({ outputAssign: v })}
+              />
+            </div>
+            <div className={styles.outputSlot}>
+              <span className={styles.slotLabel}>STEREO</span>
+              <button
+                type="button"
+                className={`${styles.lrSwapBtn} ${pad.swapLR ? styles.lrSwapBtnActive : ''}`}
+                onClick={() => onChange({ swapLR: !pad.swapLR })}
+                aria-pressed={!!pad.swapLR}
+                title="Swap left and right output channels"
+              >
+                <span className={styles.lrSwapLed} aria-hidden="true" />
+                <span>LR SWAP</span>
+              </button>
+            </div>
           </div>
 
           <div className={styles.response}>

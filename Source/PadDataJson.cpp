@@ -27,6 +27,7 @@ namespace PadDataJson
         obj->setProperty("volume", (double) pad.volume);
         obj->setProperty("pan",    (double) pad.pan);
         obj->setProperty("pitch",  (double) pad.pitch);
+        obj->setProperty("fine",   (double) pad.fine);
 
         // エンベロープ
         obj->setProperty("attack",  (double) pad.attack);
@@ -47,6 +48,7 @@ namespace PadDataJson
         obj->setProperty("mute",         pad.mute);
         obj->setProperty("solo",         pad.solo);
         obj->setProperty("outputAssign", pad.outputAssign);
+        obj->setProperty("swapLR",       pad.swapLR);
 
         // パフォーマンス
         obj->setProperty("velocitySens", (double) pad.velocitySens);
@@ -76,10 +78,11 @@ namespace PadDataJson
             obj->setProperty("velCurve", juce::var(vc));
         }
 
-        // Pad-level Vol / Pan / Pitch
+        // Pad-level Vol / Pan / Pitch / Fine
         obj->setProperty("padVolume",    (double) pad.padVolume);
         obj->setProperty("padPan",       (double) pad.padPan);
         obj->setProperty("padPitch",     (double) pad.padPitch);
+        obj->setProperty("padFine",      (double) pad.padFine);
 
         // ── Layers ─────────────────────────────────────────────────────────
         juce::Array<juce::var> layerArr;
@@ -94,6 +97,7 @@ namespace PadDataJson
             lo->setProperty("volume",  (double) L.volume);
             lo->setProperty("pan",     (double) L.pan);
             lo->setProperty("pitch",   (double) L.pitch);
+            lo->setProperty("fine",    (double) L.fine);
             lo->setProperty("attack",  (double) L.attack);
             lo->setProperty("release", (double) L.release);
             lo->setProperty("startPosition", (double) L.startPosition);

@@ -5,6 +5,10 @@
 #include "SmartTrim.h"
 #include "WebUIBinaryData.h"
 
+#if JUCE_WINDOWS && ! JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING
+ #error "Windows builds must statically link WebView2Loader."
+#endif
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 静的: BinaryData から MIME と本体を引く
 // ─────────────────────────────────────────────────────────────────────────────
@@ -609,6 +613,14 @@ void WebViewEditor::broadcastPadTriggers()
 // ─────────────────────────────────────────────────────────────────────────────
 void WebViewEditor::broadcastLevelData()
 {
+    const auto& vm = audioProcessor.getVoiceManager();
+
+    // Drain every accumulator on each visual tick. Off-page values are
+    // discarded so changing pages never exposes a peak from an earlier view.
+    std::array<float, NUM_PADS> padLevels {};
+    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+        padLevels[(size_t) padIndex] = vm.consumePadLevel(padIndex);
+
     if (activeWebTab == ActiveWebTab::Missing)
         return;
 
@@ -626,9 +638,8 @@ void WebViewEditor::broadcastLevelData()
 
     juce::Array<juce::var> padArr;
     padArr.ensureStorageAllocated(count);
-    const auto& vm = audioProcessor.getVoiceManager();
     for (int i = 0; i < count; ++i)
-        padArr.add((double) vm.getPadLevel(startPad + i));
+        padArr.add((double) padLevels[(size_t) (startPad + i)]);
 
     obj->setProperty("start", startPad);
     obj->setProperty("pads", padArr);
@@ -984,6 +995,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const float velocity = (float) (double) payload.getProperty("velocity", 0.9);
         audioProcessor.auditionPadOn(getIndex(), velocity);
     }
+    else if (type == "auditionLayer")
+    {
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const float velocity = (float) (double) payload.getProperty("velocity", 1.0);
+        audioProcessor.auditionLayerOn(getIndex(), layerIdx, velocity);
+    }
     else if (type == "auditionOff")
     {
         audioProcessor.auditionPadOff(getIndex());
@@ -1027,6 +1044,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     {
         audioProcessor.setAutomatablePadParameter(getIndex(),
                                                   PadParameterSpecs::Param::PadPitch,
+                                                  getFloat());
+    }
+    else if (type == "setPadFine")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadFine,
                                                   getFloat());
     }
     else if (type == "setMute")
@@ -1291,6 +1314,16 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             broadcastPadUpdate(idx);
         }
     }
+    else if (type == "setPadSwapLR")
+    {
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            audioProcessor.getKit().pads[(size_t) idx].swapLR = getBool();
+            audioProcessor.markKitDirty();
+            broadcastPadUpdate(idx);
+        }
+    }
     else if (type == "copyPad")
     {
         const int idx = getIndex();
@@ -1335,8 +1368,20 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 missing = pad.sampleMissing;
             }
             const juce::File file(path);
-            if (path.isNotEmpty() && ! missing && file.existsAsFile())
+            if (path.isEmpty() || missing || ! file.existsAsFile())
+            {
+                juce::Logger::writeToLog("[ASTER REVEAL] cannot reveal sample: "
+                                         + (path.isEmpty() ? "empty path" : path));
+                return;
+            }
+
+            // Native-integration callbacks are not guaranteed to run on JUCE's
+            // message thread. Finder/Explorer must be opened from that thread.
+            juce::Logger::writeToLog("[ASTER REVEAL] revealing sample: " + file.getFullPathName());
+            juce::MessageManager::callAsync([file]
+            {
                 file.revealToUser();
+            });
         }
     }
     else if (type == "clearPadSample")
@@ -1885,6 +1930,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     // Layer 0 (MAIN) は既存の flat-field 経由ハンドラで処理されるので、こちらは
     // L2+ 用と考えてよい。ただし layerIdx を明示するため layerIdx==0 も受ける。
     else if (type == "setLayerVolume" || type == "setLayerPan" || type == "setLayerPitch"
+          || type == "setLayerFine"
           || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
     {
         const int idx = getIndex();
@@ -1901,6 +1947,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pan, getFloat(), true);
                 else if (type == "setLayerPitch")
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pitch, getFloat(), true);
+                else if (type == "setLayerFine")
+                    audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Fine, getFloat(), true);
                 else if (type == "setLayerAttack")  L.attack  = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerRelease") L.release = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerReverse") L.reverse = getBool();

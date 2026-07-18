@@ -231,6 +231,7 @@ namespace
                     if (options.padParameters)
                     {
                         dL.pitch = sL.pitch;
+                        dL.fine = sL.fine;
                         dL.attack = sL.attack;
                         dL.release = sL.release;
                         dL.startPosition = sL.startPosition;
@@ -271,7 +272,9 @@ namespace
             if (options.padParameters)
             {
                 dst.pitch = src.pitch;
+                dst.fine = src.fine;
                 dst.padPitch = src.padPitch;
+                dst.padFine = src.padFine;
                 dst.attack = src.attack;
                 dst.release = src.release;
                 dst.startPosition = src.startPosition;
@@ -292,6 +295,7 @@ namespace
                 dst.pan = src.pan;
                 dst.padVolume = src.padVolume;
                 dst.padPan = src.padPan;
+                dst.swapLR = src.swapLR;
                 dst.mute = src.mute;
                 dst.solo = src.solo;
             }
@@ -736,12 +740,14 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     const auto keepColourMode = pad.padColourMode;
     const int keepMidi = pad.midiNote;
     const int keepOutput = pad.outputAssign;
+    const bool keepSwapLR = pad.swapLR;
     const float keepVolume = pad.volume;
     const float keepPan = pad.pan;
 
     PadData defaults;
     pad.pan = defaults.pan;
     pad.pitch = defaults.pitch;
+    pad.fine = defaults.fine;
     pad.attack = defaults.attack;
     pad.release = defaults.release;
     pad.startPosition = defaults.startPosition;
@@ -765,6 +771,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     pad.padColourMode = keepColourMode;
     pad.midiNote = keepMidi;
     pad.outputAssign = keepOutput;
+    pad.swapLR = keepSwapLR;
     pad.volume = keepVolume;
     pad.pan = keepPan;
 
@@ -805,6 +812,30 @@ void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
     // Using the default (0) would silently skip every layer except MAIN,
     // making pad-click behave differently from MIDI noteOn.
     voiceManager.previewNoteOn(padIndex, velocity, kit, fileManager, hostSampleRate, -1);
+}
+
+void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
+                                                int layerIndex,
+                                                float velocity)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+
+    const auto& padRef = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= padRef.layerCount()) return;
+    if (! fileManager.hasSample(padIndex, layerIndex)) return;
+
+    juce::ScopedReadLock rl(fileManager.getReadWriteLock());
+    // Waveform audition is an editor-focused preview: play only the visible
+    // layer from its configured START, even if that layer/pad is muted or
+    // outside its velocity range.
+    voiceManager.previewNoteOn(padIndex,
+                               juce::jlimit(0.0f, 1.0f, velocity),
+                               kit,
+                               fileManager,
+                               hostSampleRate,
+                               layerIndex,
+                               -1.0f,
+                               /*ignoreMuteSoloAndVelocityRange=*/ true);
 }
 
 void DrumSamplerAudioProcessor::auditionPadOff(int padIndex)
@@ -1009,11 +1040,13 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
     auto& dst = kit.pads[static_cast<size_t>(padIndex)];
     const int keepMidi = dst.midiNote;
     const int keepOutput = dst.outputAssign;
+    const bool keepSwapLR = dst.swapLR;
 
     // 全フィールドをコピー → midiNote だけ元に戻す
     dst = padClipboard;
     dst.midiNote = keepMidi;
     dst.outputAssign = keepOutput;
+    dst.swapLR = keepSwapLR;
 
     // サンプルもコピー: Layer ごとのパスを再ロードする。Layer 0 だけを見ると
     // multi-layer pad の Paste 後に L2+ が無音になるため、全 Layer を同期する。
@@ -1072,6 +1105,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
     pad.midiNote     = keepMidi;
     // Full reset follows the kit default routing: Main.
     pad.outputAssign = 0;
+    pad.swapLR = false;
     pad.padColourARGB = keepColour;
     pad.padColourMode = keepColourMode;
     syncParametersFromKit();
@@ -1095,6 +1129,7 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     const bool         keepMissing = pad.sampleMissing;
     const int          keepMidi   = pad.midiNote;
     const int          keepOutput = pad.outputAssign;
+    const bool         keepSwapLR = pad.swapLR;
     const float        keepVolume = pad.volume;
     const auto         keepColour = pad.padColourARGB;
     const auto         keepColourMode = pad.padColourMode;
@@ -1110,6 +1145,7 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     pad.sampleFilePath = keepPath;
     pad.sampleMissing  = keepMissing;
     pad.outputAssign   = keepOutput;
+    pad.swapLR         = keepSwapLR;
     pad.padColourARGB  = keepColour;
     pad.padColourMode  = keepColourMode;
     pad.syncLayer0FromFlat();
@@ -1686,7 +1722,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
             // existing AU/VST3 parameter indices remain stable.
             if (spec.param == PadParameterSpecs::Param::PadVolume
                 || spec.param == PadParameterSpecs::Param::PadPan
-                || spec.param == PadParameterSpecs::Param::PadPitch)
+                || spec.param == PadParameterSpecs::Param::PadPitch
+                || spec.param == PadParameterSpecs::Param::PadFine)
                 continue;
 
             const auto id   = PadParameterSpecs::parameterID(padIndex, spec.param);
@@ -1738,7 +1775,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
     for (const auto appendedParam : {
             PadParameterSpecs::Param::PadVolume,
             PadParameterSpecs::Param::PadPan,
-            PadParameterSpecs::Param::PadPitch })
+            PadParameterSpecs::Param::PadPitch,
+            PadParameterSpecs::Param::PadFine })
     {
         const auto& spec = PadParameterSpecs::specFor(appendedParam);
         for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
@@ -1780,6 +1818,7 @@ float DrumSamplerAudioProcessor::getKitValueForParameter(int padIndex,
         case PadParameterSpecs::Param::PadVolume: return pad.padVolume;
         case PadParameterSpecs::Param::PadPan: return pad.padPan;
         case PadParameterSpecs::Param::PadPitch: return pad.padPitch;
+        case PadParameterSpecs::Param::PadFine: return pad.padFine;
     }
 
     return 0.0f;
@@ -1821,13 +1860,15 @@ void DrumSamplerAudioProcessor::setKitValueFromParameter(int padIndex,
         case PadParameterSpecs::Param::PadVolume: pad.padVolume   = v; break;
         case PadParameterSpecs::Param::PadPan: pad.padPan         = v; break;
         case PadParameterSpecs::Param::PadPitch: pad.padPitch     = v; break;
+        case PadParameterSpecs::Param::PadFine: pad.padFine       = v; break;
     }
 
     // Pad-level controls are separate stages after Layer processing. Legacy
     // flat parameters still mirror into Layer 0 for backwards compatibility.
     if (param != PadParameterSpecs::Param::PadVolume
         && param != PadParameterSpecs::Param::PadPan
-        && param != PadParameterSpecs::Param::PadPitch)
+        && param != PadParameterSpecs::Param::PadPitch
+        && param != PadParameterSpecs::Param::PadFine)
         pad.syncLayer0FromFlat();
 }
 
@@ -2076,6 +2117,7 @@ float DrumSamplerAudioProcessor::getLayerValueForParameter(int padIndex,
         case LayerParameterSpecs::Param::Volume: return L.volume;
         case LayerParameterSpecs::Param::Pan:    return L.pan;
         case LayerParameterSpecs::Param::Pitch:  return L.pitch;
+        case LayerParameterSpecs::Param::Fine:   return L.fine;
         case LayerParameterSpecs::Param::VelMin: return static_cast<float>(L.velocityMin) / 127.0f;
         case LayerParameterSpecs::Param::VelMax: return static_cast<float>(L.velocityMax) / 127.0f;
         case LayerParameterSpecs::Param::EqBypass:      return L.eq.bypassed ? 1.0f : 0.0f;
@@ -2115,6 +2157,7 @@ void DrumSamplerAudioProcessor::setLayerValueFromParameter(int padIndex,
         case LayerParameterSpecs::Param::Volume: L.volume = v; break;
         case LayerParameterSpecs::Param::Pan:    L.pan    = v; break;
         case LayerParameterSpecs::Param::Pitch:  L.pitch  = v; break;
+        case LayerParameterSpecs::Param::Fine:   L.fine   = v; break;
         case LayerParameterSpecs::Param::VelMin:
         {
             const int mn = juce::jlimit(0, 127, static_cast<int>(std::round(v * 127.0f)));

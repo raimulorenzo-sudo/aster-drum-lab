@@ -15,7 +15,7 @@
 //
 // 【スレッド】
 //   noteOn / noteOff / process / allNotesOff はオーディオスレッドから呼ぶ。
-//   getPadLevel() / getPadClipLatched() / getPadTriggerLevel() は
+//   consumePadLevel() / getPadClipLatched() / getPadTriggerLevel() は
 //   UI スレッドから呼ぶ（単一読み取りで競合許容）。
 // ─────────────────────────────────────────────────────────────────────────────
 class VoiceManager
@@ -39,7 +39,9 @@ public:
                        const KitData&       kit,
                        const AudioFileManager& files,
                        double               hostSampleRate,
-                       int                  layerIndex = 0);
+                       int                  layerIndex = 0,
+                       float                startPosition = -1.0f,
+                       bool                 ignoreMuteSoloAndVelocityRange = false);
 
     // ── Note Off ───────────────────────────────────────────────────────────
     void noteOff(int padIndex);
@@ -64,7 +66,8 @@ public:
     void allNotesOff();
 
     // ── レベルメーター用（UI スレッドから読む） ────────────────────────────
-    float getPadLevel(int padIndex) const noexcept;
+    // UI が前回取得以降の最大ピークを取り出す。読み出し時に 0 へ戻す。
+    float consumePadLevel(int padIndex) const noexcept;
     void  clearPadLevels() noexcept;
     bool  getPadClipLatched(int padIndex) const noexcept;
     void  clearPadClip(int padIndex) noexcept;
@@ -85,7 +88,7 @@ public:
 
 private:
     std::array<DrumVoice, MAX_VOICES> voices;
-    std::array<float, NUM_PADS>       padPeakLevels {};
+    mutable std::array<std::atomic<float>, NUM_PADS> padPeakLevels {};
     std::array<bool, NUM_PADS>        padClipLatched {};
     std::array<std::atomic<float>, NUM_PADS> padTriggerLevels {};
 
@@ -135,7 +138,9 @@ private:
                            const AudioFileManager& files,
                            double               hostSampleRate,
                            bool                 previewVoice,
-                           int                  previewLayerIndex);
+                           int                  previewLayerIndex,
+                           float                previewStartPosition,
+                           bool                 ignoreMuteSoloAndVelocityRange);
 
     // 1 つの Layer を起動する。Pad/Layer mute/solo/velocity range などの
     // フィルタは呼び出し側で済ませてから呼ぶ。
@@ -146,5 +151,6 @@ private:
                          const AudioFileManager& files,
                          double               hostSampleRate,
                          bool                 previewVoice,
-                         const PadHumanize&   humanize);
+                         const PadHumanize&   humanize,
+                         float                previewStartPosition);
 };

@@ -23,6 +23,7 @@ export interface LayerParams {
   volume: number;       // 0..1 (fader position)
   pan: number;          // -1..1
   pitch: number;        // -24..24 semitones
+  fine: number;         // -100..100 cents
 
   // エンベロープ
   attack: number;       // sec
@@ -185,6 +186,7 @@ export interface PadParams {
   volume: number;          // 0..1
   pan: number;             // -1..1
   pitch: number;           // -24..24 semitones
+  fine: number;            // -100..100 cents (selected Layer mirror)
 
   // エンベロープ
   attack: number;          // sec
@@ -214,6 +216,7 @@ export interface PadParams {
 
   // 出力
   outputAssign: number;    // 0..47 → "Out 1" ... "Out 48"
+  swapLR?: boolean;        // Pad出力の左右チャンネルを交換
 
   /**
    * Pad-level Volume（Layer Volume の上位段、Q3: 線形掛け算）
@@ -224,6 +227,8 @@ export interface PadParams {
   padPan?: number;
   /** Pad-level Pitch。全 Layer の相対音程を保ったまま移調する */
   padPitch?: number;
+  /** Pad-level Fine Tune。全 Layer を -100..100 cents の範囲で微調整する */
+  padFine?: number;
 
   /**
    * Layer 一覧。1 Pad は常に最低 1 Layer を持つ。

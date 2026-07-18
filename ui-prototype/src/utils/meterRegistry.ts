@@ -24,9 +24,9 @@ interface MeterTarget {
 const masterMeters = new Map<symbol, MeterTarget>();
 const padMeters = new Map<number, Map<symbol, MeterTarget>>();
 
-// "同値" 判定の許容誤差。0.5% (= 0.005) 以下の変化は DOM 書き込みを skip。
-// 視覚的にほぼ知覚できないレベルなのでフレーム単位で安全に間引ける。
-const FILL_EPS = 0.005;
+// 60 dB scale 上の 0.05% (= 約 0.03 dB)。ゆっくりした余韻も各フレームで
+// sub-pixel 更新しつつ、浮動小数点ノイズだけを除外する。
+const FILL_EPS = 0.0005;
 // これ未満は完全に畳む。1/level が発散するのを防ぐ閾値。
 const FILL_MIN = 0.0008;
 
@@ -75,7 +75,7 @@ function updateTarget(target: MeterTarget, level: number, peakHold: number) {
   const peakClip = clipHeld ? 'true' : 'false';
 
   if (target.fill) {
-    // ── Fill amount: 0.5% 以上の変化があれば書き込み (wrapper + inner の二重 transform)
+    // ── Fill amount: 0.05% 以上の変化があれば書き込み (wrapper + inner の二重 transform)
     if (target._lastFill === undefined || Math.abs(meter - target._lastFill) > FILL_EPS) {
       setFillAmount(target, meter);
       target._lastFill = meter;

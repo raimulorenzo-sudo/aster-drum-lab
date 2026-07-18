@@ -107,10 +107,14 @@ void MixerView::refreshLevels()
 {
     updateRoutingStatus();
 
+    std::array<float, NUM_PADS> levels {};
+    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+        levels[(size_t) padIndex] = proc.getVoiceManager().consumePadLevel(padIndex);
+
     const int base = currentPage * PADS_PER_PAGE;
     for (int i = 0; i < 16; ++i)
     {
-        const float level = proc.getVoiceManager().getPadLevel(base + i);
+        const float level = levels[(size_t) (base + i)];
         const bool clip = proc.getVoiceManager().getPadClipLatched(base + i);
         strips[static_cast<size_t>(i)]->setLevel(level, clip);
     }

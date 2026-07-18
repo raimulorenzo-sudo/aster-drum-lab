@@ -40,6 +40,7 @@ interface PadsViewProps {
   onRelinkSelected?: () => void;
   previewPlayback: PreviewPlayback;
   onPreviewFinished: (triggerId: number) => void;
+  onWaveformAudition?: (layerIndex: number) => void;
   /** 直近に発音された MIDI velocity (0..127)。VelocityRangeSlider のマーカー表示用。 */
   liveVelocity?: number | null;
   /** Master output knob position 0..1.  60/66 ≈ 0.909 = 0 dB. */
@@ -68,6 +69,7 @@ function PadsViewComponent({
   onRelinkSelected,
   previewPlayback,
   onPreviewFinished,
+  onWaveformAudition,
   liveVelocity,
   masterKnob,
   onMasterKnobChange,
@@ -167,6 +169,7 @@ function PadsViewComponent({
             onRelinkSample={onRelinkSelected}
             previewPlayback={previewPlayback}
             onPreviewFinished={onPreviewFinished}
+            onWaveformAudition={() => onWaveformAudition?.(selectedLayerIndexOf(selectedPad))}
           />
           <PadEditorTabs
             pad={viewPad}
