@@ -609,6 +609,14 @@ void WebViewEditor::broadcastPadTriggers()
 // ─────────────────────────────────────────────────────────────────────────────
 void WebViewEditor::broadcastLevelData()
 {
+    const auto& vm = audioProcessor.getVoiceManager();
+
+    // Drain every accumulator on each visual tick. Off-page values are
+    // discarded so changing pages never exposes a peak from an earlier view.
+    std::array<float, NUM_PADS> padLevels {};
+    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+        padLevels[(size_t) padIndex] = vm.consumePadLevel(padIndex);
+
     if (activeWebTab == ActiveWebTab::Missing)
         return;
 
@@ -626,9 +634,8 @@ void WebViewEditor::broadcastLevelData()
 
     juce::Array<juce::var> padArr;
     padArr.ensureStorageAllocated(count);
-    const auto& vm = audioProcessor.getVoiceManager();
     for (int i = 0; i < count; ++i)
-        padArr.add((double) vm.getPadLevel(startPad + i));
+        padArr.add((double) padLevels[(size_t) (startPad + i)]);
 
     obj->setProperty("start", startPad);
     obj->setProperty("pads", padArr);

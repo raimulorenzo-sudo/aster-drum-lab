@@ -466,11 +466,11 @@ export default function App() {
     //     - バースト時もフレーム内で最新値だけが反映される (中間値は drop)
     //     - vsync 同期で動くので画面 tearing も発生しない
     //     - Peak hold decay もこのループで同時処理 (旧 setTimeout(60) を排除)
-    const HOLD_MS  = 250;   // short peak hold for drum transients
-    const DECAY_PER_FRAME = 0.940;  // 約 32 dB/s 減衰 @ 60fps
-    const METER_RELEASE_MS = 300;
-    const METER_HOLD_MS = 15;
-    const METER_FLOOR = 0.001;
+    const PEAK_HOLD_MS = 250;
+    const METER_RELEASE_DB_PER_SECOND = 36;
+    const PEAK_RELEASE_DB_PER_SECOND = 32;
+    const METER_FLOOR_DB = -60;
+    const METER_FLOOR = 10 ** (METER_FLOOR_DB / 20);
 
     // 受信した最新値 (1 フレーム内で何度上書きされても良い)
     let pendingMasterLevel = 0;
@@ -479,12 +479,10 @@ export default function App() {
     let pendingPadLevels: number[] | null = null;
     let masterTargetLevel = 0;
     let masterDisplayLevel = 0;
-    let masterLastSignalTime = 0;
     let lastFrameTime = 0;
     let lastLevelDataTime = 0;
     const padTargetLevels = new Array(48).fill(0);
     const padDisplayLevels = new Array(48).fill(0);
-    const padLastSignalTimes = new Array(48).fill(0);
 
     // Compressor GR メーター (選択 Layer の FX スロット最大 16)。
     // ballistics: target へ即座にアタック、フレームごとに decay でリリース。
@@ -500,7 +498,6 @@ export default function App() {
     let layerForPad = -1;
     const layerTargetLevels  = new Array(MAX_LAYER_SLOTS).fill(0);
     const layerDisplayLevels = new Array(MAX_LAYER_SLOTS).fill(0);
-    const layerLastSignalTimes = new Array(MAX_LAYER_SLOTS).fill(0);
 
     let rafId = 0;
     let rafActive = false;
@@ -529,22 +526,19 @@ export default function App() {
       return false;
     };
 
-    const smoothMeterLevel = (
-      current: number,
-      target: number,
-      now: number,
-      dtMs: number,
-      lastSignalTime: number,
-    ) => {
-      if (target >= current) return target;
-      if (now - lastSignalTime < METER_HOLD_MS) return current;
+    const releaseLevelByDb = (current: number, dbPerSecond: number, dtMs: number) => {
+      if (current <= METER_FLOOR) return 0;
+      const nextDb = 20 * Math.log10(current) - dbPerSecond * (dtMs / 1000);
+      return nextDb <= METER_FLOOR_DB ? 0 : 10 ** (nextDb / 20);
+    };
 
-      // A sustained sample can keep sending a quiet, falling target for a long
-      // time. Release at a stable visual rate, but never fall below the actual
-      // signal level. This avoids a long tail repeatedly slowing the meter.
-      const release = Math.exp(-dtMs / METER_RELEASE_MS);
-      const next = Math.max(target, current * release);
-      return next < METER_FLOOR ? 0 : next;
+    const smoothMeterLevel = (current: number, target: number, dtMs: number) => {
+      if (target >= current) return target;
+
+      // Professional peak meters specify fall-back in dB/second. Applying the
+      // release in display space keeps the visual speed independent of sample
+      // length and signal amplitude while never dropping below the true level.
+      return Math.max(target, releaseLevelByDb(current, METER_RELEASE_DB_PER_SECOND, dtMs));
     };
 
     const flushFrame = () => {
@@ -563,10 +557,6 @@ export default function App() {
         const ml = pendingMasterLevel;
         lastLevelDataTime = now;
         masterTargetLevel = ml;
-        // Keep the tiny hold for a genuine upward hit, not for every quiet
-        // frame of a sustained sample's tail.
-        if (ml > METER_FLOOR && ml > masterDisplayLevel)
-          masterLastSignalTime = now;
 
         if (ml > 1.0 && !masterClipHitRef.current) {
           masterClipHitRef.current = true;
@@ -581,8 +571,6 @@ export default function App() {
             if (idx < 0 || idx >= 48) continue;
             const level = arr[offset];
             padTargetLevels[idx] = level;
-            if (level > METER_FLOOR && level > padDisplayLevels[idx])
-              padLastSignalTimes[idx] = now;
             if (level > padPeakHoldRef.current[idx]) {
               padPeakHoldRef.current[idx] = level;
               padPeakTimeRef.current[idx] = now;
@@ -604,7 +592,6 @@ export default function App() {
             // Pad changed — reset layer meters immediately so stale values don't flash
             layerTargetLevels.fill(0);
             layerDisplayLevels.fill(0);
-            layerLastSignalTimes.fill(0);
             compDisplayDb.fill(0);
             layerForPad = pendingLayerPad;
           }
@@ -612,8 +599,6 @@ export default function App() {
           for (let li = 0; li < la.length && li < MAX_LAYER_SLOTS; li++) {
             const lv = la[li];
             layerTargetLevels[li] = lv;
-            if (lv > METER_FLOOR && lv > layerDisplayLevels[li])
-              layerLastSignalTimes[li] = now;
           }
           // Zero out slots beyond what C++ sent (layer count can shrink)
           for (let li = la.length; li < MAX_LAYER_SLOTS; li++) {
@@ -629,9 +614,7 @@ export default function App() {
       masterDisplayLevel = smoothMeterLevel(
         masterDisplayLevel,
         masterTargetLevel,
-        now,
         dtMs,
-        masterLastSignalTime,
       );
       masterLevelRef.current = masterDisplayLevel;
       updateMasterMeter(masterDisplayLevel, masterPeakRef.current);
@@ -647,9 +630,7 @@ export default function App() {
           const next = smoothMeterLevel(
             padDisplayLevels[i],
             padTargetLevels[i],
-            now,
             dtMs,
-            padLastSignalTimes[i],
           );
           if (next !== padDisplayLevels[i]) didMeterMove = true;
           padDisplayLevels[i] = next;
@@ -664,9 +645,7 @@ export default function App() {
           const next = smoothMeterLevel(
             layerDisplayLevels[li],
             layerTargetLevels[li],
-            now,
             dtMs,
-            layerLastSignalTimes[li],
           );
           if (next !== layerDisplayLevels[li]) didMeterMove = true;
           layerDisplayLevels[li] = next;
@@ -685,16 +664,19 @@ export default function App() {
         }
       }
 
-      // 3) Peak hold decay (HOLD_MS 経過後、毎フレーム DECAY_PER_FRAME 倍率で減衰)
+      // 3) Peak hold line: independent hold and dB/second release.
       let didDecay = false;
       if (activeTabRef.current === 'MIXER') {
         const pageStart = pageRef.current * 16;
         const pageEnd   = pageStart + 16;
         for (let i = pageStart; i < pageEnd; i++) {
           if (padPeakHoldRef.current[i] > 0.001 &&
-              now - padPeakTimeRef.current[i] > HOLD_MS) {
-            padPeakHoldRef.current[i] *= DECAY_PER_FRAME;
-            if (padPeakHoldRef.current[i] < 0.001) padPeakHoldRef.current[i] = 0;
+              now - padPeakTimeRef.current[i] > PEAK_HOLD_MS) {
+            padPeakHoldRef.current[i] = releaseLevelByDb(
+              padPeakHoldRef.current[i],
+              PEAK_RELEASE_DB_PER_SECOND,
+              dtMs,
+            );
             updatePadMeter(i, padDisplayLevels[i], padPeakHoldRef.current[i]);
             didDecay = true;
           }
@@ -702,9 +684,12 @@ export default function App() {
       }
 
       if (masterPeakRef.current > 0.001 &&
-          now - masterPeakTime.current > HOLD_MS) {
-        masterPeakRef.current *= DECAY_PER_FRAME;
-        if (masterPeakRef.current < 0.001) masterPeakRef.current = 0;
+          now - masterPeakTime.current > PEAK_HOLD_MS) {
+        masterPeakRef.current = releaseLevelByDb(
+          masterPeakRef.current,
+          PEAK_RELEASE_DB_PER_SECOND,
+          dtMs,
+        );
         updateMasterMeter(masterDisplayLevel, masterPeakRef.current);
         didDecay = true;
       }
