@@ -98,9 +98,9 @@ if (-not $SkipBuild) {
     }
 }
 
-$VstBinary = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3\Contents\x86_64-win\ASTER Drum Lab.vst3"
-$AaxBundle = Join-Path $Artefacts "AAX\ASTER Drum Lab.aaxplugin"
-$AaxBinary = Join-Path $AaxBundle "Contents\x64\ASTER Drum Lab.aaxplugin"
+$VstBinary = Join-Path $Artefacts "VST3\ASTERDrumLab.vst3\Contents\x86_64-win\ASTERDrumLab.vst3"
+$AaxBundle = Join-Path $Artefacts "AAX\ASTERDrumLab.aaxplugin"
+$AaxBinary = Join-Path $AaxBundle "Contents\x64\ASTERDrumLab.aaxplugin"
 $binaries = @($VstBinary)
 if ($AaxEnabled) { $binaries += $AaxBinary }
 foreach ($file in $binaries) {
@@ -108,7 +108,7 @@ foreach ($file in $binaries) {
     Sign-File $file
 }
 
-$VstBundle = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3"
+$VstBundle = Join-Path $Artefacts "VST3\ASTERDrumLab.vst3"
 $VstArchive = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-VST3.zip"
 Remove-Item $VstArchive -Force -ErrorAction SilentlyContinue
 Compress-Archive -Path $VstBundle -DestinationPath $VstArchive -CompressionLevel Optimal

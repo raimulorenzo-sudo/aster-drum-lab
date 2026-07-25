@@ -1384,6 +1384,15 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             });
         }
     }
+    else if (type == "openBoothLibrary")
+    {
+        // ダウンロードは BOOTH の購入者認証に任せ、プラグインは
+        // 公開ダウンロード URL を保持しない。
+        juce::MessageManager::callAsync([]
+        {
+            juce::URL("https://accounts.booth.pm/library").launchInDefaultBrowser();
+        });
+    }
     else if (type == "clearPadSample")
     {
         // UI 側 Clear Sample → エンジン側の sample buffer / file path /

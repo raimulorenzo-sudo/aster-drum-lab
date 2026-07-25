@@ -3,9 +3,18 @@ import { createPortal } from 'react-dom';
 import styles from './SettingsMenu.module.css';
 import { measurePopup, positionPopupFromAnchor } from '../../utils/popupPosition';
 import { isJuceAvailable, sendToJuce } from '../../utils/juceBridge';
+import packageMeta from '../../../package.json';
+import {
+  cacheLatestVersion,
+  fetchLatestVersion,
+  isNewerVersion,
+  markStartupNoticeShown,
+  readCachedLatestVersion,
+  shouldShowStartupNotice,
+} from '../../utils/updateChecker';
 
-// Plugin meta (静的)。バージョン値はビルド時に挿し替え可能だが今は手動。
-const PLUGIN_VERSION = '0.1.0';
+// package.json のバージョンを Web UI ビルドに焼き込む。
+const PLUGIN_VERSION = packageMeta.version;
 const COMPANY_NAME   = 'ENIGMA';
 const PLUGIN_NAME    = 'ASTER Drum Lab';
 
@@ -19,11 +28,18 @@ interface SettingsMenuProps {
 }
 
 type Pane = 'main' | 'about' | 'prefs';
+type UpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  | { status: 'latest' }
+  | { status: 'available'; version: string }
+  | { status: 'error' };
 
 export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: SettingsMenuProps) {
   const [pane, setPane]       = useState<Pane>('main');
   const [style, setStyle]     = useState<CSSProperties>({});
-  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
+  const [startupNoticeVersion, setStartupNoticeVersion] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // ── ポジショニング ──
@@ -58,19 +74,91 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  // エディタを開いた後に自動確認。最新・通信失敗は無表示。
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timerId = window.setTimeout(async () => {
+      try {
+        const cachedVersion = readCachedLatestVersion(localStorage);
+        const latestVersion = cachedVersion ?? await fetchLatestVersion(controller.signal);
+        if (!cachedVersion) cacheLatestVersion(localStorage, latestVersion);
+        if (cancelled || !isNewerVersion(latestVersion, PLUGIN_VERSION)) return;
 
-  const checkForUpdates = () => {
-    // 実 update server は未実装。stub: 現在バージョンを表示するだけ。
-    if (isJuceAvailable()) sendToJuce('checkForUpdates', {});
-    setUpdateMsg(`現在 v${PLUGIN_VERSION} を使用中。最新です。`);
-    window.setTimeout(() => setUpdateMsg(null), 3500);
+        setUpdateState({ status: 'available', version: latestVersion });
+        if (shouldShowStartupNotice(localStorage, latestVersion)) {
+          markStartupNoticeShown(localStorage, latestVersion);
+          setStartupNoticeVersion(latestVersion);
+        }
+      } catch (error) {
+        if (!cancelled) console.warn('[Update Checker] Automatic check failed:', error);
+      }
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+      controller.abort();
+    };
+  }, []);
+
+  const checkForUpdates = async () => {
+    if (updateState.status === 'checking') return;
+
+    setUpdateState({ status: 'checking' });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
+    try {
+      const latestVersion = await fetchLatestVersion(controller.signal);
+      cacheLatestVersion(localStorage, latestVersion);
+      setUpdateState(
+        isNewerVersion(latestVersion, PLUGIN_VERSION)
+          ? { status: 'available', version: latestVersion }
+          : { status: 'latest' },
+      );
+    } catch (error) {
+      console.warn('[Update Checker] Failed to check for updates:', error);
+      setUpdateState({ status: 'error' });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  };
+
+  const openBoothLibrary = () => {
+    if (isJuceAvailable()) {
+      sendToJuce('openBoothLibrary', {});
+      return;
+    }
+    window.open('https://accounts.booth.pm/library', '_blank', 'noopener,noreferrer');
   };
 
   return createPortal(
     <>
-      <button type="button" className={styles.scrim} aria-label="close" onClick={onClose} />
-      <div ref={panelRef} className={styles.panel} style={style} role="menu">
+      {startupNoticeVersion && (
+        <div className={styles.startupNotice} role="status" aria-live="polite">
+          <div className={styles.startupNoticeText}>
+            <strong>Update available</strong>
+            <span>ASTER Drum Lab v{startupNoticeVersion}</span>
+          </div>
+          <button type="button" className={styles.startupUpdateButton} onClick={openBoothLibrary}>
+            BOOTHから取得
+          </button>
+          <button
+            type="button"
+            className={styles.startupCloseButton}
+            aria-label="更新通知を閉じる"
+            onClick={() => setStartupNoticeVersion(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {open && (
+        <>
+          <button type="button" className={styles.scrim} aria-label="close" onClick={onClose} />
+          <div ref={panelRef} className={styles.panel} style={style} role="menu">
         {pane === 'main' && (
           <>
             <div className={styles.title}>SETTINGS</div>
@@ -78,10 +166,29 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
               <span>About / Version</span>
               <span className={styles.chevron}>▸</span>
             </button>
-            <button className={styles.item} onClick={checkForUpdates}>
-              <span>Check for Updates…</span>
+            <button
+              className={styles.item}
+              onClick={checkForUpdates}
+              disabled={updateState.status === 'checking'}
+            >
+              <span>{updateState.status === 'checking' ? 'Checking…' : 'Check for Updates…'}</span>
             </button>
-            {updateMsg && <div className={styles.statusLine}>{updateMsg}</div>}
+            {updateState.status === 'latest' && (
+              <div className={styles.statusLine}>v{PLUGIN_VERSION} は最新です。</div>
+            )}
+            {updateState.status === 'available' && (
+              <div className={styles.updateNotice} role="status">
+                <span>v{updateState.version} があります。</span>
+                <button type="button" className={styles.updateButton} onClick={openBoothLibrary}>
+                  BOOTHから取得
+                </button>
+              </div>
+            )}
+            {updateState.status === 'error' && (
+              <div className={`${styles.statusLine} ${styles.statusError}`}>
+                更新を確認できませんでした。
+              </div>
+            )}
             <span className={styles.divider} />
             <button className={styles.item} onClick={() => setPane('prefs')}>
               <span>Preferences</span>
@@ -119,7 +226,9 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             <div className={styles.hint}>※ 設定はプラグイン全体に適用</div>
           </>
         )}
-      </div>
+          </div>
+        </>
+      )}
     </>,
     document.body,
   );

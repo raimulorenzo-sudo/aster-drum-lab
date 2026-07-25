@@ -79,6 +79,12 @@ function WaveformEditorComponent({
 
   const waveformPeaks = pad.waveformPeaks ?? [];
   const hasWaveform = Boolean(pad.sampleFileName && !pad.sampleMissing && waveformPeaks.length > 1);
+  const emptyWaveformText = pad.sampleMissing
+    ? 'SAMPLE MISSING'
+    : hasWaveform
+      ? null
+      : 'DROP SAMPLE HERE';
+  const dragOverlayText = hasWaveform ? 'DROP TO REPLACE LAYER SAMPLE' : 'RELEASE TO LOAD';
   const isAudioFile = (file: File) => /\.(wav|aiff?|flac|mp3|ogg)$/i.test(file.name);
 
   // Reverse 時はサンプル配列を反転して波形描画も逆向きに（仕様の "可能であれば反転"）
@@ -789,6 +795,12 @@ function WaveformEditorComponent({
           )}
         </svg>
 
+        {emptyWaveformText && !isSampleDragOver && (
+          <div className={styles.emptyWaveformPrompt} aria-hidden="true">
+            {emptyWaveformText}
+          </div>
+        )}
+
         {/* ── オーバーレイラベル (ビュー範囲外なら非表示) ──────────────── */}
         {hasWaveform && <div className={styles.handleLabels}>
           {/* START: タブの右内側 */}
@@ -884,7 +896,7 @@ function WaveformEditorComponent({
         )}
         {isSampleDragOver && (
           <div className={styles.dropOverlay} aria-hidden="true">
-            DROP TO REPLACE LAYER SAMPLE
+            {dragOverlayText}
           </div>
         )}
       </div>

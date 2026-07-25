@@ -44,6 +44,40 @@ Run from a Visual Studio 2022 developer PowerShell on Windows with:
 - AAX SDK 2.9 (optional, for AAX builds)
 - An Authenticode code-signing certificate
 
+### VST3 and AAX only
+
+To build the Windows x64 VST3 and AAX bundles without creating an EXE/MSI:
+
+```powershell
+$env:AAX_SDK_PATH = "C:\SDKs\aax-sdk-2-9-0"
+.\packaging\windows\build-plugins.ps1
+```
+
+For a distributable AAX build, connect the licensed iLok, install the PACE
+Eden/Fusion signing tools, and set the signing values locally. Do not add these
+values or files to Git:
+
+```powershell
+$env:PACE_CUSTOMER_NUMBER = "<set locally>"
+$env:PACE_CUSTOMER_NAME = "ENIGMA"
+$env:PACE_PRODUCT_NAME = "ASTER Drum Lab"
+$env:WINDOWS_CERT_PFX = "C:\secure\enigma-code-signing.pfx"
+$env:WINDOWS_CERT_PASSWORD = "<set locally>"
+.\packaging\windows\build-plugins.ps1 -SignVST3 -SignAAX -Install
+```
+
+`build-plugins.ps1` invokes PACE `wraptool` for the AAX bundle, verifies both
+the PACE and Authenticode signatures, creates VST3/AAX ZIP files and SHA-256
+checksums under `dist`, and optionally installs both bundles. It never creates
+an installer.
+
+The DAW-visible name remains `ASTER Drum Lab`. The Windows plug-in filename is
+`ASTERDrumLab` without spaces because AAX SDK 2.9 documents an AAE limitation
+for Windows AAX filenames containing spaces.
+
+See `WINDOWS_CODEX_HANDOFF.md` for the complete Windows machine setup and the
+ready-to-paste Codex prompt.
+
 ```powershell
 $env:WINDOWS_CERT_PFX = "C:\secure\enigma-code-signing.pfx"
 $env:WINDOWS_CERT_PASSWORD = "..."

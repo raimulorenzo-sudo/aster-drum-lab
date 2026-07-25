@@ -266,6 +266,22 @@
   text-shadow: 0 0 8px rgba(82, 200, 232, 0.28);
 }
 
+.emptyWaveformPrompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(209, 184, 122, 0.58);
+  font-size: var(--fs-11);
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 8px rgba(191, 163, 106, 0.14),
+    0 1px 0 rgba(0, 0, 0, 0.62);
+}
+
 /* ── 上部ツールレーン: zoom controls 専用 (波形と完全に分離) ───── */
 .waveToolLane {
   flex: 0 0 auto;

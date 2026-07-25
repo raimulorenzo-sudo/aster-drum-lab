@@ -5,7 +5,7 @@ if(POLICY CMP0175)
     cmake_policy(SET CMP0175 OLD)
 endif()
 
-project(AsterDrumLab VERSION 0.1.0)
+project(AsterDrumLab VERSION 1.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,6 +40,14 @@ else()
     message(STATUS "AAX disabled (set ASTER_AAX_SDK_PATH or AAX_SDK_PATH to enable)")
 endif()
 
+# AAX SDK 2.9 documents an AAE limitation that rejects Windows AAX binary
+# filenames containing spaces. Keep the DAW-visible plug-in name unchanged,
+# but use a space-free physical filename for all Windows plug-in artefacts.
+set(ASTER_PRODUCT_FILE_NAME "ASTER Drum Lab")
+if(WIN32)
+    set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLab")
+endif()
+
 # ── プラグイン定義 ─────────────────────────────────────────────────────────────
 juce_add_plugin(DrumSampler
 
@@ -48,7 +56,8 @@ juce_add_plugin(DrumSampler
 
     FORMATS                   ${ASTER_PLUGIN_FORMATS}
 
-    PRODUCT_NAME              "ASTER Drum Lab"
+    PRODUCT_NAME              "${ASTER_PRODUCT_FILE_NAME}"
+    PLUGIN_NAME               "ASTER Drum Lab"
     COMPANY_NAME              "ENIGMA"
     BUNDLE_ID                 "com.enigma.asterdrumlab"
 
