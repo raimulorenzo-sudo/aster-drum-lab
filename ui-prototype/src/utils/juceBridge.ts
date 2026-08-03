@@ -335,6 +335,7 @@ function normalizeFxChain(chain: FxSlot[] | undefined): FxSlot[] | undefined {
           params: {
             attack: Number(slot.params?.attack ?? 0),
             sustain: Number(slot.params?.sustain ?? 0),
+            output: Number(slot.params?.output ?? 0),
           },
         };
       case 'COMPRESSOR':

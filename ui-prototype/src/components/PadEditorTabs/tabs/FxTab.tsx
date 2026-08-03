@@ -607,6 +607,17 @@ function FxModule({
               parseInput={parseNumericText}
               onChange={v => onPatch(s => s.type === 'TRANSIENT' ? { ...s, params: { ...s.params, sustain: v } } : s)}
             />
+            <Knob
+              size={38}
+              label="OUTPUT"
+              value={slot.params.output ?? 0}
+              min={-24}
+              max={12}
+              defaultValue={0}
+              valueText={`${fmtDb(slot.params.output ?? 0)} dB`}
+              parseInput={parseNumericText}
+              onChange={v => onPatch(s => s.type === 'TRANSIENT' ? { ...s, params: { ...s.params, output: v } } : s)}
+            />
           </>
         )}
         {slot.type === 'COMPRESSOR' && (

@@ -178,6 +178,7 @@ namespace PadDataJson
                 {
                     params->setProperty("attack",  (double) slot.transient.attack);
                     params->setProperty("sustain", (double) slot.transient.sustain);
+                    params->setProperty("output",  (double) slot.transient.outputDb);
                 }
                 else if (slot.type == LayerFxType::Compressor)
                 {

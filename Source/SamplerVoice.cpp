@@ -328,7 +328,10 @@ namespace
         else
             gain *= 1.0f + sustain * bodyEnergy * 0.85f;
 
-        return x * juce::jlimit(0.05f, 3.5f, gain);
+        const float shaped = x * juce::jlimit(0.05f, 3.5f, gain);
+        const float outputGain = juce::Decibels::decibelsToGain(
+            juce::jlimit(-24.0f, 12.0f, transient.outputDb));
+        return shaped * outputGain;
     }
 
     float processCompressorSample(float x,
@@ -609,7 +612,9 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                 fx.drive = slot.drive;
             }
             else if (slot.type == LayerFxType::Transient
-                  && (std::abs(slot.transient.attack) > 0.001f || std::abs(slot.transient.sustain) > 0.001f))
+                  && (std::abs(slot.transient.attack) > 0.001f
+                      || std::abs(slot.transient.sustain) > 0.001f
+                      || std::abs(slot.transient.outputDb) > 0.001f))
             {
                 auto& fx = runtimeFx[runtimeFxCount++];
                 fx.type = RuntimeFxType::Transient;

@@ -111,6 +111,7 @@ export type DriveType =
 export interface TransientParams {
   attack: number;
   sustain: number;
+  output: number;
 }
 
 export interface CompressorParams {

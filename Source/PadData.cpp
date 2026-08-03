@@ -99,6 +99,7 @@ juce::ValueTree LayerData::toValueTree() const
         {
             fx.setProperty("attack",  slot.transient.attack,  nullptr);
             fx.setProperty("sustain", slot.transient.sustain, nullptr);
+            fx.setProperty("outputDb", slot.transient.outputDb, nullptr);
         }
         else if (slot.type == LayerFxType::Compressor)
         {
@@ -243,6 +244,7 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
             {
                 slot.transient.attack = juce::jlimit(-1.0f, 1.0f, static_cast<float>(fx.getProperty("attack", slot.transient.attack)));
                 slot.transient.sustain = juce::jlimit(-1.0f, 1.0f, static_cast<float>(fx.getProperty("sustain", slot.transient.sustain)));
+                slot.transient.outputDb = juce::jlimit(-24.0f, 12.0f, static_cast<float>(fx.getProperty("outputDb", slot.transient.outputDb)));
             }
             else if (slot.type == LayerFxType::Compressor)
             {

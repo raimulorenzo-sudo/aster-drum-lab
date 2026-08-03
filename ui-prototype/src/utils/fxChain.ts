@@ -45,7 +45,7 @@ export function makeFxSlot(type: FxSlot['type']): FxSlot {
     case 'DRIVE':
       return { type: 'DRIVE', bypassed: false, params: { type: 'SOFT_CLIP', amount: 0.25, tone: 0.5, mix: 1, output: 0 } };
     case 'TRANSIENT':
-      return { type: 'TRANSIENT', bypassed: false, params: { attack: 0, sustain: 0 } };
+      return { type: 'TRANSIENT', bypassed: false, params: { attack: 0, sustain: 0, output: 0 } };
     case 'COMPRESSOR':
       return {
         type: 'COMPRESSOR',

@@ -83,6 +83,7 @@ struct LayerTransientFx
 {
     float attack { 0.0f };
     float sustain { 0.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerCompressorFx

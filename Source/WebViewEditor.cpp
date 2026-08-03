@@ -2157,6 +2157,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                             {
                                 slot.transient.attack  = juce::jlimit(-1.0f, 1.0f, p->hasProperty("attack")  ? (float) (double) p->getProperty("attack")  : slot.transient.attack);
                                 slot.transient.sustain = juce::jlimit(-1.0f, 1.0f, p->hasProperty("sustain") ? (float) (double) p->getProperty("sustain") : slot.transient.sustain);
+                                slot.transient.outputDb = juce::jlimit(-24.0f, 12.0f, p->hasProperty("output") ? (float) (double) p->getProperty("output") : slot.transient.outputDb);
                             }
                         }
                         else if (typeName == "COMPRESSOR")

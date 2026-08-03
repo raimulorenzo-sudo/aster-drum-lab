@@ -100,6 +100,58 @@ bool compressorGainPersistenceIsCompatible()
         && approximately(legacyRestored.fxChain[0].compressor.makeupDb, 0.0f)
         && approximately(legacyRestored.fxChain[0].compressor.outputDb, 0.0f);
 }
+
+bool renderTransientLevel(const juce::File& sampleFile,
+                          float outputDb,
+                          bool bypassed,
+                          float& level)
+{
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, sampleFile))
+        return false;
+
+    LayerFxSlot transient;
+    transient.type = LayerFxType::Transient;
+    transient.bypassed = bypassed;
+    transient.transient.attack = 0.0f;
+    transient.transient.sustain = 0.0f;
+    transient.transient.outputDb = outputDb;
+    processor.getKit().pads[0].layers[0].fxChain = { transient };
+
+    juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+    output.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+    processor.processBlock(output, midi);
+    level = std::abs(output.getSample(0, 64));
+    return true;
+}
+
+bool transientOutputPersistenceIsCompatible()
+{
+    LayerData source;
+    LayerFxSlot transient;
+    transient.type = LayerFxType::Transient;
+    transient.transient.outputDb = -4.5f;
+    source.fxChain = { transient };
+
+    auto currentTree = source.toValueTree();
+    LayerData restored;
+    restored.fromValueTree(currentTree);
+    if (restored.fxChain.size() != 1
+        || ! approximately(restored.fxChain[0].transient.outputDb, -4.5f))
+        return false;
+
+    auto legacyTree = currentTree.createCopy();
+    auto legacyFx = legacyTree.getChildWithName("FxChain").getChild(0);
+    legacyFx.removeProperty("outputDb", nullptr);
+
+    LayerData legacyRestored;
+    legacyRestored.fromValueTree(legacyTree);
+    return legacyRestored.fxChain.size() == 1
+        && approximately(legacyRestored.fxChain[0].transient.outputDb, 0.0f);
+}
 }
 
 int main()
@@ -167,9 +219,34 @@ int main()
         return 1;
     }
 
+    float transientBaseline = 0.0f;
+    float transientOutput = 0.0f;
+    float transientBypass = 0.0f;
+    if (! renderTransientLevel(sampleFile, 0.0f, false, transientBaseline)
+        || ! renderTransientLevel(sampleFile, -6.0f, false, transientOutput)
+        || ! renderTransientLevel(sampleFile, -6.0f, true, transientBypass))
+    {
+        std::cerr << "Failed to render transient output test\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (transientBaseline <= 1.0e-5f
+        || ! approximately(transientOutput / transientBaseline, 1.0f / sixDbGain)
+        || ! approximately(transientBypass / transientBaseline, 1.0f)
+        || ! transientOutputPersistenceIsCompatible())
+    {
+        std::cerr << "Transient output mismatch: baseline=" << transientBaseline
+                  << ", output ratio=" << transientOutput / transientBaseline
+                  << ", bypass ratio=" << transientBypass / transientBaseline << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
     std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
+    std::cout << "Transient output volume and legacy persistence verified\n";
     return 0;
 }
