@@ -12,6 +12,8 @@ namespace
     // マスター出力ボリュームの APVTS パラメータ ID。Pad/Layer のように index を持たない
     // 単一グローバルパラメータ。
     constexpr const char* kMasterVolumeParamId = "masterVolume";
+    constexpr const char* kAutomationSlotPrefix = "asterAutomationSlot";
+    const juce::Identifier kAutomationSlotsStateId { "AUTOMATION_SLOTS" };
 
     juce::NormalisableRange<float> rangeFor(const PadParameterSpecs::Spec& spec)
     {
@@ -342,6 +344,8 @@ DrumSamplerAudioProcessor::DrumSamplerAudioProcessor()
     : AudioProcessor(buildBuses()),
       parameters(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    for (auto& targetIndex : automationSlotTargetIndices)
+        targetIndex.store(-1, std::memory_order_relaxed);
     midiNoteTopad.fill(-1);
     rebuildMidiMap();
     syncParametersFromKit();
@@ -1525,6 +1529,13 @@ void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     root.addChild(kit.toValueTree(), -1, nullptr);
     root.addChild(parameters.copyState(), -1, nullptr);
 
+    juce::ValueTree automationSlotsState { kAutomationSlotsStateId };
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        automationSlotsState.setProperty("target" + juce::String(slot + 1).paddedLeft('0', 2),
+                                         automationSlotTargets[static_cast<size_t>(slot)],
+                                         nullptr);
+    root.addChild(automationSlotsState, -1, nullptr);
+
     juce::MemoryOutputStream stream(destData, false);
     root.writeToStream(stream);
 }
@@ -1552,6 +1563,16 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
     const auto parameterTree = tree.getChildWithName("PARAMETERS");
     if (parameterTree.isValid())
         parameters.replaceState(parameterTree);
+
+    const auto automationSlotsState = tree.getChildWithName(kAutomationSlotsStateId);
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        const auto propertyName = "target" + juce::String(slot + 1).paddedLeft('0', 2);
+        setAutomationSlotTarget(slot,
+            automationSlotsState.isValid()
+                ? automationSlotsState.getProperty(propertyName).toString()
+                : juce::String{});
+    }
 
     if (needsVolumeMigration)
     {
@@ -1668,9 +1689,175 @@ void DrumSamplerAudioProcessor::saveRecentKitPaths() const
     file.replaceWithText(content);
 }
 
+juce::String DrumSamplerAudioProcessor::automationSlotParameterID(int slotIndex)
+{
+    return juce::String(kAutomationSlotPrefix)
+         + juce::String(slotIndex + 1).paddedLeft('0', 2);
+}
+
+int DrumSamplerAudioProcessor::automationSlotIndexFromParameterID(const juce::String& parameterID)
+{
+    if (! parameterID.startsWith(kAutomationSlotPrefix))
+        return -1;
+
+    const int oneBased = parameterID.substring(juce::String(kAutomationSlotPrefix).length()).getIntValue();
+    return juce::isPositiveAndBelow(oneBased - 1, automationSlotCount) ? oneBased - 1 : -1;
+}
+
+int DrumSamplerAudioProcessor::findParameterIndex(const juce::String& parameterID) const
+{
+    const auto* target = parameters.getParameter(parameterID);
+    if (target == nullptr)
+        return -1;
+
+    const auto& processorParameters = getParameters();
+    for (int index = 0; index < processorParameters.size(); ++index)
+        if (processorParameters.getUnchecked(index) == target)
+            return index;
+    return -1;
+}
+
+int DrumSamplerAudioProcessor::assignedAutomationSlotForTarget(const juce::String& parameterID) const
+{
+    for (int slot = 0; parameterID.isNotEmpty() && slot < automationSlotCount; ++slot)
+        if (automationSlotTargets[static_cast<size_t>(slot)] == parameterID)
+            return slot;
+    return -1;
+}
+
+void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
+                                                        const juce::String& parameterID)
+{
+    if (! juce::isPositiveAndBelow(slotIndex, automationSlotCount))
+        return;
+
+    const int parameterIndex = parameterID.isNotEmpty() ? findParameterIndex(parameterID) : -1;
+    if (parameterID.isNotEmpty()
+        && (parameterIndex < 0 || automationSlotIndexFromParameterID(parameterID) >= 0))
+        return;
+
+    // 1つの内部パラメータを複数Slotへ割り当てない。
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        if (slot != slotIndex && automationSlotTargets[static_cast<size_t>(slot)] == parameterID)
+        {
+            automationSlotTargets[static_cast<size_t>(slot)].clear();
+            automationSlotTargetIndices[static_cast<size_t>(slot)].store(-1, std::memory_order_release);
+        }
+    }
+
+    automationSlotTargets[static_cast<size_t>(slotIndex)] = parameterID;
+    automationSlotTargetIndices[static_cast<size_t>(slotIndex)].store(parameterIndex,
+                                                                      std::memory_order_release);
+
+    if (parameterIndex >= 0)
+    {
+        auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex));
+        const auto& processorParameters = getParameters();
+        if (slotParameter != nullptr && parameterIndex < processorParameters.size())
+        {
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValue(processorParameters.getUnchecked(parameterIndex)->getValue());
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+        }
+    }
+
+    automationLearnSlot.store(-1, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::beginAutomationLearn(int slotIndex) noexcept
+{
+    if (! juce::isPositiveAndBelow(slotIndex, automationSlotCount))
+        return;
+    automationLearnSlot.store(slotIndex, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::cancelAutomationLearn() noexcept
+{
+    automationLearnSlot.store(-1, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::clearAutomationSlot(int slotIndex)
+{
+    setAutomationSlotTarget(slotIndex, {});
+}
+
+juce::String DrumSamplerAudioProcessor::getAutomationSlotTargetID(int slotIndex) const
+{
+    return juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? automationSlotTargets[static_cast<size_t>(slotIndex)]
+        : juce::String{};
+}
+
+juce::String DrumSamplerAudioProcessor::getAutomationSlotTargetName(int slotIndex) const
+{
+    const int parameterIndex = juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? automationSlotTargetIndices[static_cast<size_t>(slotIndex)].load(std::memory_order_acquire)
+        : -1;
+    const auto& processorParameters = getParameters();
+    return parameterIndex >= 0 && parameterIndex < processorParameters.size()
+        ? processorParameters.getUnchecked(parameterIndex)->getName(128)
+        : juce::String{};
+}
+
+int DrumSamplerAudioProcessor::getAutomationLearnSlot() const noexcept
+{
+    return automationLearnSlot.load(std::memory_order_acquire);
+}
+
+bool DrumSamplerAudioProcessor::consumeAutomationSlotsChanged() noexcept
+{
+    return automationSlotsChanged.exchange(false, std::memory_order_acq_rel);
+}
+
+void DrumSamplerAudioProcessor::captureAutomationLearnTarget(const juce::String& parameterID)
+{
+    const int slotIndex = automationLearnSlot.exchange(-1, std::memory_order_acq_rel);
+    if (slotIndex >= 0)
+        setAutomationSlotTarget(slotIndex, parameterID);
+}
+
+void DrumSamplerAudioProcessor::setParameterValueFromUi(const juce::String& parameterID,
+                                                        float normalizedValue,
+                                                        bool notifyHost)
+{
+    auto* targetParameter = parameters.getParameter(parameterID);
+    if (targetParameter == nullptr)
+        return;
+
+    const float normalized = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    if (notifyHost)
+        captureAutomationLearnTarget(parameterID);
+
+    const int slotIndex = notifyHost ? assignedAutomationSlotForTarget(parameterID) : -1;
+    auto* hostParameter = slotIndex >= 0
+        ? parameters.getParameter(automationSlotParameterID(slotIndex))
+        : targetParameter;
+    if (hostParameter == nullptr)
+        hostParameter = targetParameter;
+
+    if (notifyHost)
+        hostParameter->beginChangeGesture();
+
+    suppressParameterCallbacks.store(true, std::memory_order_release);
+    if (hostParameter != targetParameter)
+        targetParameter->setValueNotifyingHost(normalized);
+    hostParameter->setValueNotifyingHost(normalized);
+    suppressParameterCallbacks.store(false, std::memory_order_release);
+
+    if (notifyHost)
+        hostParameter->endChangeGesture();
+}
+
 void DrumSamplerAudioProcessor::registerParameterListeners()
 {
     parameters.addParameterListener(kMasterVolumeParamId, this);
+
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        parameters.addParameterListener(automationSlotParameterID(slot), this);
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
@@ -1687,6 +1874,9 @@ void DrumSamplerAudioProcessor::removeParameterListeners()
 {
     parameters.removeParameterListener(kMasterVolumeParamId, this);
 
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        parameters.removeParameterListener(automationSlotParameterID(slot), this);
+
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
         for (const auto& spec : PadParameterSpecs::all())
@@ -1698,10 +1888,26 @@ void DrumSamplerAudioProcessor::removeParameterListeners()
     }
 }
 
-void DrumSamplerAudioProcessor::parameterChanged(const juce::String&, float)
+void DrumSamplerAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
 {
     if (! suppressParameterCallbacks.load(std::memory_order_relaxed))
     {
+        const int slotIndex = automationSlotIndexFromParameterID(parameterID);
+        if (slotIndex >= 0)
+        {
+            const int targetIndex = automationSlotTargetIndices[static_cast<size_t>(slotIndex)]
+                                        .load(std::memory_order_acquire);
+            const auto& processorParameters = getParameters();
+            if (targetIndex >= 0 && targetIndex < processorParameters.size())
+            {
+                suppressParameterCallbacks.store(true, std::memory_order_release);
+                // APVTSのraw値も更新するため内部parameterにもlistener通知を通す。
+                // suppress中なので再帰的なkit syncは起こらない。
+                processorParameters.getUnchecked(targetIndex)->setValueNotifyingHost(newValue);
+                suppressParameterCallbacks.store(false, std::memory_order_release);
+            }
+        }
+
         parametersNeedSync.store(true, std::memory_order_release);
         // UI へ通知するためのフラグ — Timer がこれを拾って broadcastKitState を呼ぶ
         kitChangedByAutomation.store(true, std::memory_order_release);
@@ -1717,7 +1923,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     const size_t totalParams =
         static_cast<size_t>(NUM_PADS * PadParameterSpecs::numAutomatableParams)
-      + static_cast<size_t>(NUM_PADS * MAX_LAYERS_PER_PAD * LayerParameterSpecs::numAutomatableParams);
+      + static_cast<size_t>(NUM_PADS * MAX_LAYERS_PER_PAD * LayerParameterSpecs::numAutomatableParams)
+      + static_cast<size_t>(automationSlotCount);
     params.reserve(totalParams);
 
     KitData defaultKit;
@@ -1727,7 +1934,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
         juce::ParameterID { kMasterVolumeParamId, 1 },
         "Master Volume",
         juce::NormalisableRange<float> { 0.0f, 1.0f },
-        defaultKit.masterVolume));
+        defaultKit.masterVolume,
+        juce::AudioParameterFloatAttributes().withAutomatable(false)));
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
@@ -1751,7 +1959,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                 params.push_back(std::make_unique<juce::AudioParameterBool>(
                     juce::ParameterID { id, 1 },
                     name,
-                    spec.defaultValue >= 0.5f));
+                    spec.defaultValue >= 0.5f,
+                    juce::AudioParameterBoolAttributes().withAutomatable(false)));
             }
             else
             {
@@ -1759,7 +1968,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                     juce::ParameterID { id, 1 },
                     name,
                     rangeFor(spec),
-                    spec.defaultValue));
+                    spec.defaultValue,
+                    juce::AudioParameterFloatAttributes().withAutomatable(false)));
             }
         }
 
@@ -1775,7 +1985,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                     params.push_back(std::make_unique<juce::AudioParameterBool>(
                         juce::ParameterID { id, 1 },
                         name,
-                        spec.defaultValue >= 0.5f));
+                        spec.defaultValue >= 0.5f,
+                        juce::AudioParameterBoolAttributes().withAutomatable(false)));
                 }
                 else
                 {
@@ -1783,7 +1994,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                         juce::ParameterID { id, 1 },
                         name,
                         rangeFor(spec),
-                        spec.defaultValue));
+                        spec.defaultValue,
+                        juce::AudioParameterFloatAttributes().withAutomatable(false)));
                 }
             }
         }
@@ -1803,8 +2015,22 @@ DrumSamplerAudioProcessor::createParameterLayout()
                 juce::ParameterID { PadParameterSpecs::parameterID(padIndex, spec.param), 1 },
                 PadParameterSpecs::parameterName(padIndex, pad, spec.param),
                 rangeFor(spec),
-                spec.defaultValue));
+                spec.defaultValue,
+                juce::AudioParameterFloatAttributes().withAutomatable(false)));
         }
+    }
+
+    // DAWにはこの24個だけをautomation対象として公開する。IDと順番は永久固定。
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { automationSlotParameterID(slot), 1 },
+            "ASTER AUTO " + juce::String(slot + 1).paddedLeft('0', 2),
+            juce::NormalisableRange<float> { 0.0f, 1.0f },
+            0.0f,
+            juce::AudioParameterFloatAttributes()
+                .withAutomatable(true)
+                .withMeta(true)));
     }
 
     return { params.begin(), params.end() };
@@ -1903,20 +2129,7 @@ void DrumSamplerAudioProcessor::setAutomatablePadParameter(int padIndex,
     const float clamped = juce::jlimit(spec.minValue, spec.maxValue, value);
     const float currentValue = getKitValueForParameter(padIndex, param);
 
-    if (notifyHost)
-    {
-        parameter->beginChangeGesture();
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-        parameter->endChangeGesture();
-    }
-    else
-    {
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-    }
+    setParameterValueFromUi(id, parameter->convertTo0to1(clamped), notifyHost);
 
     setKitValueFromParameter(padIndex, param, clamped);
 
@@ -1943,15 +2156,7 @@ void DrumSamplerAudioProcessor::setAutomatableLayerParameter(int padIndex,
     const float currentValue = getLayerValueForParameter(padIndex, layerIndex,
                                                          static_cast<int>(param));
 
-    if (notifyHost)
-        parameter->beginChangeGesture();
-
-    suppressParameterCallbacks.store(true, std::memory_order_release);
-    parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-    suppressParameterCallbacks.store(false, std::memory_order_release);
-
-    if (notifyHost)
-        parameter->endChangeGesture();
+    setParameterValueFromUi(id, parameter->convertTo0to1(clamped), notifyHost);
 
     setLayerValueFromParameter(padIndex, layerIndex, static_cast<int>(param), clamped);
 
@@ -1986,15 +2191,7 @@ void DrumSamplerAudioProcessor::setPadSampleTrim(int padIndex,
         const float clamped = juce::jlimit(spec.minValue, spec.maxValue, value);
         const float normalizedValue = parameter->convertTo0to1(clamped);
 
-        if (notifyHost)
-            parameter->beginChangeGesture();
-
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(normalizedValue);
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-
-        if (notifyHost)
-            parameter->endChangeGesture();
+        setParameterValueFromUi(id, normalizedValue, notifyHost);
     };
 
     setParameter(PadParameterSpecs::Param::Start,   normalized.start);
@@ -2026,17 +2223,7 @@ void DrumSamplerAudioProcessor::setMasterVolumeParameter(float position, bool no
     const float clamped    = juce::jlimit(0.0f, 1.0f, position);
     const float normalized = parameter->convertTo0to1(clamped);
 
-    if (notifyHost)
-        parameter->beginChangeGesture();
-
-    // suppress: 自分が起こした変更で parameterChanged → 再 sync が走らないように。
-    // kit.masterVolume は下で直接書く。
-    suppressParameterCallbacks.store(true, std::memory_order_release);
-    parameter->setValueNotifyingHost(normalized);
-    suppressParameterCallbacks.store(false, std::memory_order_release);
-
-    if (notifyHost)
-        parameter->endChangeGesture();
+    setParameterValueFromUi(kMasterVolumeParamId, normalized, notifyHost);
 
     kit.masterVolume = clamped;
     if (notifyHost)

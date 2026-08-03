@@ -552,6 +552,9 @@ void WebViewEditor::timerCallback()
     if (audioProcessor.consumeKitChangedByAutomation())
         broadcastKitState();
 
+    if (audioProcessor.consumeAutomationSlotsChanged())
+        broadcastAutomationSlots();
+
     int learnedPad = -1;
     int learnedNote = -1;
     if (audioProcessor.consumeLearnedMidiNote(learnedPad, learnedNote))
@@ -908,6 +911,31 @@ void WebViewEditor::broadcastKitState()
 {
     webView.emitEventIfBrowserIsVisible("kitData", kitToWebVar());
     broadcastKitList();
+    broadcastAutomationSlots();
+}
+
+void WebViewEditor::broadcastAutomationSlots()
+{
+    auto* obj = new juce::DynamicObject();
+    juce::Array<juce::var> slots;
+    slots.ensureStorageAllocated(DrumSamplerAudioProcessor::automationSlotCount);
+
+    const int learningSlot = audioProcessor.getAutomationLearnSlot();
+    for (int slot = 0; slot < DrumSamplerAudioProcessor::automationSlotCount; ++slot)
+    {
+        auto* item = new juce::DynamicObject();
+        const auto targetID = audioProcessor.getAutomationSlotTargetID(slot);
+        item->setProperty("index", slot);
+        item->setProperty("parameterId", targetID);
+        item->setProperty("targetName", audioProcessor.getAutomationSlotTargetName(slot));
+        item->setProperty("assigned", targetID.isNotEmpty());
+        item->setProperty("learning", slot == learningSlot);
+        slots.add(juce::var(item));
+    }
+
+    obj->setProperty("slots", slots);
+    obj->setProperty("learningSlot", learningSlot);
+    webView.emitEventIfBrowserIsVisible("automationSlots", juce::var(obj));
 }
 
 void WebViewEditor::broadcastKitList()
@@ -988,6 +1016,25 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     if (type == "ready")
     {
         broadcastKitState();
+    }
+    else if (type == "requestAutomationSlots")
+    {
+        broadcastAutomationSlots();
+    }
+    else if (type == "beginAutomationLearn")
+    {
+        audioProcessor.beginAutomationLearn((int) payload.getProperty("slot", -1));
+        broadcastAutomationSlots();
+    }
+    else if (type == "cancelAutomationLearn")
+    {
+        audioProcessor.cancelAutomationLearn();
+        broadcastAutomationSlots();
+    }
+    else if (type == "clearAutomationSlot")
+    {
+        audioProcessor.clearAutomationSlot((int) payload.getProperty("slot", -1));
+        broadcastAutomationSlots();
     }
     else if (type == "selectPad")
     {

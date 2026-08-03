@@ -70,6 +70,7 @@ private:
 
     // C++ → JS: 現在の Kit を JSON でブロードキャスト
     void broadcastKitState();
+    void broadcastAutomationSlots();
     void broadcastKitList();
     void broadcastPadUpdate(int padIndex);
     juce::var padToWebVar(int padIndex) const;

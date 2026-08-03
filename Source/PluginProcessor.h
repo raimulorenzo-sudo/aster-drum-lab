@@ -186,6 +186,16 @@ public:
     void syncParametersFromKit();
     void syncKitFromParameters();
 
+    // ── User-assignable DAW automation slots ─────────────────────────
+    static constexpr int automationSlotCount = 24;
+    void beginAutomationLearn(int slotIndex) noexcept;
+    void cancelAutomationLearn() noexcept;
+    void clearAutomationSlot(int slotIndex);
+    juce::String getAutomationSlotTargetID(int slotIndex) const;
+    juce::String getAutomationSlotTargetName(int slotIndex) const;
+    int getAutomationLearnSlot() const noexcept;
+    bool consumeAutomationSlotsChanged() noexcept;
+
 private:
     // Phase 4: バスレイアウトを構築（コンストラクタ初期化子で使う）
     static BusesProperties buildBuses();
@@ -213,6 +223,15 @@ private:
     void registerParameterListeners();
     void removeParameterListeners();
     void parameterChanged(const juce::String& parameterID, float newValue) override;
+    static juce::String automationSlotParameterID(int slotIndex);
+    static int automationSlotIndexFromParameterID(const juce::String& parameterID);
+    int findParameterIndex(const juce::String& parameterID) const;
+    int assignedAutomationSlotForTarget(const juce::String& parameterID) const;
+    void setAutomationSlotTarget(int slotIndex, const juce::String& parameterID);
+    void captureAutomationLearnTarget(const juce::String& parameterID);
+    void setParameterValueFromUi(const juce::String& parameterID,
+                                 float normalizedValue,
+                                 bool notifyHost);
 
     KitData          kit;
     juce::AudioProcessorValueTreeState parameters;
@@ -247,6 +266,10 @@ private:
     std::atomic<int> learnedMidiNote { -1 };
     std::atomic<bool> parametersNeedSync { false };
     std::atomic<bool> suppressParameterCallbacks { false };
+    std::array<juce::String, automationSlotCount> automationSlotTargets {};
+    std::array<std::atomic<int>, automationSlotCount> automationSlotTargetIndices {};
+    std::atomic<int> automationLearnSlot { -1 };
+    std::atomic<bool> automationSlotsChanged { false };
     // v7+: DAW automation (=parameterChanged path) で kit を書いた後、UI へ
     // 状態を push する必要があることを示すフラグ。Timer がこれを消費する。
     std::atomic<bool> kitChangedByAutomation { false };

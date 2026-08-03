@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from
 import { createPortal } from 'react-dom';
 import styles from './SettingsMenu.module.css';
 import { measurePopup, positionPopupFromAnchor } from '../../utils/popupPosition';
-import { isJuceAvailable, sendToJuce } from '../../utils/juceBridge';
+import { isJuceAvailable, onJuceEvent, sendToJuce } from '../../utils/juceBridge';
 import packageMeta from '../../../package.json';
 import {
   cacheLatestVersion,
@@ -27,7 +27,22 @@ interface SettingsMenuProps {
   pluginFormat?: string;
 }
 
-type Pane = 'main' | 'about' | 'prefs';
+type Pane = 'main' | 'about' | 'prefs' | 'automation';
+interface AutomationSlotState {
+  index: number;
+  parameterId: string;
+  targetName: string;
+  assigned: boolean;
+  learning: boolean;
+}
+
+const EMPTY_AUTOMATION_SLOTS: AutomationSlotState[] = Array.from({ length: 24 }, (_, index) => ({
+  index,
+  parameterId: '',
+  targetName: '',
+  assigned: false,
+  learning: false,
+}));
 type UpdateState =
   | { status: 'idle' }
   | { status: 'checking' }
@@ -40,6 +55,7 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
   const [style, setStyle]     = useState<CSSProperties>({});
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
   const [startupNoticeVersion, setStartupNoticeVersion] = useState<string | null>(null);
+  const [automationSlots, setAutomationSlots] = useState<AutomationSlotState[]>(EMPTY_AUTOMATION_SLOTS);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // ── ポジショニング ──
@@ -49,10 +65,15 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
       const el = anchorRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      const size = measurePopup(panelRef.current, { width: 240, height: 280 });
+      const automationPane = pane === 'automation';
+      const width = automationPane ? 390 : 240;
+      const measuredSize = measurePopup(panelRef.current, { width, height: 280 });
+      // 直前のmain paneのmax-heightを引き継ぐと24行paneが極端に低くなるため、
+      // automationだけは希望高を明示し、position helper側で画面内へ収める。
+      const size = automationPane ? { width, height: 520 } : measuredSize;
       setStyle(positionPopupFromAnchor(rect, size, {
         align: 'start',
-        width: 240,
+        width,
         minHeight: 120,
         gap: 8,
       }));
@@ -65,6 +86,29 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
       window.removeEventListener('scroll', update, true);
     };
   }, [open, anchorRef, pane]);
+
+  useEffect(() => {
+    const unsubscribe = onJuceEvent('automationSlots', raw => {
+      const payload = raw as { slots?: AutomationSlotState[] };
+      if (!Array.isArray(payload?.slots)) return;
+      setAutomationSlots(EMPTY_AUTOMATION_SLOTS.map((fallback, index) => {
+        const slot = payload.slots?.find(item => item.index === index);
+        return slot ? {
+          index,
+          parameterId: typeof slot.parameterId === 'string' ? slot.parameterId : '',
+          targetName: typeof slot.targetName === 'string' ? slot.targetName : '',
+          assigned: Boolean(slot.assigned),
+          learning: Boolean(slot.learning),
+        } : fallback;
+      }));
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (open && pane === 'automation')
+      sendToJuce('requestAutomationSlots', {});
+  }, [open, pane]);
 
   // ── Esc で閉じる ──
   useEffect(() => {
@@ -157,7 +201,12 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
 
       {open && (
         <>
-          <button type="button" className={styles.scrim} aria-label="close" onClick={onClose} />
+          <button
+            type="button"
+            className={`${styles.scrim} ${pane === 'automation' ? styles.scrimPassThrough : ''}`}
+            aria-label="close"
+            onClick={onClose}
+          />
           <div ref={panelRef} className={styles.panel} style={style} role="menu">
         {pane === 'main' && (
           <>
@@ -165,6 +214,10 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             <button className={styles.item} onClick={() => setPane('about')}>
               <span>About / Version</span>
               <span className={styles.chevron}>▸</span>
+            </button>
+            <button className={styles.item} onClick={() => setPane('automation')}>
+              <span>Automation Slots</span>
+              <span className={styles.itemMeta}>24 ▸</span>
             </button>
             <button
               className={styles.item}
@@ -224,6 +277,68 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             <PrefRow label="Preserve Pad Name on Load"   prefKey="preservePadNameOnSampleLoad" defaultOn={true} />
             <PrefRow label="Output Name follows Pad"     prefKey="outputNameFollowsPadName"   defaultOn={true} />
             <div className={styles.hint}>※ 設定はプラグイン全体に適用</div>
+          </>
+        )}
+
+        {pane === 'automation' && (
+          <>
+            <button className={styles.back} onClick={() => setPane('main')}>
+              <span className={styles.chevronBack}>◂</span> SETTINGS
+            </button>
+            <div className={styles.title}>AUTOMATION SLOTS · 24</div>
+            <div className={styles.automationIntro}>
+              LEARNを押してから割り当てたいノブを動かしてください。DAWにはASTER AUTO 01–24だけが表示されます。
+            </div>
+            <div className={styles.automationList}>
+              {automationSlots.map(slot => (
+                <div
+                  key={slot.index}
+                  className={`${styles.automationRow} ${slot.learning ? styles.automationRowLearning : ''}`}
+                >
+                  <span className={styles.automationNumber}>
+                    AUTO {String(slot.index + 1).padStart(2, '0')}
+                  </span>
+                  <span
+                    className={`${styles.automationTarget} ${!slot.assigned ? styles.automationTargetEmpty : ''}`}
+                    title={slot.targetName || 'Unassigned'}
+                  >
+                    {slot.learning ? 'MOVE A CONTROL…' : slot.targetName || 'Unassigned'}
+                  </span>
+                  <button
+                    type="button"
+                    className={`${styles.learnButton} ${slot.learning ? styles.learnButtonActive : ''}`}
+                    onClick={() => {
+                      if (slot.learning) {
+                        sendToJuce('cancelAutomationLearn', {});
+                        setAutomationSlots(prev => prev.map(item => ({ ...item, learning: false })));
+                      } else {
+                        sendToJuce('beginAutomationLearn', { slot: slot.index });
+                        setAutomationSlots(prev => prev.map(item => ({
+                          ...item,
+                          learning: item.index === slot.index,
+                        })));
+                      }
+                    }}
+                  >
+                    {slot.learning ? 'CANCEL' : 'LEARN'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.clearAutomationButton}
+                    aria-label={`Clear automation slot ${slot.index + 1}`}
+                    disabled={!slot.assigned}
+                    onClick={() => {
+                      sendToJuce('clearAutomationSlot', { slot: slot.index });
+                      setAutomationSlots(prev => prev.map(item => item.index === slot.index
+                        ? { ...item, parameterId: '', targetName: '', assigned: false, learning: false }
+                        : item));
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           </>
         )}
           </div>

@@ -152,6 +152,86 @@ bool transientOutputPersistenceIsCompatible()
     return legacyRestored.fxChain.size() == 1
         && approximately(legacyRestored.fxChain[0].transient.outputDb, 0.0f);
 }
+
+bool automationSlotsAreStableAndPersistent()
+{
+    DrumSamplerAudioProcessor processor;
+    int automatableCount = 0;
+    int expectedSlot = 0;
+    juce::RangedAudioParameter* firstSlot = nullptr;
+
+    for (auto* parameter : processor.getParameters())
+    {
+        if (! parameter->isAutomatable())
+            continue;
+
+        ++automatableCount;
+        const auto* parameterWithID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter);
+        if (parameterWithID == nullptr)
+        {
+            std::cerr << "Automatable parameter has no stable ID\n";
+            return false;
+        }
+
+        const auto expectedID = "asterAutomationSlot"
+                              + juce::String(expectedSlot + 1).paddedLeft('0', 2);
+        const auto expectedName = "ASTER AUTO "
+                                + juce::String(expectedSlot + 1).paddedLeft('0', 2);
+        if (parameterWithID->paramID != expectedID
+            || parameter->getName(128) != expectedName
+            || ! parameter->isMetaParameter())
+        {
+            std::cerr << "Unexpected slot " << expectedSlot << ": id="
+                      << parameterWithID->paramID << ", name=" << parameter->getName(128)
+                      << ", meta=" << parameter->isMetaParameter() << '\n';
+            return false;
+        }
+
+        if (expectedSlot == 0)
+            firstSlot = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+        ++expectedSlot;
+    }
+
+    if (automatableCount != DrumSamplerAudioProcessor::automationSlotCount
+        || expectedSlot != DrumSamplerAudioProcessor::automationSlotCount
+        || firstSlot == nullptr)
+    {
+        std::cerr << "Automatable count=" << automatableCount << ", expectedSlot="
+                  << expectedSlot << ", firstSlot=" << (firstSlot != nullptr) << '\n';
+        return false;
+    }
+
+    processor.beginAutomationLearn(0);
+    processor.setMasterVolumeParameter(0.37f, true);
+    if (processor.getAutomationSlotTargetID(0) != "masterVolume"
+        || processor.getAutomationSlotTargetName(0) != "Master Volume")
+    {
+        std::cerr << "Learn mismatch: id=" << processor.getAutomationSlotTargetID(0)
+                  << ", name=" << processor.getAutomationSlotTargetName(0) << '\n';
+        return false;
+    }
+
+    firstSlot->setValueNotifyingHost(0.64f);
+    processor.syncKitFromParameters();
+    if (! approximately(processor.getKit().masterVolume, 0.64f, 0.001f))
+    {
+        std::cerr << "Playback mismatch: " << processor.getKit().masterVolume << '\n';
+        return false;
+    }
+
+    juce::MemoryBlock savedState;
+    processor.getStateInformation(savedState);
+    DrumSamplerAudioProcessor restored;
+    restored.setStateInformation(savedState.getData(), static_cast<int>(savedState.getSize()));
+    if (restored.getAutomationSlotTargetID(0) != "masterVolume")
+    {
+        std::cerr << "Restore mismatch: " << restored.getAutomationSlotTargetID(0) << '\n';
+        return false;
+    }
+
+    restored.clearAutomationSlot(0);
+    return restored.getAutomationSlotTargetID(0).isEmpty();
+}
 }
 
 int main()
@@ -243,10 +323,18 @@ int main()
         return 1;
     }
 
+    if (! automationSlotsAreStableAndPersistent())
+    {
+        std::cerr << "Automation slot exposure, routing, or persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
     std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
     std::cout << "Transient output volume and legacy persistence verified\n";
+    std::cout << "24 fixed automation slots and assignment persistence verified\n";
     return 0;
 }
