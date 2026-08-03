@@ -178,7 +178,36 @@ export function layerFromFlat(pad: PadParams): LayerParams {
 
 /** 現在の `layers` を [Layer0] 互換で取得する（無ければ flat から組み立て）。 */
 export function ensureLayers(pad: PadParams): LayerParams[] {
-  return pad.layers && pad.layers.length > 0 ? pad.layers : [seedLayerFromFlat(pad)];
+  const layers = pad.layers;
+  if (!layers || layers.length === 0) return [seedLayerFromFlat(pad)];
+
+  // JUCE の native integration が環境によって穴あき配列を返しても、
+  // `.length` と実際に描画できる行数が食い違わないようにする。
+  // 正常な配列は参照をそのまま返し、通常時の React 再描画は増やさない。
+  let needsRepair = false;
+  for (let i = 0; i < layers.length; i += 1) {
+    if (!(i in layers) || !layers[i]) {
+      needsRepair = true;
+      break;
+    }
+  }
+  if (!needsRepair) return layers;
+
+  const flatLayer = seedLayerFromFlat(pad);
+  return Array.from({ length: layers.length }, (_, index) => {
+    const layer = layers[index];
+    if (layer) return layer;
+    if (index === 0) return flatLayer;
+
+    return {
+      ...flatLayer,
+      sampleFileName: '',
+      sampleFilePath: '',
+      sampleMissing: false,
+      layerName: `Layer ${index + 1}`,
+      waveformPeaks: undefined,
+    };
+  });
 }
 
 /**

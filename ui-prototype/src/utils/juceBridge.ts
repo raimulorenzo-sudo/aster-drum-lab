@@ -370,32 +370,60 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
   const padColor = isCustomColor ? argbToHexColor(jp.padColourARGB as number) : undefined;
 
   // Layers (v6+). If older C++ omits it, derive Layer 0 from flat fields.
-  const layers: LayerParams[] = Array.isArray(jp.layers) && jp.layers.length > 0
-    ? jp.layers.map(jl => juceLayerToReact(jl, sampleLengthMs))
-    : [{
-        sampleFileName: jp.sampleFileName,
-        sampleFilePath: jp.sampleFilePath,
-        sampleMissing:  jp.sampleMissing,
-        volume:         jp.volume,
-        pan:            jp.pan,
-        pitch:          jp.pitch,
-        fine:           typeof jp.fine === 'number' ? jp.fine : 0,
-        attack:         jp.attack,
-        release:        jp.release,
-        sampleLengthMs,
-        startMs,
-        endMs,
-        fadeInMs:       jp.fadeIn  * playbackRangeMs,
-        fadeOutMs:      jp.fadeOut * playbackRangeMs,
-        reverse:        jp.reverse,
-        smartTrim:      existing.smartTrim ?? true,
-        mute:           false,
-        solo:           false,
-        velocityMin:    0,
-        velocityMax:    127,
-        eq:             cloneEq(NEUTRAL_EQ),
-        fxChain:        undefined,
-      }];
+  //
+  // Some WKWebView/JUCE combinations can expose a native array with a valid
+  // `length` but missing numeric slots. Array.prototype.map() preserves those
+  // holes, which made the UI show e.g. "2/8" while rendering no Layer tabs or
+  // velocity rows. Build a dense array explicitly and recover a missing slot
+  // from the optimistic/current React state whenever possible.
+  const flatLayer: LayerParams = {
+    sampleFileName: jp.sampleFileName,
+    sampleFilePath: jp.sampleFilePath,
+    sampleMissing:  jp.sampleMissing,
+    volume:         jp.volume,
+    pan:            jp.pan,
+    pitch:          jp.pitch,
+    fine:           typeof jp.fine === 'number' ? jp.fine : 0,
+    attack:         jp.attack,
+    release:        jp.release,
+    sampleLengthMs,
+    startMs,
+    endMs,
+    fadeInMs:       jp.fadeIn  * playbackRangeMs,
+    fadeOutMs:      jp.fadeOut * playbackRangeMs,
+    reverse:        jp.reverse,
+    smartTrim:      existing.smartTrim ?? true,
+    mute:           false,
+    solo:           false,
+    velocityMin:    0,
+    velocityMax:    127,
+    eq:             cloneEq(NEUTRAL_EQ),
+    fxChain:        undefined,
+  };
+
+  const rawLayers = Array.isArray(jp.layers) ? jp.layers : [];
+  const layers: LayerParams[] = rawLayers.length > 0
+    ? Array.from({ length: rawLayers.length }, (_, index) => {
+        const rawLayer = rawLayers[index];
+        if (rawLayer && typeof rawLayer === 'object')
+          return juceLayerToReact(rawLayer, sampleLengthMs);
+
+        const currentLayer = existing.layers?.[index];
+        if (currentLayer)
+          return currentLayer;
+
+        return index === 0
+          ? flatLayer
+          : {
+              ...flatLayer,
+              sampleFileName: '',
+              sampleFilePath: '',
+              sampleMissing: false,
+              layerName: `Layer ${index + 1}`,
+              waveformPeaks: undefined,
+            };
+      })
+    : [flatLayer];
 
   return {
     ...existing,
