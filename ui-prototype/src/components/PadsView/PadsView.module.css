@@ -55,12 +55,12 @@
   display: grid;
   grid-template-columns:
     40px
-    48px
+    92px
     minmax(165px, 1fr)
     minmax(165px, 1fr)
     auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 8px 14px;
   background:
     var(--noise-warm),

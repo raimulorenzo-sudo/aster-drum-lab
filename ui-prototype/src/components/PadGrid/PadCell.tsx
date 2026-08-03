@@ -217,6 +217,7 @@ function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChan
             onClick={handleMute}
             aria-pressed={pad.mute}
             aria-label="Mute"
+            data-automation-compact="true"
             data-automation-target-id={padAutomationTarget(index, 'mute', `${pad.padName} Mute`).id}
             data-automation-target-name={padAutomationTarget(index, 'mute', `${pad.padName} Mute`).name}
           >
@@ -229,6 +230,7 @@ function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChan
             onClick={handleSolo}
             aria-pressed={pad.solo}
             aria-label="Solo"
+            data-automation-compact="true"
             data-automation-target-id={padAutomationTarget(index, 'solo', `${pad.padName} Solo`).id}
             data-automation-target-name={padAutomationTarget(index, 'solo', `${pad.padName} Solo`).name}
           >

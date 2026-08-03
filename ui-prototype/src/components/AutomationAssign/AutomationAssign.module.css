@@ -1,7 +1,8 @@
 .autoButton {
-  min-width: 42px;
+  width: 100%;
+  min-width: 0;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 10px;
   border: 1px solid rgba(82, 200, 232, 0.24);
   border-radius: 3px;
   background: rgba(82, 200, 232, 0.04);
@@ -9,7 +10,7 @@
   font-family: var(--font-mono);
   font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   cursor: pointer;
   transition: color 140ms, border-color 140ms, background 140ms, box-shadow 140ms;
 }
@@ -162,4 +163,18 @@
 :global(html[data-automation-assign="true"] [data-automation-target-id]:hover) {
   outline-color: var(--accent-cyan) !important;
   box-shadow: 0 0 0 2px rgba(82, 200, 232, 0.12), 0 0 13px rgba(82, 200, 232, 0.3) !important;
+}
+
+/* Compact adjacent controls such as M/S need an inner selection ring so
+   neighbouring highlights never collide. Their normal active colours remain. */
+:global(html[data-automation-assign="true"] [data-automation-compact="true"]) {
+  outline: none !important;
+  box-shadow: inset 0 0 0 1px rgba(82, 200, 232, 0.86) !important;
+}
+
+:global(html[data-automation-assign="true"] [data-automation-compact="true"]:hover) {
+  outline: none !important;
+  box-shadow:
+    inset 0 0 0 1px var(--accent-cyan),
+    inset 0 0 7px rgba(82, 200, 232, 0.18) !important;
 }

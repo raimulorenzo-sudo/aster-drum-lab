@@ -798,6 +798,7 @@ function ChannelStripBodyImpl({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onChange({ mute: !pad.mute }); }}
           aria-pressed={pad.mute}
+          data-automation-compact="true"
           data-automation-target-id={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).id}
           data-automation-target-name={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).name}
         >M</button>
@@ -811,6 +812,7 @@ function ChannelStripBodyImpl({
             onChange(on ? { solo: true, mute: false } : { solo: false });
           }}
           aria-pressed={pad.solo}
+          data-automation-compact="true"
           data-automation-target-id={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).id}
           data-automation-target-name={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).name}
         >S</button>

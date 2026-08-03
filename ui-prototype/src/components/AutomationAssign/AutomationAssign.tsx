@@ -250,7 +250,7 @@ export function AutomationModeButton() {
       title="Automation Assign"
       onClick={toggleMode}
     >
-      AUTO
+      AUTOMATION
     </button>
   );
 }
