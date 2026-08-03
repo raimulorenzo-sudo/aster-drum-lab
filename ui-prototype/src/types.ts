@@ -8,6 +8,8 @@ export type PlayMode = 'OneShot' | 'Gate';
 export interface WaveformChannel {
   min: number[];
   max: number[];
+  /** 各バケット内の極値順。0=min→max、1=max→min。 */
+  extremeOrder?: number[];
 }
 
 /**

@@ -82,11 +82,13 @@ namespace
         juce::Array<float> rawPeaks;
         juce::Array<float> rawMins[2];
         juce::Array<float> rawMaxs[2];
+        juce::Array<int> rawExtremeOrders[2];
         rawPeaks.ensureStorageAllocated(points);
         for (int channel = 0; channel < numChannels; ++channel)
         {
             rawMins[channel].ensureStorageAllocated(points);
             rawMaxs[channel].ensureStorageAllocated(points);
+            rawExtremeOrders[channel].ensureStorageAllocated(points);
         }
 
         for (int i = 0; i < points; ++i)
@@ -99,14 +101,25 @@ namespace
             {
                 float minimum = buffer->getSample(channel, start);
                 float maximum = minimum;
+                int minimumIndex = start;
+                int maximumIndex = start;
                 for (int sample = start + 1; sample < end; ++sample)
                 {
                     const float value = buffer->getSample(channel, sample);
-                    minimum = juce::jmin(minimum, value);
-                    maximum = juce::jmax(maximum, value);
+                    if (value < minimum)
+                    {
+                        minimum = value;
+                        minimumIndex = sample;
+                    }
+                    if (value > maximum)
+                    {
+                        maximum = value;
+                        maximumIndex = sample;
+                    }
                 }
                 rawMins[channel].add(minimum);
                 rawMaxs[channel].add(maximum);
+                rawExtremeOrders[channel].add(maximumIndex < minimumIndex ? 1 : 0);
                 bucketPeak = juce::jmax(bucketPeak, juce::jmax(std::abs(minimum), std::abs(maximum)));
             }
 
@@ -124,15 +137,19 @@ namespace
             auto* channelObject = new juce::DynamicObject();
             juce::Array<juce::var> minima;
             juce::Array<juce::var> maxima;
+            juce::Array<juce::var> extremeOrders;
             minima.ensureStorageAllocated(points);
             maxima.ensureStorageAllocated(points);
+            extremeOrders.ensureStorageAllocated(points);
             for (int i = 0; i < points; ++i)
             {
                 minima.add((double) juce::jlimit(-1.0f, 1.0f, rawMins[channel][i] * invPeak));
                 maxima.add((double) juce::jlimit(-1.0f, 1.0f, rawMaxs[channel][i] * invPeak));
+                extremeOrders.add(rawExtremeOrders[channel][i]);
             }
             channelObject->setProperty("min", minima);
             channelObject->setProperty("max", maxima);
+            channelObject->setProperty("extremeOrder", extremeOrders);
             preview.channels.add(juce::var(channelObject));
         }
 

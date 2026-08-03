@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './WaveformEditor.module.css';
 import type { PadParams, PreviewPlayback, WaveformChannel } from '../../types';
-import { waveformChannelToPath, waveformToPath } from '../../utils/waveform';
+import { waveformChannelToStrokePath, waveformToPath } from '../../utils/waveform';
 import { midiNoteName } from '../../data/padData';
 import { formatMs, formatTrimPercent } from '../../utils/parameterFormat';
 import { trimFromPad } from '../../utils/sampleTrim';
@@ -105,7 +105,13 @@ function WaveformEditorComponent({
   );
   const displayChannels = useMemo<WaveformChannel[]>(
     () => waveformChannels.map(channel => pad.reverse
-      ? { min: [...channel.min].reverse(), max: [...channel.max].reverse() }
+      ? {
+          min: [...channel.min].reverse(),
+          max: [...channel.max].reverse(),
+          extremeOrder: channel.extremeOrder
+            ? [...channel.extremeOrder].reverse().map(order => order === 1 ? 0 : 1)
+            : undefined,
+        }
       : channel),
     [pad.reverse, waveformChannels],
   );
@@ -129,15 +135,33 @@ function WaveformEditorComponent({
     () => (hasWaveform ? waveformToPath(samples, W, waveHeight) : null),
     [hasWaveform, samples, waveHeight],
   );
-  const signedMonoPath = useMemo(
-    () => displayChannels.length === 1
-      ? waveformChannelToPath(displayChannels[0], W, waveMid, waveHeight * 0.46)
+  const summedDisplayChannel = useMemo<WaveformChannel | null>(() => {
+    if (displayChannels.length === 0) return null;
+    if (displayChannels.length === 1) return displayChannels[0];
+
+    const pointCount = Math.min(
+      displayChannels[0].min.length,
+      displayChannels[0].max.length,
+      displayChannels[1].min.length,
+      displayChannels[1].max.length,
+    );
+    return {
+      min: Array.from({ length: pointCount }, (_, index) =>
+        ((displayChannels[0].min[index] ?? 0) + (displayChannels[1].min[index] ?? 0)) * 0.5),
+      max: Array.from({ length: pointCount }, (_, index) =>
+        ((displayChannels[0].max[index] ?? 0) + (displayChannels[1].max[index] ?? 0)) * 0.5),
+      extremeOrder: displayChannels[0].extremeOrder?.slice(0, pointCount),
+    };
+  }, [displayChannels]);
+  const monoStrokePath = useMemo(
+    () => summedDisplayChannel
+      ? waveformChannelToStrokePath(summedDisplayChannel, W, waveMid, waveHeight * 0.46)
       : '',
-    [displayChannels, waveHeight, waveMid],
+    [summedDisplayChannel, waveHeight, waveMid],
   );
-  const stereoPaths = useMemo(
+  const stereoStrokePaths = useMemo(
     () => displayChannels.slice(0, 2).map((channel, index) =>
-      waveformChannelToPath(channel, W, stereoCenters[index], stereoAmplitude)),
+      waveformChannelToStrokePath(channel, W, stereoCenters[index], stereoAmplitude)),
     [displayChannels, stereoAmplitude, stereoCenters[0], stereoCenters[1]],
   );
   const showStereoLanes = hasStereoWaveform && waveformDisplayMode === 'stereo';
@@ -687,11 +711,6 @@ function WaveformEditorComponent({
           }}
         >
           <defs>
-            <linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--wave-editor-wave)" stopOpacity="0.52" />
-              <stop offset="50%" stopColor="var(--wave-editor-wave)" stopOpacity="0.36" />
-              <stop offset="100%" stopColor="var(--wave-editor-wave)" stopOpacity="0.24" />
-            </linearGradient>
             <linearGradient id="fadeInRangeFill" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor="rgba(191,163,106,0.02)" />
               <stop offset="100%" stopColor="rgba(191,163,106,0.18)" />
@@ -732,36 +751,38 @@ function WaveformEditorComponent({
                 className={styles.waveLaneDivider}
               />
               <g className={styles.waveform}>
-                {stereoPaths.map((channelPath, index) => channelPath && (
+                {stereoStrokePaths.map((channelPath, index) => channelPath && (
                   <path
                     key={index}
                     d={channelPath}
-                    fill="url(#waveFill)"
+                    fill="none"
                     stroke="var(--wave-editor-wave-edge)"
-                    strokeWidth="0.55"
+                    strokeWidth="0.62"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                 ))}
               </g>
             </>
           )}
 
-          {!showStereoLanes && signedMonoPath && (
+          {!showStereoLanes && monoStrokePath && (
             <g className={styles.waveform}>
               <path
-                d={signedMonoPath}
-                fill="url(#waveFill)"
+                d={monoStrokePath}
+                fill="none"
                 stroke="var(--wave-editor-wave-edge)"
-                strokeWidth="0.55"
+                strokeWidth="0.62"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </g>
           )}
 
-          {!showStereoLanes && !signedMonoPath && hasWaveform && sumPath && (
+          {!showStereoLanes && !monoStrokePath && hasWaveform && sumPath && (
             <g className={styles.waveform} transform={`translate(0 ${waveTop})`}>
-              <path d={`${sumPath.top} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-              <path d={`${sumPath.bottom} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-              <path d={sumPath.top} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.55" fill="none" />
-              <path d={sumPath.bottom} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.55" fill="none" />
+              <path d={sumPath.top} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.62" fill="none" />
+              <path d={sumPath.bottom} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.62" fill="none" />
             </g>
           )}
 

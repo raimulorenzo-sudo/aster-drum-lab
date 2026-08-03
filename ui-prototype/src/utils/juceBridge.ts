@@ -212,6 +212,9 @@ function normalizeWaveformChannels(value: unknown): WaveformChannel[] | undefine
     return [{
       min: candidate.min.slice(0, count).map(clampSigned),
       max: candidate.max.slice(0, count).map(clampSigned),
+      extremeOrder: Array.isArray(candidate.extremeOrder)
+        ? candidate.extremeOrder.slice(0, count).map(value => Number(value) === 1 ? 1 : 0)
+        : undefined,
     }];
   });
 
