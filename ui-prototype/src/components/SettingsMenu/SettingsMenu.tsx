@@ -287,7 +287,7 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             </button>
             <div className={styles.title}>AUTOMATION SLOTS · 24</div>
             <div className={styles.automationIntro}>
-              LEARNを押してから割り当てたいノブを動かしてください。DAWにはASTER AUTO 01–24だけが表示されます。
+              Press LEARN, then move the control you want to assign. Only ASTER AUTO 01–24 appear in your DAW.
             </div>
             <div className={styles.automationList}>
               {automationSlots.map(slot => (
