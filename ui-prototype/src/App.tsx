@@ -37,7 +37,7 @@ import { updatePadClipLatch } from './utils/clipRegistry';
 import { triggerLayerFlash, updateLayerMeter } from './utils/layerLevelRegistry';
 import { updateCompMeter } from './utils/compMeterRegistry';
 import { updateResourceStats } from './utils/resourceRegistry';
-import { audioBufferToPeaks } from './utils/waveform';
+import { audioBufferToPeaks, audioBufferToWaveformChannels } from './utils/waveform';
 import { useUndoRedo } from './utils/useUndoRedo';
 import { countMissingSamples } from './utils/missingSamples';
 import { ensureLayers, patchAddLayer, patchRemoveLayer } from './utils/layerView';
@@ -250,6 +250,7 @@ async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> 
       fadeInMs: 0,
       fadeOutMs: 0,
       waveformPeaks: audioBufferToPeaks(audioBuffer, 600),
+      waveformChannels: audioBufferToWaveformChannels(audioBuffer, 2000),
     };
   } catch {
     return {};
@@ -1152,6 +1153,7 @@ export default function App() {
               fadeInMs: 0,
               fadeOutMs: 0,
               waveformPeaks: analysis.waveformPeaks ?? [],
+              waveformChannels: analysis.waveformChannels ?? [],
             };
             return { ...p, layers, selectedLayerIndex: layerIndex };
           }
@@ -1176,6 +1178,7 @@ export default function App() {
           fadeInMs: 0,
           fadeOutMs: 0,
           waveformPeaks: analysis.waveformPeaks ?? [],
+          waveformChannels: analysis.waveformChannels ?? [],
         };
       });
       if (!relink) return next;
@@ -1405,6 +1408,7 @@ export default function App() {
       layerName: undefined,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
     } as LayerParams;
     const newLayers = layers.map((l, i) => (i === layerIndex ? newLayer : l));
     const patch: Partial<PadParams> = { layers: newLayers };
@@ -1416,6 +1420,7 @@ export default function App() {
         sampleMissing: false,
         sampleLengthMs: undefined,
         waveformPeaks: undefined,
+        waveformChannels: undefined,
       });
     }
     updatePad(padIndex, patch);
@@ -1448,6 +1453,7 @@ export default function App() {
       layerName: undefined,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
     } as LayerParams;
 
     const patch: Partial<PadParams> = {
@@ -1458,6 +1464,7 @@ export default function App() {
       sampleMissing: false,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
       padName: initialPad.padName,            // カテゴリ名に戻す
       padColor: undefined,                     // Auto color
       // Pad-level 音作り系
@@ -1873,6 +1880,7 @@ export default function App() {
               originalSampleFilePath: '',
               sampleMissing: false,
               waveformPeaks: [],
+              waveformChannels: [],
             });
           }}
           onAddLayer={() => {

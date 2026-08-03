@@ -1,7 +1,6 @@
-/**
- * SVG path 文字列を生成する。waveform を「上下対称」に描画した
- * 縦長エンベロープ風のシルエット。
- */
+import type { WaveformChannel } from '../types';
+
+/** waveform を上下対称に描画する旧/SUM互換パス。 */
 export function waveformToPath(
   samples: number[],
   width: number,
@@ -25,6 +24,30 @@ export function waveformToPath(
     }
   }
   return { top, bottom };
+}
+
+/** 符号付き min/max エンベロープを、1本の塗りつぶしパスへ変換する。 */
+export function waveformChannelToPath(
+  channel: WaveformChannel,
+  width: number,
+  centerY: number,
+  amplitude: number,
+): string {
+  const n = Math.min(channel.min.length, channel.max.length);
+  if (n < 2) return '';
+
+  let path = '';
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * width;
+    const y = centerY - Math.max(-1, Math.min(1, channel.max[i] ?? 0)) * amplitude;
+    path += `${i === 0 ? 'M' : ' L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+  for (let i = n - 1; i >= 0; i--) {
+    const x = (i / (n - 1)) * width;
+    const y = centerY - Math.max(-1, Math.min(1, channel.min[i] ?? 0)) * amplitude;
+    path += ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
+  }
+  return `${path} Z`;
 }
 
 export function audioBufferToPeaks(buffer: AudioBuffer, length = 600): number[] {
@@ -54,6 +77,47 @@ export function audioBufferToPeaks(buffer: AudioBuffer, length = 600): number[] 
 
   if (maxPeak <= 0) return peaks.map(() => 0);
   return peaks.map(peak => Math.max(0, Math.min(1, peak / maxPeak)));
+}
+
+/** Browser preview用。最大2chを同一ピークで正規化した符号付き波形へ変換する。 */
+export function audioBufferToWaveformChannels(
+  buffer: AudioBuffer,
+  length = 2000,
+): WaveformChannel[] {
+  const numSamples = buffer.length;
+  const channelCount = Math.min(2, buffer.numberOfChannels);
+  if (numSamples <= 0 || channelCount <= 0) return [];
+
+  const points = Math.max(1, Math.min(length, numSamples));
+  const channels = Array.from({ length: channelCount }, () => ({
+    min: new Array<number>(points).fill(0),
+    max: new Array<number>(points).fill(0),
+  }));
+  let sharedPeak = 0;
+
+  for (let point = 0; point < points; point++) {
+    const start = Math.floor((point * numSamples) / points);
+    const end = Math.max(start + 1, Math.floor(((point + 1) * numSamples) / points));
+    for (let channel = 0; channel < channelCount; channel++) {
+      const data = buffer.getChannelData(channel);
+      let min = 0;
+      let max = 0;
+      for (let sample = start; sample < end; sample++) {
+        const value = data[sample] ?? 0;
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+      }
+      channels[channel].min[point] = min;
+      channels[channel].max[point] = max;
+      sharedPeak = Math.max(sharedPeak, Math.abs(min), Math.abs(max));
+    }
+  }
+
+  if (sharedPeak <= 0) return channels;
+  return channels.map(channel => ({
+    min: channel.min.map(value => Math.max(-1, Math.min(1, value / sharedPeak))),
+    max: channel.max.map(value => Math.max(-1, Math.min(1, value / sharedPeak))),
+  }));
 }
 
 export function waveformToBars(peaks: number[], length = 32): number[] {

@@ -35,6 +35,7 @@ const LAYER_LEVEL_KEYS = [
   'fadeOutMs',
   'sampleLengthMs',
   'waveformPeaks',
+  'waveformChannels',
   'reverse',
   'smartTrim',
   // Layer 単位で持つ EQ / FX / 極性反転 (PadParams 側にも optional として写しているのでキャストで通す)
@@ -154,6 +155,7 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     fadeOutMs: pad.fadeOutMs,
     sampleLengthMs: pad.sampleLengthMs,
     waveformPeaks: pad.waveformPeaks,
+    waveformChannels: pad.waveformChannels,
     reverse: pad.reverse,
     smartTrim: pad.smartTrim,
     mute: false,
@@ -206,6 +208,7 @@ export function ensureLayers(pad: PadParams): LayerParams[] {
       sampleMissing: false,
       layerName: `Layer ${index + 1}`,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
     };
   });
 }
@@ -228,6 +231,7 @@ export function patchAddLayer(pad: PadParams): Partial<PadParams> | null {
     sampleMissing: undefined,
     layerName: undefined,
     waveformPeaks: undefined,
+    waveformChannels: undefined,
     sampleLengthMs: undefined,
     mute: false,
     solo: false,
@@ -281,6 +285,7 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.fadeOutMs = newLayer0.fadeOutMs;
     patch.sampleLengthMs = newLayer0.sampleLengthMs;
     patch.waveformPeaks = newLayer0.waveformPeaks;
+    patch.waveformChannels = newLayer0.waveformChannels;
     patch.reverse = newLayer0.reverse;
     patch.smartTrim = newLayer0.smartTrim;
   }

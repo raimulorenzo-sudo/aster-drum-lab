@@ -11,7 +11,7 @@
  *   (C++ → JS via backend.emitByBackend called internally when C++ calls emitEventIfBrowserIsVisible)
  */
 
-import type { PadParams, PlayMode, KitPage, OutputMode, LayerParams, EqParams, FxSlot, FilterParams, FilterSlope } from '../types';
+import type { PadParams, PlayMode, KitPage, OutputMode, LayerParams, EqParams, FxSlot, FilterParams, FilterSlope, WaveformChannel } from '../types';
 import { NEUTRAL_EQ } from '../types';
 import { INITIAL_PADS } from '../data/padData';
 import {
@@ -101,6 +101,7 @@ export interface JucePadData {
   fadeOut: number;         // normalised 0..1 of playback range
   sampleLengthMs?: number; // actual sample duration when known
   waveformPeaks?: number[]; // lightweight 0..1 peaks generated from actual sample data
+  waveformChannels?: WaveformChannel[];
   reverse: boolean;
   playbackMode: string;    // "OneShot" | "Gate"
   chokeGroup: number;
@@ -158,6 +159,7 @@ export interface JuceLayerData {
   // Runtime-only (injected by padToWebVar, not persisted to .asterkit)
   sampleLengthMs?: number;
   waveformPeaks?: number[];
+  waveformChannels?: WaveformChannel[];
 }
 
 export interface JuceKitData {
@@ -194,6 +196,28 @@ function argbToHexColor(argb: number): string {
   return '#' + [r, g, b].map(n => n.toString(16).padStart(2, '0')).join('');
 }
 
+function normalizeWaveformChannels(value: unknown): WaveformChannel[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const channels = value.slice(0, 2).flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return [];
+    const candidate = raw as Partial<WaveformChannel>;
+    if (!Array.isArray(candidate.min) || !Array.isArray(candidate.max)) return [];
+    const count = Math.min(candidate.min.length, candidate.max.length);
+    if (count < 2) return [];
+    const clampSigned = (sample: unknown) => {
+      const number = Number(sample);
+      return Number.isFinite(number) ? Math.max(-1, Math.min(1, number)) : 0;
+    };
+    return [{
+      min: candidate.min.slice(0, count).map(clampSigned),
+      max: candidate.max.slice(0, count).map(clampSigned),
+    }];
+  });
+
+  return channels.length > 0 ? channels : undefined;
+}
+
 /**
  * Convert a single JuceLayerData to a React LayerParams.
  * fallbackLengthMs: top-level pad sampleLengthMs — used only when the layer
@@ -217,6 +241,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
   const waveformPeaks = Array.isArray(jl.waveformPeaks)
     ? jl.waveformPeaks.filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(1, Number(v))))
     : undefined;
+  const waveformChannels = normalizeWaveformChannels(jl.waveformChannels);
 
   return {
     sampleFileName: jl.sampleFileName,
@@ -231,6 +256,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     release:        jl.release,
     sampleLengthMs: layerLengthMs,
     waveformPeaks,
+    waveformChannels,
     startMs,
     endMs,
     fadeInMs:       jl.fadeIn  * playbackRangeMs,
@@ -422,6 +448,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
               sampleMissing: false,
               layerName: `Layer ${index + 1}`,
               waveformPeaks: undefined,
+              waveformChannels: undefined,
             };
       })
     : [flatLayer];
@@ -444,6 +471,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     waveformPeaks:  Array.isArray(jp.waveformPeaks)
       ? jp.waveformPeaks.filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(1, Number(v))))
       : [],
+    waveformChannels: normalizeWaveformChannels(jp.waveformChannels),
     startMs,
     endMs,
     fadeInMs:       jp.fadeIn  * playbackRangeMs,

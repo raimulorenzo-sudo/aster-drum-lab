@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './WaveformEditor.module.css';
-import type { PadParams, PreviewPlayback } from '../../types';
-import { waveformToPath } from '../../utils/waveform';
+import type { PadParams, PreviewPlayback, WaveformChannel } from '../../types';
+import { waveformChannelToPath, waveformToPath } from '../../utils/waveform';
 import { midiNoteName } from '../../data/padData';
 import { formatMs, formatTrimPercent } from '../../utils/parameterFormat';
 import { trimFromPad } from '../../utils/sampleTrim';
@@ -50,6 +50,7 @@ function WaveformEditorComponent({
   const [editingMidi, setEditingMidi] = useState(false);
   const [draggingHandle, setDraggingHandle] = useState<WaveHandle | null>(null);
   const [isSampleDragOver, setIsSampleDragOver] = useState(false);
+  const [waveformDisplayMode, setWaveformDisplayMode] = useState<'stereo' | 'sum'>('stereo');
 
   // ── View state (一時的 / 表示専用 / 保存対象外) ─────────────────
   const [viewStartPct, setViewStartPct] = useState(0);
@@ -61,6 +62,7 @@ function WaveformEditorComponent({
   useEffect(() => {
     setViewStartPct(0);
     setViewEndPct(1);
+    setWaveformDisplayMode('stereo');
   }, [padIndex, pad.sampleFilePath]);
 
   // Preview playhead position is updated around 30fps by requestAnimationFrame.
@@ -78,7 +80,16 @@ function WaveformEditorComponent({
   }, [padIndex, pad.padName]);
 
   const waveformPeaks = pad.waveformPeaks ?? [];
-  const hasWaveform = Boolean(pad.sampleFileName && !pad.sampleMissing && waveformPeaks.length > 1);
+  const waveformChannels = pad.waveformChannels ?? [];
+  const hasChannelWaveform = waveformChannels.some(channel =>
+    channel.min.length > 1 && channel.max.length > 1,
+  );
+  const hasWaveform = Boolean(
+    pad.sampleFileName
+    && !pad.sampleMissing
+    && (waveformPeaks.length > 1 || hasChannelWaveform),
+  );
+  const hasStereoWaveform = waveformChannels.length >= 2;
   const emptyWaveformText = pad.sampleMissing
     ? 'SAMPLE MISSING'
     : hasWaveform
@@ -92,6 +103,12 @@ function WaveformEditorComponent({
     () => (pad.reverse ? [...waveformPeaks].reverse() : waveformPeaks),
     [waveformPeaks, pad.reverse],
   );
+  const displayChannels = useMemo<WaveformChannel[]>(
+    () => waveformChannels.map(channel => pad.reverse
+      ? { min: [...channel.min].reverse(), max: [...channel.max].reverse() }
+      : channel),
+    [pad.reverse, waveformChannels],
+  );
 
   // 波形 SVG のサイズ (viewBox)
   const W = 1000;
@@ -100,11 +117,30 @@ function WaveformEditorComponent({
   const waveBottom = H - 18;
   const waveHeight = waveBottom - waveTop;
   const waveMid = waveTop + waveHeight / 2;
+  const stereoGap = 24;
+  const stereoLaneHeight = (waveHeight - stereoGap) / 2;
+  const stereoCenters = [
+    waveTop + stereoLaneHeight / 2,
+    waveBottom - stereoLaneHeight / 2,
+  ];
+  const stereoAmplitude = stereoLaneHeight * 0.46;
 
-  const path = useMemo(
+  const sumPath = useMemo(
     () => (hasWaveform ? waveformToPath(samples, W, waveHeight) : null),
     [hasWaveform, samples, waveHeight],
   );
+  const signedMonoPath = useMemo(
+    () => displayChannels.length === 1
+      ? waveformChannelToPath(displayChannels[0], W, waveMid, waveHeight * 0.46)
+      : '',
+    [displayChannels, waveHeight, waveMid],
+  );
+  const stereoPaths = useMemo(
+    () => displayChannels.slice(0, 2).map((channel, index) =>
+      waveformChannelToPath(channel, W, stereoCenters[index], stereoAmplitude)),
+    [displayChannels, stereoAmplitude, stereoCenters[0], stereoCenters[1]],
+  );
+  const showStereoLanes = hasStereoWaveform && waveformDisplayMode === 'stereo';
 
   const trim = trimFromPad(pad);
   const totalMs = trim.sampleLengthMs;
@@ -574,6 +610,26 @@ function WaveformEditorComponent({
         {/* ── 上部ツールレーン: 編集UIと被らない専用帯 ─────────────── */}
         {hasWaveform && (
           <div className={styles.waveToolLane}>
+            {hasStereoWaveform && (
+              <div className={styles.channelModeControls} role="group" aria-label="Waveform channel display">
+                <button
+                  type="button"
+                  className={`${styles.channelModeBtn} ${waveformDisplayMode === 'stereo' ? styles.channelModeBtnActive : ''}`}
+                  onClick={() => setWaveformDisplayMode('stereo')}
+                  aria-pressed={waveformDisplayMode === 'stereo'}
+                >
+                  STEREO
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.channelModeBtn} ${waveformDisplayMode === 'sum' ? styles.channelModeBtnActive : ''}`}
+                  onClick={() => setWaveformDisplayMode('sum')}
+                  aria-pressed={waveformDisplayMode === 'sum'}
+                >
+                  SUM
+                </button>
+              </div>
+            )}
             <div className={styles.zoomControls}>
               <button
                 type="button"
@@ -632,9 +688,9 @@ function WaveformEditorComponent({
         >
           <defs>
             <linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
-              <stop offset="50%" stopColor="rgba(56,189,248,0.18)" />
-              <stop offset="100%" stopColor="rgba(56,189,248,0.04)" />
+              <stop offset="0%" stopColor="var(--wave-editor-wave)" stopOpacity="0.52" />
+              <stop offset="50%" stopColor="var(--wave-editor-wave)" stopOpacity="0.36" />
+              <stop offset="100%" stopColor="var(--wave-editor-wave)" stopOpacity="0.24" />
             </linearGradient>
             <linearGradient id="fadeInRangeFill" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor="rgba(191,163,106,0.02)" />
@@ -646,22 +702,71 @@ function WaveformEditorComponent({
             </linearGradient>
           </defs>
 
-          {/* 背景の細い水平基準線 */}
-          <line
-            x1="0" y1={waveMid} x2={W} y2={waveMid}
-            stroke="rgba(56,189,248,0.06)" strokeWidth="0.5"
-          />
+          {/* 参考デザインの薄い時間/振幅グリッド */}
+          {[0.25, 0.5, 0.75].map(position => (
+            <line
+              key={`time-${position}`}
+              x1={W * position} y1={waveTop} x2={W * position} y2={waveBottom}
+              className={styles.waveGridLine}
+            />
+          ))}
+          {(showStereoLanes
+            ? stereoCenters.flatMap(center => [-0.75, -0.375, 0, 0.375, 0.75]
+                .map(offset => center + stereoAmplitude * offset))
+            : [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]
+                .map(offset => waveMid + waveHeight * 0.46 * offset)
+          ).map((position, index) => (
+            <line
+              key={`level-${index}`}
+              x1="0" y1={position} x2={W} y2={position}
+              className={showStereoLanes
+                ? (index % 5 === 2 ? styles.waveZeroLine : styles.waveGridLine)
+                : (index === 3 ? styles.waveZeroLine : styles.waveGridLine)}
+            />
+          ))}
 
-          {hasWaveform && path && (
+          {showStereoLanes && (
             <>
-              {/* 波形 (上下対称) */}
-              <g className={styles.waveform} transform={`translate(0 ${waveTop})`}>
-                <path d={`${path.top} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-                <path d={`${path.bottom} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-                <path d={path.top} stroke="var(--wave-editor-wave)" strokeWidth="0.9" fill="none" />
-                <path d={path.bottom} stroke="var(--wave-editor-wave)" strokeWidth="0.9" fill="none" />
+              <line
+                x1="0" y1={waveMid} x2={W} y2={waveMid}
+                className={styles.waveLaneDivider}
+              />
+              <g className={styles.waveform}>
+                {stereoPaths.map((channelPath, index) => channelPath && (
+                  <path
+                    key={index}
+                    d={channelPath}
+                    fill="url(#waveFill)"
+                    stroke="var(--wave-editor-wave-edge)"
+                    strokeWidth="0.55"
+                  />
+                ))}
               </g>
+            </>
+          )}
 
+          {!showStereoLanes && signedMonoPath && (
+            <g className={styles.waveform}>
+              <path
+                d={signedMonoPath}
+                fill="url(#waveFill)"
+                stroke="var(--wave-editor-wave-edge)"
+                strokeWidth="0.55"
+              />
+            </g>
+          )}
+
+          {!showStereoLanes && !signedMonoPath && hasWaveform && sumPath && (
+            <g className={styles.waveform} transform={`translate(0 ${waveTop})`}>
+              <path d={`${sumPath.top} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
+              <path d={`${sumPath.bottom} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
+              <path d={sumPath.top} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.55" fill="none" />
+              <path d={sumPath.bottom} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.55" fill="none" />
+            </g>
+          )}
+
+          {hasWaveform && (
+            <>
               {/* 範囲外 (start より前 / end より後) を暗く */}
               <rect x={0} y={waveTop} width={startX} height={waveHeight} fill="rgba(0,0,0,0.55)" />
               <rect x={endX} y={waveTop} width={W - endX} height={waveHeight} fill="rgba(0,0,0,0.55)" />
@@ -794,6 +899,21 @@ function WaveformEditorComponent({
             </>
           )}
         </svg>
+
+        {hasWaveform && (
+          <div className={styles.waveChannelLabels} aria-hidden="true">
+            {showStereoLanes ? (
+              <>
+                <span className={styles.waveChannelLabel} style={{ top: '23%' }}>L</span>
+                <span className={styles.waveChannelLabel} style={{ top: '72%' }}>R</span>
+              </>
+            ) : (
+              <span className={styles.waveChannelLabel} style={{ top: '47%' }}>
+                {hasStereoWaveform ? 'SUM' : 'MONO'}
+              </span>
+            )}
+          </div>
+        )}
 
         {emptyWaveformText && !isSampleDragOver && (
           <div className={styles.emptyWaveformPrompt} aria-hidden="true">

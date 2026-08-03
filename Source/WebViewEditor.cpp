@@ -59,44 +59,84 @@ namespace
         return nullptr;
     }
 
-    juce::Array<juce::var> buildWaveformPeaks(const juce::AudioBuffer<float>* buffer,
-                                               int targetPoints = 600)
+    struct WaveformPreview
     {
         juce::Array<juce::var> peaks;
+        juce::Array<juce::var> channels;
+    };
+
+    WaveformPreview buildWaveformPreview(const juce::AudioBuffer<float>* buffer,
+                                         int targetPoints = 2000)
+    {
+        WaveformPreview preview;
 
         if (buffer == nullptr || buffer->getNumSamples() <= 0 || buffer->getNumChannels() <= 0)
-            return peaks;
+            return preview;
 
         const int numSamples = buffer->getNumSamples();
-        const int numChannels = buffer->getNumChannels();
+        const int numChannels = juce::jmin(2, buffer->getNumChannels());
         const int points = juce::jlimit(1, targetPoints, numSamples);
-        peaks.ensureStorageAllocated(points);
+        preview.peaks.ensureStorageAllocated(points);
 
-        float maxPeak = 0.0f;
-        juce::Array<float> raw;
-        raw.ensureStorageAllocated(points);
+        float sharedPeak = 0.0f;
+        juce::Array<float> rawPeaks;
+        juce::Array<float> rawMins[2];
+        juce::Array<float> rawMaxs[2];
+        rawPeaks.ensureStorageAllocated(points);
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            rawMins[channel].ensureStorageAllocated(points);
+            rawMaxs[channel].ensureStorageAllocated(points);
+        }
 
         for (int i = 0; i < points; ++i)
         {
             const int start = (int) ((int64) i * numSamples / points);
             const int end = juce::jmax(start + 1, (int) ((int64) (i + 1) * numSamples / points));
 
-            float peak = 0.0f;
-            for (int sample = start; sample < end; ++sample)
+            float bucketPeak = 0.0f;
+            for (int channel = 0; channel < numChannels; ++channel)
             {
-                for (int channel = 0; channel < numChannels; ++channel)
-                    peak = juce::jmax(peak, std::abs(buffer->getSample(channel, sample)));
+                float minimum = buffer->getSample(channel, start);
+                float maximum = minimum;
+                for (int sample = start + 1; sample < end; ++sample)
+                {
+                    const float value = buffer->getSample(channel, sample);
+                    minimum = juce::jmin(minimum, value);
+                    maximum = juce::jmax(maximum, value);
+                }
+                rawMins[channel].add(minimum);
+                rawMaxs[channel].add(maximum);
+                bucketPeak = juce::jmax(bucketPeak, juce::jmax(std::abs(minimum), std::abs(maximum)));
             }
 
-            raw.add(peak);
-            maxPeak = juce::jmax(maxPeak, peak);
+            rawPeaks.add(bucketPeak);
+            sharedPeak = juce::jmax(sharedPeak, bucketPeak);
         }
 
-        const float invMax = maxPeak > 0.0f ? 1.0f / maxPeak : 0.0f;
-        for (float peak : raw)
-            peaks.add((double) juce::jlimit(0.0f, 1.0f, peak * invMax));
+        const float invPeak = sharedPeak > 0.0f ? 1.0f / sharedPeak : 0.0f;
+        for (float peak : rawPeaks)
+            preview.peaks.add((double) juce::jlimit(0.0f, 1.0f, peak * invPeak));
 
-        return peaks;
+        preview.channels.ensureStorageAllocated(numChannels);
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            auto* channelObject = new juce::DynamicObject();
+            juce::Array<juce::var> minima;
+            juce::Array<juce::var> maxima;
+            minima.ensureStorageAllocated(points);
+            maxima.ensureStorageAllocated(points);
+            for (int i = 0; i < points; ++i)
+            {
+                minima.add((double) juce::jlimit(-1.0f, 1.0f, rawMins[channel][i] * invPeak));
+                maxima.add((double) juce::jlimit(-1.0f, 1.0f, rawMaxs[channel][i] * invPeak));
+            }
+            channelObject->setProperty("min", minima);
+            channelObject->setProperty("max", maxima);
+            preview.channels.add(juce::var(channelObject));
+        }
+
+        return preview;
     }
 
     juce::String filesForLog(const juce::StringArray& files)
@@ -763,8 +803,10 @@ juce::var WebViewEditor::padToWebVar(int padIndex) const
         const double len0Ms = (buf0 != nullptr && buf0->getNumSamples() > 0 && sr0 > 0.0)
                                ? (static_cast<double>(buf0->getNumSamples()) / sr0) * 1000.0
                                : 0.0;
+        const auto waveform0 = buildWaveformPreview(buf0);
         obj->setProperty("sampleLengthMs", len0Ms);
-        obj->setProperty("waveformPeaks",  buildWaveformPeaks(buf0));
+        obj->setProperty("waveformPeaks", waveform0.peaks);
+        obj->setProperty("waveformChannels", waveform0.channels);
 
         // ── per-Layer: 各 Layer のバッファから sampleLengthMs / waveformPeaks を生成 ──
         // composePadView() が選択中 Layer の値を flat に上書きするため、
@@ -784,8 +826,10 @@ juce::var WebViewEditor::padToWebVar(int padIndex) const
                     const double len = (buf != nullptr && buf->getNumSamples() > 0 && sr > 0.0)
                                        ? (static_cast<double>(buf->getNumSamples()) / sr) * 1000.0
                                        : 0.0;
+                    const auto waveform = buildWaveformPreview(buf);
                     lo->setProperty("sampleLengthMs", len);
-                    lo->setProperty("waveformPeaks",  buildWaveformPeaks(buf));
+                    lo->setProperty("waveformPeaks", waveform.peaks);
+                    lo->setProperty("waveformChannels", waveform.channels);
 
                     juce::Logger::writeToLog(
                         "[ASTER WFM] padToWebVar padIndex=" + juce::String(padIndex)

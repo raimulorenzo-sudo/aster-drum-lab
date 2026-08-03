@@ -4,6 +4,12 @@
  */
 export type PlayMode = 'OneShot' | 'Gate';
 
+/** 波形プレビュー用の符号付き min/max エンベロープ（L/R 共通スケール）。 */
+export interface WaveformChannel {
+  min: number[];
+  max: number[];
+}
+
 /**
  * Layer のすべてのパラメータ（1 Pad は複数 Layer を持てる）。
  * JUCE 側の LayerData と同期する。
@@ -36,6 +42,7 @@ export interface LayerParams {
   fadeOutMs: number;
   sampleLengthMs?: number;
   waveformPeaks?: number[];
+  waveformChannels?: WaveformChannel[];
 
   // 再生
   reverse: boolean;
@@ -198,6 +205,7 @@ export interface PadParams {
   // トリム
   sampleLengthMs?: number; // ms。JUCE 側から実サンプル長が来る場合はそれを使う
   waveformPeaks?: number[]; // 0..1 の軽量ピーク列。空/未定義なら波形なし
+  waveformChannels?: WaveformChannel[]; // mono=1、stereo=2 の符号付き min/max 波形
   startMs: number;         // ms
   endMs: number;           // ms
   fadeInMs: number;
