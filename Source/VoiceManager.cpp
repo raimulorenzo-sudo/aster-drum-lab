@@ -463,18 +463,26 @@ bool VoiceManager::hasActiveVoices() const noexcept
 // オーディオレンダリング（マルチアウト対応）
 // 呼び出し元が fileManager の読み取りロックを保持している前提
 // ─────────────────────────────────────────────────────────────────────────────
+void VoiceManager::beginProcessBlock() noexcept
+{
+    // Pad peaks are atomic and accumulate until the UI consumes them. These
+    // non-atomic per-block meters are cleared exactly once even when the audio
+    // block is rendered in multiple MIDI-timestamped segments.
+    for (auto& pl : layerPeakLevels) pl.fill(0.0f);
+    for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
+}
+
 void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
                             int                              busCount,
                             OutputMode                       outputMode,
                             const KitData&                   kit,
                             const AudioFileManager&          files,
+                            int                              startSample,
                             int                              numSamples,
                             double                           hostSampleRate)
 {
-    // Pad peaks accumulate until the next UI read so DAW buffer size and the
-    // message-thread timer phase cannot make short transients disappear.
-    for (auto& pl : layerPeakLevels) pl.fill(0.0f);
-    for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
+    if (numSamples <= 0)
+        return;
 
     const bool anySoloActive = std::any_of(kit.pads.begin(), kit.pads.end(),
                                            [] (const PadData& p) { return p.solo; });
@@ -537,7 +545,7 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         }
 
         const auto& layer = pad.layers[static_cast<size_t>(voice.layerIndex)];
-        voice.render(*src, *dst, numSamples, layer, hostSampleRate);
+        voice.render(*src, *dst, startSample, numSamples, layer, hostSampleRate);
 
         // ── パッドのピークを集計 ──────────────────────────────────────────
         const auto pu = static_cast<size_t>(voice.padIndex);

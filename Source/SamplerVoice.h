@@ -177,6 +177,7 @@ struct DrumVoice
     // 戻り値: 発音継続中なら true、終了したら false
     bool render(const juce::AudioBuffer<float>& source,
                 juce::AudioBuffer<float>&       output,
+                int                             outputStartSample,
                 int                             numSamples,
                 const LayerData&                layer,
                 double                          hostSampleRate) noexcept;

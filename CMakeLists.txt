@@ -13,6 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ASTER_COPY_PLUGIN_AFTER_BUILD
     "Copy built plug-ins into the current user's plug-in folders"
     ON)
+option(ASTER_BUILD_TESTS
+    "Build ASTER DSP regression tests"
+    OFF)
 
 # ── JUCE 8 を自動ダウンロード ─────────────────────────────────────────────────
 # 初回 configure で JUCE をクローンします。
@@ -149,3 +152,24 @@ target_link_libraries(DrumSampler
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+if(ASTER_BUILD_TESTS)
+    enable_testing()
+
+    add_executable(DrumSamplerTimingTests
+        Tests/MidiTimingTest.cpp
+    )
+
+    target_include_directories(DrumSamplerTimingTests
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+            "${juce_SOURCE_DIR}/modules"
+    )
+
+    target_link_libraries(DrumSamplerTimingTests
+        PRIVATE
+            DrumSampler
+    )
+
+    add_test(NAME DrumSamplerMidiTiming COMMAND DrumSamplerTimingTests)
+endif()

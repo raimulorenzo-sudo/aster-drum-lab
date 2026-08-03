@@ -54,11 +54,13 @@ public:
     // busCount は busBuffers 配列の長さ（最大 NUM_OUTPUTS）。
     // kit は voice → outputAssign の参照に使う（const 参照のみ）。
     // 呼び出し前に fileManager の読み取りロックを保持すること。
+    void beginProcessBlock() noexcept;
     void process(juce::AudioBuffer<float>* const* busBuffers,
                  int                              busCount,
                  OutputMode                       outputMode,
                  const KitData&                   kit,
                  const AudioFileManager&          files,
+                 int                              startSample,
                  int                              numSamples,
                  double                           hostSampleRate);
 

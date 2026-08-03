@@ -470,8 +470,8 @@ void DrumSamplerAudioProcessor::releaseResources()
 // processBlock  ─  オーディオ処理のメインループ（リアルタイムスレッド）
 //
 // 呼ばれるたびに:
-//   1. MIDI メッセージを処理して VoiceManager に発音/停止を指示
-//   2. アクティブな全ボイスをレンダリングして buffer に加算
+//   1. MIDI イベント位置までアクティブな Voice をレンダリング
+//   2. そのサンプル位置で発音/停止を処理し、次のイベントまで繰り返す
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer&         midiMessages)
@@ -507,9 +507,51 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // ── 読み取りロックをブロック全体で保持 ────────────────────────────────
     juce::ScopedReadLock rl(fileManager.getReadWriteLock());
 
-    // ── MIDI イベントを処理 ────────────────────────────────────────────────
+    // ── 有効バスのサブバッファを集める ────────────────────────────────────
+    // バスごとに `getBusBuffer<float>(buffer, false, i)` で AudioBuffer を取り出す。
+    // 無効バスや非ステレオバスは nullptr を入れる（VoiceManager 側でスキップ）。
+    std::array<juce::AudioBuffer<float>, NUM_OUTPUTS> busBufStorage;
+    std::array<juce::AudioBuffer<float>*, NUM_OUTPUTS> busBuffers {};
+    const int numBuses = juce::jmin(getBusCount(false), NUM_OUTPUTS);
+
+    for (int i = 0; i < numBuses; ++i)
+    {
+        auto* bus = getBus(false, i);
+        if (bus != nullptr && bus->isEnabled())
+        {
+            busBufStorage[static_cast<size_t>(i)] = getBusBuffer(buffer, false, i);
+            if (busBufStorage[static_cast<size_t>(i)].getNumChannels() >= 2)
+                busBuffers[static_cast<size_t>(i)] = &busBufStorage[static_cast<size_t>(i)];
+        }
+    }
+
+    voiceManager.beginProcessBlock();
+    bool renderedAnySegment = false;
+    int renderPosition = 0;
+
+    const auto renderVoicesUntil = [&] (int endSample)
+    {
+        const int clampedEnd = juce::jlimit(renderPosition, numSamples, endSample);
+        const int segmentLength = clampedEnd - renderPosition;
+        if (segmentLength > 0 && busBuffers[0] != nullptr && voiceManager.hasActiveVoices())
+        {
+            voiceManager.process(busBuffers.data(),
+                                 numBuses,
+                                 kit.outputMode,
+                                 kit,
+                                 fileManager,
+                                 renderPosition,
+                                 segmentLength,
+                                 hostSampleRate);
+            renderedAnySegment = true;
+        }
+        renderPosition = clampedEnd;
+    };
+
+    // ── MIDI イベントをサンプル位置どおりに処理 ────────────────────────────
     for (const auto meta : midiMessages)
     {
+        renderVoicesUntil(juce::jlimit(0, numSamples, meta.samplePosition));
         const auto msg = meta.getMessage();
 
         if (msg.isNoteOn())
@@ -549,7 +591,9 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    if (! voiceManager.hasActiveVoices())
+    renderVoicesUntil(numSamples);
+
+    if (! renderedAnySegment && ! voiceManager.hasActiveVoices())
     {
         voiceManager.clearPadLevels();
         markAudioActivity();
@@ -559,39 +603,12 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     markAudioActivity();
 
-    // ── 有効バスのサブバッファを集める ────────────────────────────────────
-    // バスごとに `getBusBuffer<float>(buffer, false, i)` で AudioBuffer を取り出す。
-    // 無効バスや非ステレオバスは nullptr を入れる（VoiceManager 側でスキップ）。
-    std::array<juce::AudioBuffer<float>, NUM_OUTPUTS> busBufStorage;
-    std::array<juce::AudioBuffer<float>*, NUM_OUTPUTS> busBuffers {};
-    const int numBuses = juce::jmin(getBusCount(false), NUM_OUTPUTS);
-
-    for (int i = 0; i < numBuses; ++i)
-    {
-        auto* bus = getBus(false, i);
-        if (bus != nullptr && bus->isEnabled())
-        {
-            busBufStorage[static_cast<size_t>(i)] = getBusBuffer(buffer, false, i);
-            if (busBufStorage[static_cast<size_t>(i)].getNumChannels() >= 2)
-                busBuffers[static_cast<size_t>(i)] = &busBufStorage[static_cast<size_t>(i)];
-        }
-    }
-
     // バス 0 が無効 or 存在しないなら何もできない
     if (busBuffers[0] == nullptr)
     {
         finishCpuMeasurement();
         return;
     }
-
-    // ── マルチアウトレンダリング ──────────────────────────────────────────
-    voiceManager.process(busBuffers.data(),
-                         numBuses,
-                         kit.outputMode,
-                         kit,
-                         fileManager,
-                         numSamples,
-                         hostSampleRate);
 
     // ── マスター出力ボリューム適用 ───────────────────────────────────────
     // フェーダー位置 → 線形ゲイン。全有効バスへ均一に掛け、ブロック間は

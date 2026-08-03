@@ -505,6 +505,7 @@ void DrumVoice::forceRelease(float releaseTimeSec, double hostSampleRate) noexce
 // ─────────────────────────────────────────────────────────────────────────────
 bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                        juce::AudioBuffer<float>&       output,
+                       int                             outputStartSample,
                        int                             numSamples,
                        const LayerData&                layer,
                        double                          hostSampleRate) noexcept
@@ -523,8 +524,14 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
     const float* srcR   = isStereo ? source.getReadPointer(1) : srcL;
 
     if (output.getNumChannels() < 2) { isActive = false; return false; }
-    float* outL = output.getWritePointer(0);
-    float* outR = output.getWritePointer(1);
+    if (outputStartSample < 0 || outputStartSample + numSamples > output.getNumSamples())
+    {
+        jassertfalse;
+        return isActive;
+    }
+
+    float* outL = output.getWritePointer(0, outputStartSample);
+    float* outR = output.getWritePointer(1, outputStartSample);
     const bool useEq = layer.fxChain.empty() && eqIsAudible(layer.eq) && hostSampleRate > 0.0;
     const auto eqCoeffs = useEq ? makeEqCoefficients(layer.eq, hostSampleRate)
                                 : std::array<BiquadCoefficients, 4> {};
