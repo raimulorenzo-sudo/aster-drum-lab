@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './MixerView.module.css';
 import { Knob } from '../Knob/Knob';
+import { SettingsMenu } from '../SettingsMenu/SettingsMenu';
 import { OutputAssignDropdown } from '../OutputAssignDropdown/OutputAssignDropdown';
 import { pageRange } from '../../data/padData';
 import { defaultPadParam } from '../../data/parameterSpecs';
@@ -83,6 +84,8 @@ function MixerViewComponent({
   const routingStatus = useMemo(() => detectRoutingStatus(pads), [pads]);
   const [customRoutingSnapshot, setCustomRoutingSnapshot] = useState<number[] | null>(null);
   const canRecallCustomRouting = customRoutingSnapshot !== null && customRoutingSnapshot.length === pads.length;
+  const settingsGearRef = useRef<HTMLButtonElement | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ── Multi-selection editing (一時的。保存しない) ────────────────────────
   // selection: 選択中チャンネルの絶対 index 集合。空 = 単一 selectedIndex のみ扱う。
@@ -416,13 +419,24 @@ function MixerViewComponent({
 
       {/* ── フッター ─────────────────────────────────────────────── */}
       <div className={styles.footer}>
-        <button className={styles.gear} aria-label="mixer settings">
+        <button
+          ref={settingsGearRef}
+          className={styles.gear}
+          aria-label="settings"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen(open => !open)}
+        >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
             <path d="M9 2.2 10.1 4.1 12.3 4.3 12.8 6.4 14.5 7.8 13.5 9.8 13.9 12 11.9 13 10.7 14.9 8.5 14.3 6.5 15 5.4 13 3.3 12.5 3.6 10.3 2.2 8.7 3.7 7.1 3.9 4.9 6.1 4.5 7.4 2.8Z"
               fill="currentColor" opacity="0.9" />
             <circle cx="9" cy="9" r="2.3" fill="var(--bg-deep)" />
           </svg>
         </button>
+        <SettingsMenu
+          anchorRef={settingsGearRef}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
         <ResourceMeter kind="cpu" label="CPU" />
         <ResourceMeter kind="mem" label="MEM" />
         <MasterOutputBlock
