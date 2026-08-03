@@ -610,60 +610,88 @@ function FxModule({
           </>
         )}
         {slot.type === 'COMPRESSOR' && (
-          <>
-            <Knob
-              size={32}
-              label="THR"
-              value={slot.params.threshold}
-              min={-48}
-              max={0}
-              defaultValue={-12}
-              valueText={`${Math.round(slot.params.threshold)} dB`}
-              parseInput={parseNumericText}
-              onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, threshold: v } } : s)}
-            />
-            <Knob
-              size={32}
-              label="RATIO"
-              value={slot.params.ratio}
-              min={1}
-              max={20}
-              defaultValue={4}
-              valueText={`${slot.params.ratio.toFixed(1)}:1`}
-              parseInput={parseNumericText}
-              onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, ratio: v } } : s)}
-            />
-            <Knob
-              size={32}
-              label="ATK"
-              value={slot.params.attack}
-              min={1}
-              max={80}
-              defaultValue={8}
-              valueText={`${Math.round(slot.params.attack)} ms`}
-              parseInput={parseNumericText}
-              onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, attack: v } } : s)}
-            />
-            <Knob
-              size={32}
-              label="REL"
-              value={slot.params.release}
-              min={10}
-              max={500}
-              defaultValue={80}
-              valueText={`${Math.round(slot.params.release)} ms`}
-              parseInput={parseNumericText}
-              onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, release: v } } : s)}
-            />
-            <Knob
-              size={32}
-              label="MIX"
-              value={slot.params.mix}
-              defaultValue={1}
-              valueText={fmtPercent(slot.params.mix)}
-              onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, mix: v } } : s)}
-            />
-          </>
+          <div className={styles.compControls}>
+            <div className={styles.compDynamicsRow}>
+              <Knob
+                size={32}
+                label="THR"
+                value={slot.params.threshold}
+                min={-48}
+                max={0}
+                defaultValue={-12}
+                valueText={`${Math.round(slot.params.threshold)} dB`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, threshold: v } } : s)}
+              />
+              <Knob
+                size={32}
+                label="RATIO"
+                value={slot.params.ratio}
+                min={1}
+                max={20}
+                defaultValue={4}
+                valueText={`${slot.params.ratio.toFixed(1)}:1`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, ratio: v } } : s)}
+              />
+              <Knob
+                size={32}
+                label="ATK"
+                value={slot.params.attack}
+                min={1}
+                max={80}
+                defaultValue={8}
+                valueText={`${Math.round(slot.params.attack)} ms`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, attack: v } } : s)}
+              />
+              <Knob
+                size={32}
+                label="REL"
+                value={slot.params.release}
+                min={10}
+                max={500}
+                defaultValue={80}
+                valueText={`${Math.round(slot.params.release)} ms`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, release: v } } : s)}
+              />
+            </div>
+            <div className={styles.compFlowRow} aria-label="Compressor gain flow: Make Up, Mix, Output">
+              <Knob
+                size={34}
+                label="MAKE UP"
+                value={slot.params.makeup}
+                min={0}
+                max={24}
+                defaultValue={0}
+                valueText={`${fmtDb(slot.params.makeup)} dB`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, makeup: v } } : s)}
+              />
+              <span className={styles.signalArrow} aria-hidden>→</span>
+              <Knob
+                size={34}
+                label="MIX"
+                value={slot.params.mix}
+                defaultValue={1}
+                valueText={fmtPercent(slot.params.mix)}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, mix: v } } : s)}
+              />
+              <span className={styles.signalArrow} aria-hidden>→</span>
+              <Knob
+                size={34}
+                label="OUTPUT"
+                value={slot.params.output}
+                min={-24}
+                max={12}
+                defaultValue={0}
+                valueText={`${fmtDb(slot.params.output)} dB`}
+                parseInput={parseNumericText}
+                onChange={v => onPatch(s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, output: v } } : s)}
+              />
+            </div>
+          </div>
         )}
       </div>
       {slot.type === 'COMPRESSOR' && <CompReductionMeter slotIndex={slotIndex} />}

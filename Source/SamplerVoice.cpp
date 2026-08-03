@@ -161,6 +161,7 @@ namespace
         float transientSlowCoeff { 0.0f };
         float compressorAttackCoeff { 0.0f };
         float compressorReleaseCoeff { 0.0f };
+        float compressorGainCoeff { 0.0f };
     };
 
     float envelopeCoeff(float timeMs, double sampleRate) noexcept
@@ -336,12 +337,31 @@ namespace
                                   size_t stateIndex,
                                   bool left,
                                   float attackCoeff,
-                                  float releaseCoeff) noexcept
+                                  float releaseCoeff,
+                                  float gainCoeff) noexcept
     {
         const float threshold = juce::jlimit(-48.0f, 0.0f, compressor.threshold);
         const float ratio = juce::jlimit(1.0f, 20.0f, compressor.ratio);
         const float mix = juce::jlimit(0.0f, 1.0f, compressor.mix);
         auto& env = left ? state.compressorEnvLeft[stateIndex] : state.compressorEnvRight[stateIndex];
+        auto& makeupGain = left ? state.compressorMakeupLeft[stateIndex] : state.compressorMakeupRight[stateIndex];
+        auto& outputGain = left ? state.compressorOutputLeft[stateIndex] : state.compressorOutputRight[stateIndex];
+        auto& gainInitialised = left ? state.compressorGainInitialisedLeft[stateIndex]
+                                     : state.compressorGainInitialisedRight[stateIndex];
+
+        const float targetMakeupGain = juce::Decibels::decibelsToGain(juce::jlimit(0.0f, 24.0f, compressor.makeupDb));
+        const float targetOutputGain = juce::Decibels::decibelsToGain(juce::jlimit(-24.0f, 12.0f, compressor.outputDb));
+        if (! gainInitialised)
+        {
+            makeupGain = targetMakeupGain;
+            outputGain = targetOutputGain;
+            gainInitialised = true;
+        }
+        else
+        {
+            makeupGain = gainCoeff * makeupGain + (1.0f - gainCoeff) * targetMakeupGain;
+            outputGain = gainCoeff * outputGain + (1.0f - gainCoeff) * targetOutputGain;
+        }
 
         const float level = std::abs(x);
         const float coeff = level > env ? attackCoeff : releaseCoeff;
@@ -360,8 +380,8 @@ namespace
         if (reductionDb > state.compReductionDb[stateIndex])
             state.compReductionDb[stateIndex] = reductionDb;
 
-        const float wet = x * juce::Decibels::decibelsToGain(gainDb);
-        return x + (wet - x) * mix;
+        const float wet = x * juce::Decibels::decibelsToGain(gainDb) * makeupGain;
+        return (x + (wet - x) * mix) * outputGain;
     }
 
     float processFxChainSample(float x,
@@ -396,7 +416,8 @@ namespace
             else if (fx.type == RuntimeFxType::Compressor)
             {
                 x = processCompressorSample(x, fx.compressor, state, fx.stateIndex, left,
-                                            fx.compressorAttackCoeff, fx.compressorReleaseCoeff);
+                                            fx.compressorAttackCoeff, fx.compressorReleaseCoeff,
+                                            fx.compressorGainCoeff);
             }
         }
         return x;
@@ -598,8 +619,9 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                 fx.transientSlowCoeff = envelopeCoeff(85.0f, hostSampleRate);
             }
             else if (slot.type == LayerFxType::Compressor
-                  && slot.compressor.mix > 0.001f
-                  && slot.compressor.ratio > 1.001f)
+                  && ((slot.compressor.mix > 0.001f
+                       && (slot.compressor.ratio > 1.001f || slot.compressor.makeupDb > 0.001f))
+                      || std::abs(slot.compressor.outputDb) > 0.001f))
             {
                 auto& fx = runtimeFx[runtimeFxCount++];
                 fx.type = RuntimeFxType::Compressor;
@@ -607,6 +629,7 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                 fx.compressor = slot.compressor;
                 fx.compressorAttackCoeff = envelopeCoeff(slot.compressor.attack, hostSampleRate);
                 fx.compressorReleaseCoeff = envelopeCoeff(slot.compressor.release, hostSampleRate);
+                fx.compressorGainCoeff = envelopeCoeff(5.0f, hostSampleRate);
             }
         }
     }

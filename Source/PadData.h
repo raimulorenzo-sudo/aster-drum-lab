@@ -91,7 +91,9 @@ struct LayerCompressorFx
     float ratio { 4.0f };
     float attack { 8.0f };
     float release { 80.0f };
+    float makeupDb { 0.0f };
     float mix { 1.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerFxSlot

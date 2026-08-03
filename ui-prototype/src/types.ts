@@ -118,7 +118,9 @@ export interface CompressorParams {
   ratio: number;
   attack: number;
   release: number;
+  makeup: number;
   mix: number;
+  output: number;
 }
 
 /** ASTER シンプル 4 band EQ パラメータ。Low/High は shelf、Mid は bell。 */

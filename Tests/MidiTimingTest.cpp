@@ -35,6 +35,71 @@ int firstAudibleSample(const juce::AudioBuffer<float>& buffer)
 
     return -1;
 }
+
+bool renderCompressorLevel(const juce::File& sampleFile,
+                           float makeupDb,
+                           float mix,
+                           float outputDb,
+                           bool bypassed,
+                           float& level)
+{
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, sampleFile))
+        return false;
+
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    compressor.bypassed = bypassed;
+    compressor.compressor.threshold = 0.0f;
+    compressor.compressor.ratio = 1.0f;
+    compressor.compressor.makeupDb = makeupDb;
+    compressor.compressor.mix = mix;
+    compressor.compressor.outputDb = outputDb;
+    processor.getKit().pads[0].layers[0].fxChain = { compressor };
+
+    juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+    output.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+    processor.processBlock(output, midi);
+    level = std::abs(output.getSample(0, 64));
+    return true;
+}
+
+bool approximately(float actual, float expected, float tolerance = 0.015f)
+{
+    return std::abs(actual - expected) <= tolerance;
+}
+
+bool compressorGainPersistenceIsCompatible()
+{
+    LayerData source;
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    compressor.compressor.makeupDb = 7.5f;
+    compressor.compressor.outputDb = -3.0f;
+    source.fxChain = { compressor };
+
+    auto currentTree = source.toValueTree();
+    LayerData restored;
+    restored.fromValueTree(currentTree);
+    if (restored.fxChain.size() != 1
+        || ! approximately(restored.fxChain[0].compressor.makeupDb, 7.5f)
+        || ! approximately(restored.fxChain[0].compressor.outputDb, -3.0f))
+        return false;
+
+    auto legacyTree = currentTree.createCopy();
+    auto legacyFx = legacyTree.getChildWithName("FxChain").getChild(0);
+    legacyFx.removeProperty("makeupDb", nullptr);
+    legacyFx.removeProperty("outputDb", nullptr);
+
+    LayerData legacyRestored;
+    legacyRestored.fromValueTree(legacyTree);
+    return legacyRestored.fxChain.size() == 1
+        && approximately(legacyRestored.fxChain[0].compressor.makeupDb, 0.0f)
+        && approximately(legacyRestored.fxChain[0].compressor.outputDb, 0.0f);
+}
 }
 
 int main()
@@ -65,15 +130,46 @@ int main()
     processor.processBlock(output, midi);
 
     const int onset = firstAudibleSample(output);
-    sampleFile.deleteFile();
-
     if (onset != eventSample)
     {
         std::cerr << "Expected onset at sample " << eventSample
                   << ", got " << onset << '\n';
+        sampleFile.deleteFile();
         return 1;
     }
 
+    float baseline = 0.0f;
+    float makeup = 0.0f;
+    float dryOutput = 0.0f;
+    float bypass = 0.0f;
+    if (! renderCompressorLevel(sampleFile, 0.0f, 1.0f, 0.0f, false, baseline)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 1.0f, 0.0f, false, makeup)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 0.0f, -6.0f, false, dryOutput)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 1.0f, -6.0f, true, bypass))
+    {
+        std::cerr << "Failed to render compressor gain test\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    const float sixDbGain = juce::Decibels::decibelsToGain(6.0f);
+    if (baseline <= 1.0e-5f
+        || ! approximately(makeup / baseline, sixDbGain)
+        || ! approximately(dryOutput / baseline, 1.0f / sixDbGain)
+        || ! approximately(bypass / baseline, 1.0f)
+        || ! compressorGainPersistenceIsCompatible())
+    {
+        std::cerr << "Compressor gain flow mismatch: baseline=" << baseline
+                  << ", makeup ratio=" << makeup / baseline
+                  << ", dry/output ratio=" << dryOutput / baseline
+                  << ", bypass ratio=" << bypass / baseline << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    sampleFile.deleteFile();
+
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
+    std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
     return 0;
 }

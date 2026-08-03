@@ -346,7 +346,9 @@ function normalizeFxChain(chain: FxSlot[] | undefined): FxSlot[] | undefined {
             ratio: Number(slot.params?.ratio ?? 4),
             attack: Number(slot.params?.attack ?? 8),
             release: Number(slot.params?.release ?? 80),
+            makeup: Number(slot.params?.makeup ?? 0),
             mix: Number(slot.params?.mix ?? 1),
+            output: Number(slot.params?.output ?? 0),
           },
         };
     }

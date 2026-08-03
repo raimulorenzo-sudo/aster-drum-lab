@@ -50,7 +50,7 @@ export function makeFxSlot(type: FxSlot['type']): FxSlot {
       return {
         type: 'COMPRESSOR',
         bypassed: false,
-        params: { threshold: -12, ratio: 4, attack: 8, release: 80, mix: 1 },
+        params: { threshold: -12, ratio: 4, attack: 8, release: 80, makeup: 0, mix: 1, output: 0 },
       };
   }
 }

@@ -1,4 +1,4 @@
-# ASTER Drum Lab v1.0.0 — Windows Codex handoff
+# ASTER Drum Lab v1.0.1 — Windows Codex handoff
 
 This handoff is for building and signing the Windows x64 VST3 and AAX plug-ins
 on a Windows PC. Do not create an EXE, MSI, PKG, release, or public upload.
@@ -7,13 +7,13 @@ on a Windows PC. Do not create an EXE, MSI, PKG, release, or public upload.
 
 - Repository: `https://github.com/raimulorenzo-sudo/aster-drum-lab.git`
 - Branch: `codex/v1.0.0-windows-aax-handoff`
-- Product version: `1.0.0`
+- Product version: `1.0.1`
 - DAW-visible product name: `ASTER Drum Lab`
 - Windows physical filename: `ASTERDrumLab`
 - Build helper: `packaging/windows/build-plugins.ps1`
 - Output:
-  - `dist/ASTER-Drum-Lab-1.0.0-Windows-x64-VST3.zip`
-  - `dist/ASTER-Drum-Lab-1.0.0-Windows-x64-AAX.zip`
+  - `dist/ASTER-Drum-Lab-1.0.1-Windows-x64-VST3.zip`
+  - `dist/ASTER-Drum-Lab-1.0.1-Windows-x64-AAX.zip`
   - one `.sha256` file beside each ZIP
 
 The physical Windows filename intentionally has no spaces. AAX SDK 2.9
@@ -57,7 +57,7 @@ Copy everything inside the following block and paste it into Codex on the
 Windows PC:
 
 ```text
-ASTER Drum Lab v1.0.0のWindows x64版VST3とAAXをビルドし、AAXをPACE署名して、ローカルへ上書きインストールしてください。EXE、MSI、PKG、GitHub Releaseは作成しないでください。
+ASTER Drum Lab v1.0.1のWindows x64版VST3とAAXをビルドし、AAXをPACE署名して、ローカルへ上書きインストールしてください。EXE、MSI、PKG、GitHub Releaseは作成しないでください。
 
 リポジトリ:
 https://github.com/raimulorenzo-sudo/aster-drum-lab.git
@@ -68,7 +68,7 @@ codex/v1.0.0-windows-aax-handoff
 まず次を行ってください。
 1. リポジトリがなければcloneし、指定ブランチへswitchする。既にある場合は未コミット変更を勝手に削除せず、状態を確認してからpull --ff-onlyする。
 2. WINDOWS_CODEX_HANDOFF.mdとpackaging/windows/build-plugins.ps1を最後まで読む。
-3. CMakeLists.txtがVERSION 1.0.0であること、git rev-parse --abbrev-ref HEADが指定ブランチであることを確認する。
+3. CMakeLists.txtがVERSION 1.0.1であること、git rev-parse --abbrev-ref HEADが指定ブランチであることを確認する。
 4. Visual Studio 2022 C++、Windows SDK、CMake、Node.js、.NET SDK、AAX SDK 2.9、iLok License Manager、PACE Eden/Fusion、wraptool.exe、AuthentiCode証明書の有無を調べる。
 5. 不足する通常の開発ツールは安全な方法で導入してよい。AAX SDK、PACE Tools、証明書、iLokライセンスが不足する場合は、正確な不足項目と入手元を報告してユーザーの操作を待つ。
 

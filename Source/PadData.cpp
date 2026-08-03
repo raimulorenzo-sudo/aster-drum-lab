@@ -106,7 +106,9 @@ juce::ValueTree LayerData::toValueTree() const
             fx.setProperty("ratio",     slot.compressor.ratio,     nullptr);
             fx.setProperty("attack",    slot.compressor.attack,    nullptr);
             fx.setProperty("release",   slot.compressor.release,   nullptr);
+            fx.setProperty("makeupDb",  slot.compressor.makeupDb,  nullptr);
             fx.setProperty("mix",       slot.compressor.mix,       nullptr);
+            fx.setProperty("outputDb",  slot.compressor.outputDb,  nullptr);
         }
 
         fxTree.addChild(fx, -1, nullptr);
@@ -248,7 +250,9 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
                 slot.compressor.ratio = juce::jlimit(1.0f, 20.0f, static_cast<float>(fx.getProperty("ratio", slot.compressor.ratio)));
                 slot.compressor.attack = juce::jlimit(1.0f, 80.0f, static_cast<float>(fx.getProperty("attack", slot.compressor.attack)));
                 slot.compressor.release = juce::jlimit(10.0f, 500.0f, static_cast<float>(fx.getProperty("release", slot.compressor.release)));
+                slot.compressor.makeupDb = juce::jlimit(0.0f, 24.0f, static_cast<float>(fx.getProperty("makeupDb", slot.compressor.makeupDb)));
                 slot.compressor.mix = juce::jlimit(0.0f, 1.0f, static_cast<float>(fx.getProperty("mix", slot.compressor.mix)));
+                slot.compressor.outputDb = juce::jlimit(-24.0f, 12.0f, static_cast<float>(fx.getProperty("outputDb", slot.compressor.outputDb)));
             }
             fxChain.push_back(slot);
         }

@@ -2168,7 +2168,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                 slot.compressor.ratio     = juce::jlimit(1.0f, 20.0f, p->hasProperty("ratio")     ? (float) (double) p->getProperty("ratio")     : slot.compressor.ratio);
                                 slot.compressor.attack    = juce::jlimit(1.0f, 80.0f, p->hasProperty("attack")    ? (float) (double) p->getProperty("attack")    : slot.compressor.attack);
                                 slot.compressor.release   = juce::jlimit(10.0f, 500.0f, p->hasProperty("release") ? (float) (double) p->getProperty("release")   : slot.compressor.release);
+                                slot.compressor.makeupDb  = juce::jlimit(0.0f, 24.0f, p->hasProperty("makeup")    ? (float) (double) p->getProperty("makeup")    : slot.compressor.makeupDb);
                                 slot.compressor.mix       = juce::jlimit(0.0f, 1.0f, p->hasProperty("mix")       ? (float) (double) p->getProperty("mix")       : slot.compressor.mix);
+                                slot.compressor.outputDb  = juce::jlimit(-24.0f, 12.0f, p->hasProperty("output")  ? (float) (double) p->getProperty("output")     : slot.compressor.outputDb);
                             }
                         }
                         else

@@ -506,6 +506,47 @@
   color: var(--sec);
 }
 
+/* ── Compressor: dynamics と信号フローを分離した2段レイアウト ──────── */
+.compControls {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.compDynamicsRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.compFlowRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr) 12px minmax(0, 1fr);
+  align-items: start;
+  justify-items: center;
+  gap: 0;
+  min-width: 0;
+  padding: 8px 2px 4px;
+  border-top: 1px solid rgba(176, 138, 214, 0.18);
+  background: linear-gradient(180deg, rgba(176, 138, 214, 0.04), transparent 72%);
+}
+
+.signalArrow {
+  align-self: center;
+  margin-top: 10px;
+  color: rgba(176, 138, 214, 0.68);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  text-shadow: 0 0 5px rgba(176, 138, 214, 0.22);
+}
+
 /* ── Compressor: ゲインリダクションメーター ─────────────────────────── */
 .grMeter {
   display: flex;

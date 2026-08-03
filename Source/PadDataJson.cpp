@@ -185,7 +185,9 @@ namespace PadDataJson
                     params->setProperty("ratio",     (double) slot.compressor.ratio);
                     params->setProperty("attack",    (double) slot.compressor.attack);
                     params->setProperty("release",   (double) slot.compressor.release);
+                    params->setProperty("makeup",    (double) slot.compressor.makeupDb);
                     params->setProperty("mix",       (double) slot.compressor.mix);
+                    params->setProperty("output",    (double) slot.compressor.outputDb);
                 }
                 fx->setProperty("params", juce::var(params));
                 fxArr.add(juce::var(fx));

@@ -65,6 +65,12 @@ struct VoiceFxState
     std::array<float, MAX_LAYER_FX_SLOTS> transientSlowRight {};
     std::array<float, MAX_LAYER_FX_SLOTS> compressorEnvLeft {};
     std::array<float, MAX_LAYER_FX_SLOTS> compressorEnvRight {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorMakeupLeft {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorMakeupRight {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorOutputLeft {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorOutputRight {};
+    std::array<bool, MAX_LAYER_FX_SLOTS> compressorGainInitialisedLeft {};
+    std::array<bool, MAX_LAYER_FX_SLOTS> compressorGainInitialisedRight {};
     // このブロックで各 Compressor スロットが適用したゲインリダクション量 (dB, 正値)。
     // render() 開始時に 0 リセットし、処理中に max を記録 → VoiceManager が集計。
     std::array<float, MAX_LAYER_FX_SLOTS> compReductionDb {};
@@ -86,6 +92,12 @@ struct VoiceFxState
         transientSlowRight.fill(0.0f);
         compressorEnvLeft.fill(0.0f);
         compressorEnvRight.fill(0.0f);
+        compressorMakeupLeft.fill(1.0f);
+        compressorMakeupRight.fill(1.0f);
+        compressorOutputLeft.fill(1.0f);
+        compressorOutputRight.fill(1.0f);
+        compressorGainInitialisedLeft.fill(false);
+        compressorGainInitialisedRight.fill(false);
         compReductionDb.fill(0.0f);
     }
 };
