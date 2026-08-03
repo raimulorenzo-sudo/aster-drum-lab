@@ -14,6 +14,7 @@ import {
   selectedLayerIndexOf,
 } from '../../../utils/layerView';
 import type { LayerParams, PadParams } from '../../../types';
+import { layerAutomationTarget, padAutomationTarget } from '../../../utils/automationTarget';
 
 interface Props {
   pad: PadParams;
@@ -28,6 +29,10 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
   const layers   = ensureLayers(pad);
   const polarityOn   = !!layers[layerIdx]?.polarityInvert;
   const [velOpen, setVelOpen] = useState(false);
+  const padTarget = (suffix: string, name: string) => padAutomationTarget(padIndex, suffix, name);
+  const layerOrPadTarget = (suffix: string, name: string) => layerIdx === 0
+    ? padTarget(suffix, name)
+    : layerAutomationTarget(padIndex, layerIdx, suffix, name);
 
   const onChangeRange = useCallback(
     (targetIdx: number, next: { min: number; max: number }) =>
@@ -55,21 +60,25 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
       {/* ─── 選択中 Layer 固有の再生パラメータ ─── */}
       <div className={styles.controlsRow}>
         <Knob ownerKey={ownerKey} size={60} label="LAYER VOL"
+          automationTarget={layerOrPadTarget('volume', 'Volume')}
           value={pad.volume} defaultValue={defaultPadParam('volume')}
           valueText={formatVolume(pad.volume)}
           parseInput={text => { const v = parseNumericText(text); return v == null ? null : dbToPosition(v); }}
           onChange={v => onChange({ volume: v })} />
         <Knob ownerKey={ownerKey} size={60} label="LAYER PAN" bipolar
+          automationTarget={layerOrPadTarget('pan', 'Pan')}
           value={pad.pan} min={-1} max={1} defaultValue={defaultPadParam('pan')}
           valueText={formatPan(pad.pan)}
           parseInput={parsePanInput}
           onChange={v => onChange({ pan: v })} />
         <Knob ownerKey={ownerKey} size={60} label="LAYER PITCH" bipolar
+          automationTarget={layerOrPadTarget('pitch', 'Pitch')}
           value={pad.pitch} min={-24} max={24} defaultValue={defaultPadParam('pitch')}
           valueText={formatPitch(pad.pitch)}
           parseInput={parseNumericText}
           onChange={v => onChange({ pitch: v })} />
         <Knob ownerKey={ownerKey} size={60} label="LAYER FINE" bipolar
+          automationTarget={layerAutomationTarget(padIndex, layerIdx, 'fine', 'Fine')}
           value={pad.fine} min={-100} max={100} defaultValue={defaultPadParam('fine')}
           valueText={formatFine(pad.fine)}
           parseInput={parseNumericText}
@@ -97,6 +106,7 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
           <span className={styles.sectionLabel}>LAYER ENVELOPE</span>
           <div className={styles.envelopeControls}>
             <Knob ownerKey={ownerKey} size={52} label="ATTACK"
+              automationTarget={layerIdx === 0 ? padTarget('attack', 'Attack') : undefined}
               value={pad.attack / 2.0}
               defaultValue={defaultPadParam('attack') / 2.0}
               valueText={formatMs(pad.attack * 1000)}
@@ -106,6 +116,7 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
               }}
               onChange={v => onChange({ attack: v * 2.0 })} />
             <Knob ownerKey={ownerKey} size={52} label="RELEASE"
+              automationTarget={layerIdx === 0 ? padTarget('release', 'Release') : undefined}
               value={pad.release / 4.0}
               defaultValue={defaultPadParam('release') / 4.0}
               valueText={formatMs(pad.release * 1000, 0)}
@@ -150,6 +161,7 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
           {velOpen && (
             <div className={styles.velSliderWrap}>
               <VelocityRangeSlider
+                padIndex={padIndex}
                 layers={layers}
                 activeLayerIndex={layerIdx}
                 onSelectLayer={onSelectLayer}

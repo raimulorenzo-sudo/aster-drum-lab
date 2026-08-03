@@ -1036,6 +1036,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         audioProcessor.clearAutomationSlot((int) payload.getProperty("slot", -1));
         broadcastAutomationSlots();
     }
+    else if (type == "assignAutomationSlot")
+    {
+        audioProcessor.assignAutomationSlot((int) payload.getProperty("slot", -1),
+                                             payload.getProperty("targetId", {}).toString());
+        broadcastAutomationSlots();
+    }
     else if (type == "selectPad")
     {
         selectedPadIndex = juce::jlimit(0, NUM_PADS - 1, getIndex());
@@ -1165,8 +1171,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const int idx = getIndex();
         if (idx >= 0 && idx < NUM_PADS)
         {
-            audioProcessor.getKit().pads[(size_t) idx].mute = getBool();
-            audioProcessor.markKitDirty();
+            audioProcessor.setAutomatablePadParameter(idx,
+                                                      PadParameterSpecs::Param::Mute,
+                                                      getBool() ? 1.0f : 0.0f);
             broadcastPadUpdate(idx);
         }
     }
@@ -1176,9 +1183,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         if (idx >= 0 && idx < NUM_PADS)
         {
             const bool v = getBool();
-            audioProcessor.getKit().pads[(size_t) idx].solo = v;
-            if (v) audioProcessor.getKit().pads[(size_t) idx].mute = false;
-            audioProcessor.markKitDirty();
+            audioProcessor.setAutomatablePadParameter(idx,
+                                                      PadParameterSpecs::Param::Solo,
+                                                      v ? 1.0f : 0.0f);
+            if (v)
+                audioProcessor.setAutomatablePadParameter(idx,
+                                                          PadParameterSpecs::Param::Mute,
+                                                          0.0f);
             broadcastPadUpdate(idx);
         }
     }

@@ -1780,6 +1780,12 @@ void DrumSamplerAudioProcessor::cancelAutomationLearn() noexcept
     automationSlotsChanged.store(true, std::memory_order_release);
 }
 
+void DrumSamplerAudioProcessor::assignAutomationSlot(int slotIndex,
+                                                      const juce::String& parameterID)
+{
+    setAutomationSlotTarget(slotIndex, parameterID);
+}
+
 void DrumSamplerAudioProcessor::clearAutomationSlot(int slotIndex)
 {
     setAutomationSlotTarget(slotIndex, {});

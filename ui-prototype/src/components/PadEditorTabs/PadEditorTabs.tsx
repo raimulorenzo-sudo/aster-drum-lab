@@ -48,7 +48,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
         {active === 'TRIM'     && <TrimTab     pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} liveVelocity={liveVelocity} />}
         {active === 'PAD'      && <PadTab      pad={pad} padIndex={padIndex} onChange={onChange} />}
-        {active === 'FX'       && <FxTab       pad={pad}                     onChange={onChange} />}
+        {active === 'FX'       && <FxTab       pad={pad} padIndex={padIndex} onChange={onChange} />}
       </div>
     </div>
   );

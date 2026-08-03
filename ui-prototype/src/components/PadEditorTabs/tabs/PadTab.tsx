@@ -8,6 +8,7 @@ import { formatFine, formatPan, formatPitch, formatVolume } from '../../../utils
 import { dbToPosition } from '../../../utils/fader';
 import { parseNumericText, parsePanInput, parsePercentInput } from '../../../utils/numericInput';
 import type { PadParams, PlayMode, VelCurveState } from '../../../types';
+import { padAutomationTarget } from '../../../utils/automationTarget';
 
 interface Props {
   pad: PadParams;
@@ -24,6 +25,7 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
   const polyphony = pad.polyphony ?? 0;
   const voiceSteal = pad.voiceSteal ?? 'oldest';
   const onChangeCurve = (next: VelCurveState) => onChange({ velCurve: next });
+  const target = (suffix: string, name: string) => padAutomationTarget(padIndex, suffix, name);
 
   return (
     <div className={styles.root}>
@@ -31,21 +33,25 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
         <div className={styles.leftColumn}>
           <div className={styles.mixRow}>
             <Knob ownerKey={padIndex} size={68} label="PAD VOL"
+              automationTarget={target('padVolume', 'Pad Volume')}
               value={pad.padVolume ?? 0.75} defaultValue={defaultPadParam('volume')}
               valueText={formatVolume(pad.padVolume ?? 0.75)}
               parseInput={text => { const v = parseNumericText(text); return v == null ? null : dbToPosition(v); }}
               onChange={v => onChange({ padVolume: v })} />
             <Knob ownerKey={padIndex} size={68} label="PAD PAN" bipolar
+              automationTarget={target('padPan', 'Pad Pan')}
               value={pad.padPan ?? 0} min={-1} max={1} defaultValue={defaultPadParam('pan')}
               valueText={formatPan(pad.padPan ?? 0)}
               parseInput={parsePanInput}
               onChange={v => onChange({ padPan: v })} />
             <Knob ownerKey={padIndex} size={68} label="PAD PITCH" bipolar
+              automationTarget={target('padPitch', 'Pad Pitch')}
               value={pad.padPitch ?? 0} min={-24} max={24} defaultValue={defaultPadParam('pitch')}
               valueText={formatPitch(pad.padPitch ?? 0)}
               parseInput={parseNumericText}
               onChange={v => onChange({ padPitch: v })} />
             <Knob ownerKey={padIndex} size={68} label="PAD FINE" bipolar
+              automationTarget={target('padFine', 'Pad Fine')}
               value={pad.padFine ?? 0} min={-100} max={100} defaultValue={defaultPadParam('padFine') ?? 0}
               valueText={formatFine(pad.padFine ?? 0)}
               parseInput={parseNumericText}
@@ -146,11 +152,13 @@ export function PadTab({ pad, padIndex, onChange }: Props) {
             <div className={styles.responseBody}>
               <div className={styles.responseKnobs}>
                 <Knob ownerKey={padIndex} size={56} label="VELOCITY"
+                  automationTarget={target('velocity', 'Velocity')}
                   value={pad.velocitySens} defaultValue={defaultPadParam('velocitySens')}
                   valueText={`${Math.round(pad.velocitySens * 100)} %`}
                   parseInput={parsePercentInput}
                   onChange={v => onChange({ velocitySens: v })} />
                 <Knob ownerKey={padIndex} size={56} label="HUMANIZE"
+                  automationTarget={target('humanize', 'Humanize')}
                   value={pad.humanize} defaultValue={defaultPadParam('humanize')}
                   valueText={`${Math.round(pad.humanize * 100)} %`}
                   parseInput={parsePercentInput}

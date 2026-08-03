@@ -190,6 +190,7 @@ public:
     static constexpr int automationSlotCount = 24;
     void beginAutomationLearn(int slotIndex) noexcept;
     void cancelAutomationLearn() noexcept;
+    void assignAutomationSlot(int slotIndex, const juce::String& parameterID);
     void clearAutomationSlot(int slotIndex);
     juce::String getAutomationSlotTargetID(int slotIndex) const;
     juce::String getAutomationSlotTargetName(int slotIndex) const;

@@ -1,6 +1,7 @@
 import { memo, useCallback, useId, useRef, useState } from 'react';
 import styles from './Knob.module.css';
 import { parseNumericText } from '../../utils/numericInput';
+import type { AutomationTarget } from '../../utils/automationTarget';
 
 export type KnobProps = {
   /** 現在値 (min..max の範囲) */
@@ -38,6 +39,8 @@ export type KnobProps = {
    * 値変動だけが起きる単一オブジェクト編集では渡さなくてよい。
    */
   ownerKey?: string | number | null;
+  /** AUTO mode/right-click automation assignment target. */
+  automationTarget?: AutomationTarget;
 };
 
 const MIN_ANGLE = -135;
@@ -80,6 +83,7 @@ function KnobImpl({
   defaultValue,
   onReset,
   parseInput,
+  automationTarget,
 }: KnobProps) {
   const uid = useId().replace(/:/g, '');
   const faceGradientId = `knobFace-${uid}`;
@@ -257,6 +261,8 @@ function KnobImpl({
         aria-valuenow={value}
         aria-label={label}
         tabIndex={onChange ? 0 : -1}
+        data-automation-target-id={automationTarget?.id}
+        data-automation-target-name={automationTarget?.name}
       >
         <span className={styles.body} aria-hidden="true">
           <span className={styles.face} />

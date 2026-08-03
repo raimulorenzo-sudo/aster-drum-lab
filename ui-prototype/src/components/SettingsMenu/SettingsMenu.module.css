@@ -343,7 +343,7 @@
 
 .automationRow {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 48px 22px;
+  grid-template-columns: 58px minmax(0, 1fr) 22px;
   gap: 7px;
   align-items: center;
   min-height: 31px;

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './MixerView.module.css';
 import { Knob } from '../Knob/Knob';
 import { SettingsMenu } from '../SettingsMenu/SettingsMenu';
+import { AutomationModeButton } from '../AutomationAssign/AutomationAssign';
 import { OutputAssignDropdown } from '../OutputAssignDropdown/OutputAssignDropdown';
 import { pageRange } from '../../data/padData';
 import { defaultPadParam } from '../../data/parameterSpecs';
@@ -17,6 +18,7 @@ import { registerMasterMeter, registerPadMeter } from '../../utils/meterRegistry
 import { registerResourceMeter } from '../../utils/resourceRegistry';
 import { registerPadClipNode } from '../../utils/clipRegistry';
 import { sendToJuce } from '../../utils/juceBridge';
+import { masterAutomationTarget, padAutomationTarget } from '../../utils/automationTarget';
 
 interface MixerViewProps {
   pads: PadParams[];                                    // 全 48 Pad
@@ -437,6 +439,7 @@ function MixerViewComponent({
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
         />
+        <AutomationModeButton />
         <ResourceMeter kind="cpu" label="CPU" />
         <ResourceMeter kind="mem" label="MEM" />
         <MasterOutputBlock
@@ -696,6 +699,7 @@ function ChannelStripBodyImpl({
           parseInput={parsePanInput}
           onChange={(v) => onPanCommit(v)}
           onReset={onResetPan}
+          automationTarget={padAutomationTarget(absoluteIndex, 'padPan', `${padName} Pad Pan`)}
         />
         <div className={styles.panLabel}>{panLabel}</div>
       </div>
@@ -738,6 +742,8 @@ function ChannelStripBodyImpl({
             aria-valuemax={1}
             aria-valuenow={padVolume}
             tabIndex={0}
+            data-automation-target-id={padAutomationTarget(absoluteIndex, 'padVolume', `${padName} Pad Volume`).id}
+            data-automation-target-name={padAutomationTarget(absoluteIndex, 'padVolume', `${padName} Pad Volume`).name}
           >
             <span className={styles.faderUnity} />
             {/* transform-only な実装に変更:
@@ -792,6 +798,8 @@ function ChannelStripBodyImpl({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onChange({ mute: !pad.mute }); }}
           aria-pressed={pad.mute}
+          data-automation-target-id={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).id}
+          data-automation-target-name={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).name}
         >M</button>
         <button
           type="button"
@@ -803,6 +811,8 @@ function ChannelStripBodyImpl({
             onChange(on ? { solo: true, mute: false } : { solo: false });
           }}
           aria-pressed={pad.solo}
+          data-automation-target-id={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).id}
+          data-automation-target-name={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).name}
         >S</button>
       </div>
     </article>
@@ -903,6 +913,7 @@ const MasterOutputBlock = memo(function MasterOutputBlock({
           return parsed === null ? null : dbToPosition(parsed);
         }}
         onChange={onMasterKnobChange}
+        automationTarget={masterAutomationTarget}
       />
       {editingOutput ? (
         <input

@@ -6,6 +6,7 @@ import { PadEditorTabs } from '../PadEditorTabs/PadEditorTabs';
 import { LayerTabs } from '../LayerTabs/LayerTabs';
 import { Knob } from '../Knob/Knob';
 import { SettingsMenu } from '../SettingsMenu/SettingsMenu';
+import { AutomationModeButton } from '../AutomationAssign/AutomationAssign';
 import type { PadParams, KitPage, PreviewPlayback } from '../../types';
 import {
   composePadView,
@@ -20,6 +21,7 @@ import { dbToPosition, formatFaderDb } from '../../utils/fader';
 import { registerMasterMeter } from '../../utils/meterRegistry';
 import { registerResourceMeter } from '../../utils/resourceRegistry';
 import { parseNumericText } from '../../utils/numericInput';
+import { masterAutomationTarget } from '../../utils/automationTarget';
 
 interface PadsViewProps {
   pads: PadParams[];
@@ -244,6 +246,7 @@ function PadFooterBar({
         </svg>
       </button>
       <SettingsMenu anchorRef={gearRef} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AutomationModeButton />
 
       <Resource kind="cpu" label="CPU" />
       <Resource kind="mem" label="MEM" />
@@ -263,6 +266,7 @@ function PadFooterBar({
             return parsed === null ? null : dbToPosition(parsed);
           }}
           onChange={onMasterKnobChange}
+          automationTarget={masterAutomationTarget}
         />
         {editingOutput ? (
           <input

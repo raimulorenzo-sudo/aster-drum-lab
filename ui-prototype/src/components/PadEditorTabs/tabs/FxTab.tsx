@@ -13,6 +13,7 @@ import type { DriveType } from '../../../types';
 
 interface Props {
   pad: PadParams;
+  padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
 }
 
@@ -152,13 +153,14 @@ function normToFreq(n: number): number {
   return Math.pow(10, minLog + Math.max(0, Math.min(1, n)) * (maxLog - minLog));
 }
 
-export function FxTab({ pad, onChange }: Props) {
+export function FxTab({ pad, padIndex, onChange }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   const [copiedSlot, setCopiedSlot] = useState<FxSlot | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [addedSlotIndex, setAddedSlotIndex] = useState<number | null>(null);
   const chain = useMemo(() => fxChainOfSelectedLayer(pad), [pad]);
+  const layerIndex = selectedLayerIndexOf(pad);
   const chainRef = useRef<HTMLDivElement | null>(null);
   const shouldRevealAddedRef = useRef(false);
   const dragPreviewRef = useRef<HTMLElement | null>(null);
@@ -435,6 +437,8 @@ export function FxTab({ pad, onChange }: Props) {
                     eq={slot.params}
                     patchEq={updater => patchEqSlot(index, updater)}
                     onRemove={() => removeFx(index)}
+                    padIndex={padIndex}
+                    layerIndex={layerIndex}
                   />
                 )
                 : (

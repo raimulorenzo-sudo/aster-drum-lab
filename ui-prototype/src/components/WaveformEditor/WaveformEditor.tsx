@@ -8,6 +8,8 @@ import { trimFromPad } from '../../utils/sampleTrim';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
+import { selectedLayerIndexOf } from '../../utils/layerView';
+import { padAutomationTarget } from '../../utils/automationTarget';
 
 interface WaveformEditorProps {
   pad: PadParams;
@@ -581,6 +583,8 @@ function WaveformEditorComponent({
             onClick={() => onChange({ reverse: !pad.reverse })}
             aria-pressed={pad.reverse}
             title="再生方向を反転"
+            data-automation-target-id={selectedLayerIndexOf(pad) === 0 ? padAutomationTarget(padIndex, 'reverse', 'Reverse').id : undefined}
+            data-automation-target-name={selectedLayerIndexOf(pad) === 0 ? padAutomationTarget(padIndex, 'reverse', 'Reverse').name : undefined}
           >
             REVERSE
           </button>

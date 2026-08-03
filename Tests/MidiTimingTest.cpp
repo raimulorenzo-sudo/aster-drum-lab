@@ -229,8 +229,18 @@ bool automationSlotsAreStableAndPersistent()
         return false;
     }
 
-    restored.clearAutomationSlot(0);
-    return restored.getAutomationSlotTargetID(0).isEmpty();
+    restored.assignAutomationSlot(1, "masterVolume");
+    if (! restored.getAutomationSlotTargetID(0).isEmpty()
+        || restored.getAutomationSlotTargetID(1) != "masterVolume")
+    {
+        std::cerr << "Direct assignment mismatch: slot0="
+                  << restored.getAutomationSlotTargetID(0) << ", slot1="
+                  << restored.getAutomationSlotTargetID(1) << '\n';
+        return false;
+    }
+
+    restored.clearAutomationSlot(1);
+    return restored.getAutomationSlotTargetID(1).isEmpty();
 }
 }
 

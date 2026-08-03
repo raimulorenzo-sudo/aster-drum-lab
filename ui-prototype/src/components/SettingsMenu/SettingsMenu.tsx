@@ -287,13 +287,13 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             </button>
             <div className={styles.title}>AUTOMATION SLOTS · 24</div>
             <div className={styles.automationIntro}>
-              Press LEARN, then move the control you want to assign. Only ASTER AUTO 01–24 appear in your DAW.
+              Assign controls with AUTO mode or by right-clicking them. Use this list to review or clear assignments.
             </div>
             <div className={styles.automationList}>
               {automationSlots.map(slot => (
                 <div
                   key={slot.index}
-                  className={`${styles.automationRow} ${slot.learning ? styles.automationRowLearning : ''}`}
+                  className={styles.automationRow}
                 >
                   <span className={styles.automationNumber}>
                     AUTO {String(slot.index + 1).padStart(2, '0')}
@@ -302,26 +302,8 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
                     className={`${styles.automationTarget} ${!slot.assigned ? styles.automationTargetEmpty : ''}`}
                     title={slot.targetName || 'Unassigned'}
                   >
-                    {slot.learning ? 'MOVE A CONTROL…' : slot.targetName || 'Unassigned'}
+                    {slot.targetName || 'Unassigned'}
                   </span>
-                  <button
-                    type="button"
-                    className={`${styles.learnButton} ${slot.learning ? styles.learnButtonActive : ''}`}
-                    onClick={() => {
-                      if (slot.learning) {
-                        sendToJuce('cancelAutomationLearn', {});
-                        setAutomationSlots(prev => prev.map(item => ({ ...item, learning: false })));
-                      } else {
-                        sendToJuce('beginAutomationLearn', { slot: slot.index });
-                        setAutomationSlots(prev => prev.map(item => ({
-                          ...item,
-                          learning: item.index === slot.index,
-                        })));
-                      }
-                    }}
-                  >
-                    {slot.learning ? 'CANCEL' : 'LEARN'}
-                  </button>
                   <button
                     type="button"
                     className={styles.clearAutomationButton}

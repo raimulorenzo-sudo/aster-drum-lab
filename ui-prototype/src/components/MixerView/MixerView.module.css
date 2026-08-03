@@ -988,6 +988,7 @@
   display: grid;
   grid-template-columns:
     40px
+    48px
     minmax(165px, 1fr)
     minmax(165px, 1fr)
     auto;
