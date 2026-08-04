@@ -1042,6 +1042,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                              payload.getProperty("targetId", {}).toString());
         broadcastAutomationSlots();
     }
+    else if (type == "setFxAutomationTargetValue")
+    {
+        audioProcessor.setFxAutomationTargetValue(
+            payload.getProperty("targetId", {}).toString(),
+            juce::jlimit(0.0f, 1.0f, (float) (double) payload.getProperty("value", 0.0)),
+            true);
+    }
     else if (type == "selectPad")
     {
         selectedPadIndex = juce::jlimit(0, NUM_PADS - 1, getIndex());

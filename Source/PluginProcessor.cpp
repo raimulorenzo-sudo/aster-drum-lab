@@ -346,6 +346,12 @@ DrumSamplerAudioProcessor::DrumSamplerAudioProcessor()
 {
     for (auto& targetIndex : automationSlotTargetIndices)
         targetIndex.store(-1, std::memory_order_relaxed);
+    for (auto& targetCode : automationSlotFxTargetCodes)
+        targetCode.store(-1, std::memory_order_relaxed);
+    for (auto& value : automationSlotFxValues)
+        value.store(0.0f, std::memory_order_relaxed);
+    for (auto& dirty : automationSlotFxDirty)
+        dirty.store(false, std::memory_order_relaxed);
     midiNoteTopad.fill(-1);
     rebuildMidiMap();
     syncParametersFromKit();
@@ -463,6 +469,7 @@ void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPe
     masterGainSmoothed = FaderCurve::positionToGain(juce::jlimit(0.0f, 1.0f, kit.masterVolume));
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
+    syncFxAutomationSlots();
 }
 
 void DrumSamplerAudioProcessor::releaseResources()
@@ -490,6 +497,7 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
+    syncFxAutomationSlots();
 
     const bool hasMidi = ! midiMessages.isEmpty();
     if (! hasMidi && ! voiceManager.hasActiveVoices())
@@ -1392,6 +1400,7 @@ bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
     if (file == juce::File{}) return false;
 
     syncKitFromParameters();
+    syncFxAutomationSlots();
     kit.kitVersion = CURRENT_KIT_VERSION;
     kit.pluginVersion = JucePlugin_VersionString;
 
@@ -1524,6 +1533,7 @@ bool DrumSamplerAudioProcessor::loadRecentKit(int recentIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    syncFxAutomationSlots();
     auto root = juce::ValueTree { "DrumSamplerState" };
     root.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
     root.addChild(kit.toValueTree(), -1, nullptr);
@@ -1725,6 +1735,232 @@ int DrumSamplerAudioProcessor::assignedAutomationSlotForTarget(const juce::Strin
     return -1;
 }
 
+int DrumSamplerAudioProcessor::fxAutomationTargetCode(const juce::String& targetID)
+{
+    juce::StringArray tokens;
+    tokens.addTokens(targetID, ".", {});
+    if (tokens.size() != 5 || ! tokens[0].startsWith("pad")
+        || ! tokens[1].startsWith("layer") || tokens[2] != "fx")
+        return -1;
+
+    const int padIndex = tokens[0].substring(3).getIntValue() - 1;
+    const int layerIndex = tokens[1].substring(5).getIntValue() - 1;
+    if (! juce::isPositiveAndBelow(padIndex, NUM_PADS)
+        || ! juce::isPositiveAndBelow(layerIndex, MAX_LAYERS_PER_PAD))
+        return -1;
+
+    const auto typeName = tokens[3].toLowerCase();
+    const auto parameter = tokens[4];
+    int type = 0;
+    int param = 0;
+    if (typeName == "filter")
+    {
+        type = 1;
+        if      (parameter == "bypass")      param = 1;
+        else if (parameter == "hpEnabled")   param = 2;
+        else if (parameter == "hpCutoff")    param = 3;
+        else if (parameter == "hpSlope")     param = 4;
+        else if (parameter == "hpResonance") param = 5;
+        else if (parameter == "lpEnabled")   param = 6;
+        else if (parameter == "lpCutoff")    param = 7;
+        else if (parameter == "lpSlope")     param = 8;
+        else if (parameter == "lpResonance") param = 9;
+    }
+    else if (typeName == "drive")
+    {
+        type = 2;
+        if      (parameter == "bypass") param = 1;
+        else if (parameter == "type")   param = 2;
+        else if (parameter == "amount") param = 3;
+        else if (parameter == "tone")   param = 4;
+        else if (parameter == "mix")    param = 5;
+        else if (parameter == "output") param = 6;
+    }
+    else if (typeName == "transient")
+    {
+        type = 3;
+        if      (parameter == "bypass")  param = 1;
+        else if (parameter == "attack")  param = 2;
+        else if (parameter == "sustain") param = 3;
+        else if (parameter == "output")  param = 4;
+    }
+    else if (typeName == "compressor")
+    {
+        type = 4;
+        if      (parameter == "bypass")    param = 1;
+        else if (parameter == "threshold") param = 2;
+        else if (parameter == "ratio")     param = 3;
+        else if (parameter == "attack")    param = 4;
+        else if (parameter == "release")   param = 5;
+        else if (parameter == "makeup")    param = 6;
+        else if (parameter == "mix")       param = 7;
+        else if (parameter == "output")    param = 8;
+    }
+
+    return type > 0 && param > 0
+        ? (padIndex << 11) | (layerIndex << 8) | (type << 5) | param
+        : -1;
+}
+
+juce::String DrumSamplerAudioProcessor::fxAutomationTargetName(const juce::String& targetID)
+{
+    if (fxAutomationTargetCode(targetID) < 0)
+        return {};
+
+    juce::StringArray tokens;
+    tokens.addTokens(targetID, ".", {});
+    const auto type = tokens[3].toUpperCase();
+    const auto parameter = tokens[4];
+    juce::String label = parameter;
+    if      (parameter == "bypass")      label = "Bypass";
+    else if (parameter == "type")        label = "Type";
+    else if (parameter == "amount")      label = "Drive";
+    else if (parameter == "tone")        label = "Tone";
+    else if (parameter == "mix")         label = "Mix";
+    else if (parameter == "output")      label = "Output";
+    else if (parameter == "attack")      label = "Attack";
+    else if (parameter == "sustain")     label = "Sustain";
+    else if (parameter == "threshold")   label = "Threshold";
+    else if (parameter == "ratio")       label = "Ratio";
+    else if (parameter == "release")     label = "Release";
+    else if (parameter == "makeup")      label = "Make Up";
+    else if (parameter == "hpEnabled")   label = "High-Pass On";
+    else if (parameter == "hpCutoff")    label = "High-Pass Frequency";
+    else if (parameter == "hpSlope")     label = "High-Pass Slope";
+    else if (parameter == "hpResonance") label = "High-Pass Resonance";
+    else if (parameter == "lpEnabled")   label = "Low-Pass On";
+    else if (parameter == "lpCutoff")    label = "Low-Pass Frequency";
+    else if (parameter == "lpSlope")     label = "Low-Pass Slope";
+    else if (parameter == "lpResonance") label = "Low-Pass Resonance";
+    return tokens[0].replace("pad", "Pad ") + " "
+         + tokens[1].replace("layer", "L") + " " + type + " " + label;
+}
+
+float DrumSamplerAudioProcessor::getFxAutomationTargetValue(int targetCode) const
+{
+    if (targetCode < 0) return 0.0f;
+    const int padIndex = (targetCode >> 11) & 63;
+    const int layerIndex = (targetCode >> 8) & 7;
+    const int type = (targetCode >> 5) & 7;
+    const int param = targetCode & 31;
+    if (padIndex >= NUM_PADS) return 0.0f;
+    const auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex >= pad.layerCount()) return 0.0f;
+    const auto& chain = pad.layers[static_cast<size_t>(layerIndex)].fxChain;
+    const LayerFxType wanted = type == 1 ? LayerFxType::Filter
+                               : type == 2 ? LayerFxType::Drive
+                               : type == 3 ? LayerFxType::Transient
+                                           : LayerFxType::Compressor;
+    const auto found = std::find_if(chain.begin(), chain.end(), [wanted] (const auto& slot) { return slot.type == wanted; });
+    if (found == chain.end()) return 0.0f;
+    if (param == 1) return found->bypassed ? 1.0f : 0.0f;
+    const auto norm = [] (float value, float min, float max) { return juce::jlimit(0.0f, 1.0f, (value - min) / (max - min)); };
+    if (type == 1)
+    {
+        const auto freqNorm = [] (float hz) { return std::log10(juce::jlimit(20.0f, 20000.0f, hz) / 20.0f) / 3.0f; };
+        if (param == 2) return found->filter.hpEnabled ? 1.0f : 0.0f;
+        if (param == 3) return freqNorm(found->filter.hpCutoff);
+        if (param == 4) return found->filter.hpSlope >= 48 ? 1.0f : found->filter.hpSlope >= 24 ? 0.5f : 0.0f;
+        if (param == 5) return norm(found->filter.hpResonance, 0.2f, 8.0f);
+        if (param == 6) return found->filter.lpEnabled ? 1.0f : 0.0f;
+        if (param == 7) return freqNorm(found->filter.lpCutoff);
+        if (param == 8) return found->filter.lpSlope >= 48 ? 1.0f : found->filter.lpSlope >= 24 ? 0.5f : 0.0f;
+        if (param == 9) return norm(found->filter.lpResonance, 0.2f, 8.0f);
+    }
+    if (type == 2)
+    {
+        if (param == 2) return norm(static_cast<float>(found->drive.type), 0.0f, 6.0f);
+        if (param == 3) return found->drive.amount;
+        if (param == 4) return found->drive.tone;
+        if (param == 5) return found->drive.mix;
+        if (param == 6) return norm(found->drive.outputDb, -24.0f, 12.0f);
+    }
+    if (type == 3)
+    {
+        if (param == 2) return norm(found->transient.attack, -1.0f, 1.0f);
+        if (param == 3) return norm(found->transient.sustain, -1.0f, 1.0f);
+        if (param == 4) return norm(found->transient.outputDb, -24.0f, 12.0f);
+    }
+    if (type == 4)
+    {
+        if (param == 2) return norm(found->compressor.threshold, -48.0f, 0.0f);
+        if (param == 3) return norm(found->compressor.ratio, 1.0f, 20.0f);
+        if (param == 4) return norm(found->compressor.attack, 1.0f, 80.0f);
+        if (param == 5) return norm(found->compressor.release, 10.0f, 500.0f);
+        if (param == 6) return norm(found->compressor.makeupDb, 0.0f, 24.0f);
+        if (param == 7) return found->compressor.mix;
+        if (param == 8) return norm(found->compressor.outputDb, -24.0f, 12.0f);
+    }
+    return 0.0f;
+}
+
+void DrumSamplerAudioProcessor::applyFxAutomationTargetValue(int targetCode, float normalizedValue)
+{
+    if (targetCode < 0) return;
+    const int padIndex = (targetCode >> 11) & 63;
+    const int layerIndex = (targetCode >> 8) & 7;
+    const int type = (targetCode >> 5) & 7;
+    const int param = targetCode & 31;
+    if (padIndex >= NUM_PADS) return;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex >= pad.layerCount()) return;
+    auto& chain = pad.layers[static_cast<size_t>(layerIndex)].fxChain;
+    const LayerFxType wanted = type == 1 ? LayerFxType::Filter
+                               : type == 2 ? LayerFxType::Drive
+                               : type == 3 ? LayerFxType::Transient
+                                           : LayerFxType::Compressor;
+    const auto found = std::find_if(chain.begin(), chain.end(), [wanted] (const auto& slot) { return slot.type == wanted; });
+    if (found == chain.end()) return;
+    const float n = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    const auto denorm = [n] (float min, float max) { return min + n * (max - min); };
+    if (param == 1) { found->bypassed = n >= 0.5f; return; }
+    if (type == 1)
+    {
+        const float freq = 20.0f * std::pow(1000.0f, n);
+        if      (param == 2) found->filter.hpEnabled = n >= 0.5f;
+        else if (param == 3) found->filter.hpCutoff = freq;
+        else if (param == 4) found->filter.hpSlope = n >= 0.75f ? 48 : n >= 0.25f ? 24 : 12;
+        else if (param == 5) found->filter.hpResonance = denorm(0.2f, 8.0f);
+        else if (param == 6) found->filter.lpEnabled = n >= 0.5f;
+        else if (param == 7) found->filter.lpCutoff = freq;
+        else if (param == 8) found->filter.lpSlope = n >= 0.75f ? 48 : n >= 0.25f ? 24 : 12;
+        else if (param == 9) found->filter.lpResonance = denorm(0.2f, 8.0f);
+    }
+    else if (type == 2)
+    {
+        if      (param == 2) found->drive.type = juce::jlimit(0, 6, juce::roundToInt(n * 6.0f));
+        else if (param == 3) found->drive.amount = n;
+        else if (param == 4) found->drive.tone = n;
+        else if (param == 5) found->drive.mix = n;
+        else if (param == 6) found->drive.outputDb = denorm(-24.0f, 12.0f);
+    }
+    else if (type == 3)
+    {
+        if      (param == 2) found->transient.attack = denorm(-1.0f, 1.0f);
+        else if (param == 3) found->transient.sustain = denorm(-1.0f, 1.0f);
+        else if (param == 4) found->transient.outputDb = denorm(-24.0f, 12.0f);
+    }
+    else if (type == 4)
+    {
+        if      (param == 2) found->compressor.threshold = denorm(-48.0f, 0.0f);
+        else if (param == 3) found->compressor.ratio = denorm(1.0f, 20.0f);
+        else if (param == 4) found->compressor.attack = denorm(1.0f, 80.0f);
+        else if (param == 5) found->compressor.release = denorm(10.0f, 500.0f);
+        else if (param == 6) found->compressor.makeupDb = denorm(0.0f, 24.0f);
+        else if (param == 7) found->compressor.mix = n;
+        else if (param == 8) found->compressor.outputDb = denorm(-24.0f, 12.0f);
+    }
+}
+
+void DrumSamplerAudioProcessor::syncFxAutomationSlots()
+{
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        if (automationSlotFxDirty[static_cast<size_t>(slot)].exchange(false, std::memory_order_acq_rel))
+            applyFxAutomationTargetValue(
+                automationSlotFxTargetCodes[static_cast<size_t>(slot)].load(std::memory_order_acquire),
+                automationSlotFxValues[static_cast<size_t>(slot)].load(std::memory_order_acquire));
+}
+
 void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
                                                         const juce::String& parameterID)
 {
@@ -1732,8 +1968,10 @@ void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
         return;
 
     const int parameterIndex = parameterID.isNotEmpty() ? findParameterIndex(parameterID) : -1;
+    const int fxTargetCode = parameterID.isNotEmpty() ? fxAutomationTargetCode(parameterID) : -1;
     if (parameterID.isNotEmpty()
-        && (parameterIndex < 0 || automationSlotIndexFromParameterID(parameterID) >= 0))
+        && ((parameterIndex < 0 && fxTargetCode < 0)
+            || automationSlotIndexFromParameterID(parameterID) >= 0))
         return;
 
     // 1つの内部パラメータを複数Slotへ割り当てない。
@@ -1743,12 +1981,17 @@ void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
         {
             automationSlotTargets[static_cast<size_t>(slot)].clear();
             automationSlotTargetIndices[static_cast<size_t>(slot)].store(-1, std::memory_order_release);
+            automationSlotFxTargetCodes[static_cast<size_t>(slot)].store(-1, std::memory_order_release);
+            automationSlotFxDirty[static_cast<size_t>(slot)].store(false, std::memory_order_release);
         }
     }
 
     automationSlotTargets[static_cast<size_t>(slotIndex)] = parameterID;
     automationSlotTargetIndices[static_cast<size_t>(slotIndex)].store(parameterIndex,
                                                                       std::memory_order_release);
+    automationSlotFxTargetCodes[static_cast<size_t>(slotIndex)].store(fxTargetCode,
+                                                                      std::memory_order_release);
+    automationSlotFxDirty[static_cast<size_t>(slotIndex)].store(false, std::memory_order_release);
 
     if (parameterIndex >= 0)
     {
@@ -1758,6 +2001,17 @@ void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
         {
             suppressParameterCallbacks.store(true, std::memory_order_release);
             slotParameter->setValue(processorParameters.getUnchecked(parameterIndex)->getValue());
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+        }
+    }
+    else if (fxTargetCode >= 0)
+    {
+        if (auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex)))
+        {
+            const float value = getFxAutomationTargetValue(fxTargetCode);
+            automationSlotFxValues[static_cast<size_t>(slotIndex)].store(value, std::memory_order_release);
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValue(value);
             suppressParameterCallbacks.store(false, std::memory_order_release);
         }
     }
@@ -1804,9 +2058,37 @@ juce::String DrumSamplerAudioProcessor::getAutomationSlotTargetName(int slotInde
         ? automationSlotTargetIndices[static_cast<size_t>(slotIndex)].load(std::memory_order_acquire)
         : -1;
     const auto& processorParameters = getParameters();
-    return parameterIndex >= 0 && parameterIndex < processorParameters.size()
-        ? processorParameters.getUnchecked(parameterIndex)->getName(128)
+    if (parameterIndex >= 0 && parameterIndex < processorParameters.size())
+        return processorParameters.getUnchecked(parameterIndex)->getName(128);
+    return juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? fxAutomationTargetName(automationSlotTargets[static_cast<size_t>(slotIndex)])
         : juce::String{};
+}
+
+void DrumSamplerAudioProcessor::setFxAutomationTargetValue(const juce::String& targetID,
+                                                            float normalizedValue,
+                                                            bool notifyHost)
+{
+    const int targetCode = fxAutomationTargetCode(targetID);
+    if (targetCode < 0) return;
+    const float value = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    if (notifyHost)
+        captureAutomationLearnTarget(targetID);
+
+    const int slotIndex = notifyHost ? assignedAutomationSlotForTarget(targetID) : -1;
+    if (slotIndex >= 0)
+    {
+        if (auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex)))
+        {
+            slotParameter->beginChangeGesture();
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValueNotifyingHost(value);
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+            slotParameter->endChangeGesture();
+            automationSlotFxValues[static_cast<size_t>(slotIndex)].store(value, std::memory_order_release);
+        }
+    }
+    applyFxAutomationTargetValue(targetCode, value);
 }
 
 int DrumSamplerAudioProcessor::getAutomationLearnSlot() const noexcept
@@ -1911,6 +2193,15 @@ void DrumSamplerAudioProcessor::parameterChanged(const juce::String& parameterID
                 // suppress中なので再帰的なkit syncは起こらない。
                 processorParameters.getUnchecked(targetIndex)->setValueNotifyingHost(newValue);
                 suppressParameterCallbacks.store(false, std::memory_order_release);
+            }
+            else
+            {
+                const auto index = static_cast<size_t>(slotIndex);
+                if (automationSlotFxTargetCodes[index].load(std::memory_order_acquire) >= 0)
+                {
+                    automationSlotFxValues[index].store(newValue, std::memory_order_release);
+                    automationSlotFxDirty[index].store(true, std::memory_order_release);
+                }
             }
         }
 

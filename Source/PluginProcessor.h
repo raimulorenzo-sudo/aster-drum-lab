@@ -192,6 +192,9 @@ public:
     void cancelAutomationLearn() noexcept;
     void assignAutomationSlot(int slotIndex, const juce::String& parameterID);
     void clearAutomationSlot(int slotIndex);
+    void setFxAutomationTargetValue(const juce::String& targetID,
+                                    float normalizedValue,
+                                    bool notifyHost = true);
     juce::String getAutomationSlotTargetID(int slotIndex) const;
     juce::String getAutomationSlotTargetName(int slotIndex) const;
     int getAutomationLearnSlot() const noexcept;
@@ -228,6 +231,11 @@ private:
     static int automationSlotIndexFromParameterID(const juce::String& parameterID);
     int findParameterIndex(const juce::String& parameterID) const;
     int assignedAutomationSlotForTarget(const juce::String& parameterID) const;
+    static int fxAutomationTargetCode(const juce::String& targetID);
+    static juce::String fxAutomationTargetName(const juce::String& targetID);
+    float getFxAutomationTargetValue(int targetCode) const;
+    void applyFxAutomationTargetValue(int targetCode, float normalizedValue);
+    void syncFxAutomationSlots();
     void setAutomationSlotTarget(int slotIndex, const juce::String& parameterID);
     void captureAutomationLearnTarget(const juce::String& parameterID);
     void setParameterValueFromUi(const juce::String& parameterID,
@@ -269,6 +277,9 @@ private:
     std::atomic<bool> suppressParameterCallbacks { false };
     std::array<juce::String, automationSlotCount> automationSlotTargets {};
     std::array<std::atomic<int>, automationSlotCount> automationSlotTargetIndices {};
+    std::array<std::atomic<int>, automationSlotCount> automationSlotFxTargetCodes {};
+    std::array<std::atomic<float>, automationSlotCount> automationSlotFxValues {};
+    std::array<std::atomic<bool>, automationSlotCount> automationSlotFxDirty {};
     std::atomic<int> automationLearnSlot { -1 };
     std::atomic<bool> automationSlotsChanged { false };
     // v7+: DAW automation (=parameterChanged path) で kit を書いた後、UI へ

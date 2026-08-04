@@ -240,7 +240,48 @@ bool automationSlotsAreStableAndPersistent()
     }
 
     restored.clearAutomationSlot(1);
-    return restored.getAutomationSlotTargetID(1).isEmpty();
+    if (! restored.getAutomationSlotTargetID(1).isEmpty())
+        return false;
+
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    restored.getKit().pads[0].layers[0].fxChain.push_back(compressor);
+    const juce::String fxTarget { "pad01.layer01.fx.compressor.threshold" };
+    restored.assignAutomationSlot(2, fxTarget);
+    if (restored.getAutomationSlotTargetID(2) != fxTarget
+        || restored.getAutomationSlotTargetName(2) != "Pad 01 L01 COMPRESSOR Threshold")
+    {
+        std::cerr << "FX assignment mismatch: " << restored.getAutomationSlotTargetName(2) << '\n';
+        return false;
+    }
+
+    restored.setFxAutomationTargetValue(fxTarget, 0.25f, true);
+    if (! approximately(restored.getKit().pads[0].layers[0].fxChain[0].compressor.threshold, -36.0f, 0.001f))
+    {
+        std::cerr << "FX UI routing mismatch\n";
+        return false;
+    }
+
+    juce::RangedAudioParameter* thirdSlot = nullptr;
+    for (auto* parameter : restored.getParameters())
+        if (const auto* withID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter);
+            withID != nullptr && withID->paramID == "asterAutomationSlot03")
+            thirdSlot = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+    if (thirdSlot == nullptr) return false;
+    thirdSlot->setValueNotifyingHost(0.75f);
+    restored.prepareToPlay(48000.0, 64);
+    if (! approximately(restored.getKit().pads[0].layers[0].fxChain[0].compressor.threshold, -12.0f, 0.001f))
+    {
+        std::cerr << "FX host routing mismatch\n";
+        return false;
+    }
+
+    juce::MemoryBlock fxState;
+    restored.getStateInformation(fxState);
+    DrumSamplerAudioProcessor fxRestored;
+    fxRestored.setStateInformation(fxState.getData(), static_cast<int>(fxState.getSize()));
+    return fxRestored.getAutomationSlotTargetID(2) == fxTarget
+        && fxRestored.getAutomationSlotTargetName(2) == "Pad 01 L01 COMPRESSOR Threshold";
 }
 }
 

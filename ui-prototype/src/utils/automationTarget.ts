@@ -29,6 +29,20 @@ export function layerAutomationTarget(
   };
 }
 
+export function fxAutomationTarget(
+  padIndex: number,
+  layerIndex: number,
+  fxType: string,
+  parameter: string,
+  name: string,
+): AutomationTarget {
+  const type = fxType.toLowerCase();
+  return {
+    id: `pad${padToken(padIndex)}.layer${layerToken(layerIndex)}.fx.${type}.${parameter}`,
+    name: `Pad ${padToken(padIndex)} L${layerToken(layerIndex)} ${fxType} ${name}`,
+  };
+}
+
 export const masterAutomationTarget: AutomationTarget = {
   id: 'masterVolume',
   name: 'Master Volume',

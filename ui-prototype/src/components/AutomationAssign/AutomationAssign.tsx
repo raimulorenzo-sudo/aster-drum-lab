@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import styles from './AutomationAssign.module.css';
 import { onJuceEvent, sendToJuce } from '../../utils/juceBridge';
+import type { AutomationTarget } from '../../utils/automationTarget';
 
 interface AutomationSlotState {
   index: number;
@@ -28,11 +29,15 @@ interface SelectedTarget {
 interface AutomationAssignContextValue {
   mode: boolean;
   toggleMode: () => void;
+  openTargetMenu: (target: AutomationTarget, x: number, y: number) => void;
+  assignedSlotForTarget: (targetId: string) => number | undefined;
 }
 
 const AutomationAssignContext = createContext<AutomationAssignContextValue>({
   mode: false,
   toggleMode: () => {},
+  openTargetMenu: () => {},
+  assignedSlotForTarget: () => undefined,
 });
 
 const EMPTY_SLOTS: AutomationSlotState[] = Array.from({ length: 24 }, (_, index) => ({
@@ -149,6 +154,16 @@ export function AutomationAssignProvider({ children }: PropsWithChildren) {
     setMode(current => !current);
   }, []);
 
+  const openTargetMenu = useCallback((nextTarget: AutomationTarget, x: number, y: number) => {
+    const position = clampMenuPosition(x, y);
+    setTarget({ ...nextTarget, x: position.left, y: position.top });
+  }, []);
+
+  const assignedSlotForTarget = useCallback((targetId: string) => {
+    const slot = slots.find(item => item.parameterId === targetId);
+    return slot?.index;
+  }, [slots]);
+
   const assign = useCallback((slotIndex: number) => {
     if (!target) return;
     sendToJuce('assignAutomationSlot', { slot: slotIndex, targetId: target.id });
@@ -169,7 +184,10 @@ export function AutomationAssignProvider({ children }: PropsWithChildren) {
   const firstFreeSlot = slots.find(slot => !slot.assigned);
   const menuPosition = target ? { left: target.x, top: target.y } : undefined;
 
-  const contextValue = useMemo(() => ({ mode, toggleMode }), [mode, toggleMode]);
+  const contextValue = useMemo(
+    () => ({ mode, toggleMode, openTargetMenu, assignedSlotForTarget }),
+    [assignedSlotForTarget, mode, openTargetMenu, toggleMode],
+  );
 
   return (
     <AutomationAssignContext.Provider value={contextValue}>
@@ -253,4 +271,8 @@ export function AutomationModeButton() {
       AUTOMATION
     </button>
   );
+}
+
+export function useAutomationAssign() {
+  return useContext(AutomationAssignContext);
 }

@@ -694,6 +694,51 @@
   box-shadow: var(--panel-shadow-section);
 }
 
+.contextAutomation {
+  width: 228px;
+}
+
+.contextDivider {
+  height: 1px;
+  margin: 4px 5px;
+  background: rgba(132, 146, 156, 0.18);
+}
+
+.contextLabel {
+  padding: 5px 8px 4px;
+  color: var(--accent-cyan);
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.automationTargetList {
+  max-height: min(360px, calc(100vh - 120px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.automationTargetList button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.automationTargetList button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automationTargetList button b {
+  flex: 0 0 auto;
+  color: var(--accent-cyan);
+  font-size: 7px;
+  letter-spacing: 0.04em;
+}
+
 .contextMenu button {
   width: 100%;
   height: 23px;
