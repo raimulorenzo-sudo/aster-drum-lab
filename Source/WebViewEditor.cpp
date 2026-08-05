@@ -1510,13 +1510,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             });
         }
     }
-    else if (type == "openBoothLibrary")
+    else if (type == "openOfficialDownload")
     {
-        // ダウンロードは BOOTH の購入者認証に任せ、プラグインは
-        // 公開ダウンロード URL を保持しない。
+        // The official site verifies the purchaser by checkout email before
+        // issuing a time-limited download link.
         juce::MessageManager::callAsync([]
         {
-            juce::URL("https://accounts.booth.pm/library").launchInDefaultBrowser();
+            juce::URL("https://aster.enigmajp.com/en/download/").launchInDefaultBrowser();
         });
     }
     else if (type == "clearPadSample")

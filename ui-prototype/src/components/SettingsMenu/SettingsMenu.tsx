@@ -169,12 +169,12 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
     }
   };
 
-  const openBoothLibrary = () => {
+  const openOfficialDownload = () => {
     if (isJuceAvailable()) {
-      sendToJuce('openBoothLibrary', {});
+      sendToJuce('openOfficialDownload', {});
       return;
     }
-    window.open('https://accounts.booth.pm/library', '_blank', 'noopener,noreferrer');
+    window.open('https://aster.enigmajp.com/en/download/', '_blank', 'noopener,noreferrer');
   };
 
   return createPortal(
@@ -185,13 +185,13 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             <strong>Update available</strong>
             <span>ASTER Drum Lab v{startupNoticeVersion}</span>
           </div>
-          <button type="button" className={styles.startupUpdateButton} onClick={openBoothLibrary}>
-            BOOTHから取得
+          <button type="button" className={styles.startupUpdateButton} onClick={openOfficialDownload}>
+            Download update
           </button>
           <button
             type="button"
             className={styles.startupCloseButton}
-            aria-label="更新通知を閉じる"
+            aria-label="Close update notification"
             onClick={() => setStartupNoticeVersion(null)}
           >
             ×
@@ -227,19 +227,19 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
               <span>{updateState.status === 'checking' ? 'Checking…' : 'Check for Updates…'}</span>
             </button>
             {updateState.status === 'latest' && (
-              <div className={styles.statusLine}>v{PLUGIN_VERSION} は最新です。</div>
+              <div className={styles.statusLine}>You’re up to date (v{PLUGIN_VERSION}).</div>
             )}
             {updateState.status === 'available' && (
               <div className={styles.updateNotice} role="status">
-                <span>v{updateState.version} があります。</span>
-                <button type="button" className={styles.updateButton} onClick={openBoothLibrary}>
-                  BOOTHから取得
+                <span>Version {updateState.version} is available.</span>
+                <button type="button" className={styles.updateButton} onClick={openOfficialDownload}>
+                  Download update
                 </button>
               </div>
             )}
             {updateState.status === 'error' && (
               <div className={`${styles.statusLine} ${styles.statusError}`}>
-                更新を確認できませんでした。
+                Unable to check for updates.
               </div>
             )}
             <span className={styles.divider} />
