@@ -280,7 +280,7 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             <PrefRow label="Auto Fade on Trim Edit"      prefKey="autoFadeOnTrim"        defaultOn={true} />
             <PrefRow label="Preview on Pad Click"        prefKey="previewOnPadClick"     defaultOn={true} />
             <PrefRow label="Preserve Pad Name on Load"   prefKey="preservePadNameOnSampleLoad" defaultOn={true} />
-            <div className={styles.hint}>※ 設定はプラグイン全体に適用</div>
+            <div className={styles.hint}>These settings apply to the entire plug-in.</div>
           </>
         )}
 
