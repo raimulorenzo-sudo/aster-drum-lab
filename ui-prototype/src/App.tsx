@@ -1522,7 +1522,7 @@ export default function App() {
     pan: 0,
     pitch: 0,
     fine: 0,
-    attack: 0.002,
+    attack: 0,
     release: 0.05,
     startMs: 0,
     endMs: sampleLengthMs ?? FALLBACK_SAMPLE_LENGTH_MS,

@@ -49,7 +49,7 @@ export const PAD_PARAMETER_SPECS = {
   pitch: { key: 'pitch', label: 'Pitch', defaultValue: 0, min: -24, max: 24, automation: true },
   fine: { key: 'fine', label: 'Fine', defaultValue: 0, min: -100, max: 100, automation: true },
   padFine: { key: 'padFine', label: 'Fine', defaultValue: 0, min: -100, max: 100, automation: true },
-  attack: { key: 'attack', label: 'Attack', defaultValue: 0.002, min: 0, max: 2, automation: true },
+  attack: { key: 'attack', label: 'Attack', defaultValue: 0, min: 0, max: 2, automation: true },
   release: { key: 'release', label: 'Release', defaultValue: 0.05, min: 0, max: 4, automation: true },
   startMs: { key: 'startMs', label: 'Start', defaultValue: 0, min: 0, max: 1, automation: true },
   endMs: { key: 'endMs', label: 'End', defaultValue: 500, min: 0, max: 1, automation: true },

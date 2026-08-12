@@ -131,7 +131,7 @@ function defaultPad(i: number): PadParams {
     pan: 0,
     pitch: 0,
     fine: 0,
-    attack: 0.002,
+    attack: 0,
     release: 0.05,
     sampleLengthMs: 500,
     waveformPeaks: [],
