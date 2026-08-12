@@ -217,16 +217,3 @@
   opacity: 0.36;
   cursor: not-allowed;
 }
-
-@media (max-width: 920px) {
-  .columns {
-    grid-template-columns: 1fr;
-  }
-
-  .rightColumn {
-    padding-left: 0;
-    border-left: 0;
-    padding-top: 12px;
-    border-top: 1px solid var(--border-faint, rgba(255, 255, 255, 0.06));
-  }
-}
