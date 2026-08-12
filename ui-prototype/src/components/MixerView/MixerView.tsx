@@ -64,6 +64,18 @@ const ROUTING_STATUS_LABEL: Record<RoutingStatus, string> = {
   CUSTOM: 'CUSTOM',
 };
 
+function prepareMixerLabelMarquees(head: HTMLElement) {
+  head.querySelectorAll<HTMLElement>('[data-mixer-marquee]').forEach(label => {
+    const text = label.firstElementChild as HTMLElement | null;
+    if (!text) return;
+
+    const distance = Math.max(0, text.scrollWidth - label.clientWidth);
+    label.dataset.overflow = distance > 1 ? 'true' : 'false';
+    label.style.setProperty('--marquee-distance', `${distance}px`);
+    label.style.setProperty('--marquee-duration', `${Math.min(9, Math.max(3.5, 2 + distance / 22))}s`);
+  });
+}
+
 function MixerViewComponent({
   pads,
   page,
@@ -668,6 +680,8 @@ function ChannelStripBodyImpl({
       <div
         className={styles.head}
         onMouseDown={onMouseDownAudition}
+        onMouseEnter={e => prepareMixerLabelMarquees(e.currentTarget)}
+        onFocus={e => prepareMixerLabelMarquees(e.currentTarget)}
         role="button"
         tabIndex={0}
         aria-label={`Audition ${padName}`}
@@ -677,11 +691,16 @@ function ChannelStripBodyImpl({
           className={styles.name}
           style={{ color: channelColor }}
           title={padName}
+          data-mixer-marquee
         >
-          {padName}
+          <span className={styles.marqueeText}>{padName}</span>
         </div>
-        <div className={styles.sample} title={sampleName || '— empty —'}>
-          {sampleName || '— empty —'}
+        <div
+          className={styles.sample}
+          title={sampleName || '— empty —'}
+          data-mixer-marquee
+        >
+          <span className={styles.marqueeText}>{sampleName || '— empty —'}</span>
         </div>
       </div>
 

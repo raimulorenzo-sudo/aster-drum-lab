@@ -283,6 +283,67 @@ bool automationSlotsAreStableAndPersistent()
     return fxRestored.getAutomationSlotTargetID(2) == fxTarget
         && fxRestored.getAutomationSlotTargetName(2) == "Pad 01 L01 COMPRESSOR Threshold";
 }
+
+bool mainLayerStateAndKitPersistenceAreStable()
+{
+    constexpr float expectedVolume = 0.41f;
+    constexpr float expectedPan = -0.28f;
+    constexpr float expectedPitch = -3.0f;
+    constexpr float expectedStart = 0.12f;
+    constexpr float expectedEnd = 0.46f;
+
+    DrumSamplerAudioProcessor processor;
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Volume, expectedVolume);
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pan, expectedPan);
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pitch, expectedPitch);
+    processor.setPadSampleTrim(0, expectedStart, expectedEnd, 0.03f, 0.08f);
+
+    // Kit saving pulls current parameter values first.  MAIN's duplicate
+    // Layer-0 parameters must not overwrite the values edited through the UI.
+    processor.syncKitFromParameters();
+    const auto& synced = processor.getKit().pads[0];
+    if (! approximately(synced.layers[0].volume, expectedVolume, 0.001f)
+        || ! approximately(synced.layers[0].pan, expectedPan, 0.001f)
+        || ! approximately(synced.layers[0].pitch, expectedPitch, 0.001f))
+    {
+        std::cerr << "MAIN parameter sync reset Layer-0 values\n";
+        return false;
+    }
+
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+    DrumSamplerAudioProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    const auto& restoredMain = restored.getKit().pads[0].layers[0];
+    if (! approximately(restoredMain.volume, expectedVolume, 0.001f)
+        || ! approximately(restoredMain.pan, expectedPan, 0.001f)
+        || ! approximately(restoredMain.pitch, expectedPitch, 0.001f)
+        || ! approximately(restoredMain.startPosition, expectedStart, 0.001f)
+        || ! approximately(restoredMain.endPosition, expectedEnd, 0.001f))
+    {
+        std::cerr << "DAW state restore changed MAIN volume, pan, pitch, or trim\n";
+        return false;
+    }
+
+    const auto kitFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("aster-main-persistence", ".asterkit", false);
+    const bool saved = processor.saveKitToFile(kitFile);
+    DrumSamplerAudioProcessor kitRestored;
+    const bool loaded = saved && kitRestored.loadKitFromFile(kitFile);
+    kitFile.deleteFile();
+    if (! loaded)
+    {
+        std::cerr << "Failed to round-trip persistence test kit\n";
+        return false;
+    }
+
+    const auto& kitMain = kitRestored.getKit().pads[0].layers[0];
+    return approximately(kitMain.volume, expectedVolume, 0.001f)
+        && approximately(kitMain.pan, expectedPan, 0.001f)
+        && approximately(kitMain.pitch, expectedPitch, 0.001f)
+        && approximately(kitMain.startPosition, expectedStart, 0.001f)
+        && approximately(kitMain.endPosition, expectedEnd, 0.001f);
+}
 }
 
 int main()
@@ -381,11 +442,19 @@ int main()
         return 1;
     }
 
+    if (! mainLayerStateAndKitPersistenceAreStable())
+    {
+        std::cerr << "MAIN Layer state or kit persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
     std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
     std::cout << "Transient output volume and legacy persistence verified\n";
     std::cout << "24 fixed automation slots and assignment persistence verified\n";
+    std::cout << "MAIN Layer volume, pan, pitch, and trim persistence verified\n";
     return 0;
 }

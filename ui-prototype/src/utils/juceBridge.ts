@@ -103,6 +103,7 @@ export interface JucePadData {
   waveformPeaks?: number[]; // lightweight 0..1 peaks generated from actual sample data
   waveformChannels?: WaveformChannel[];
   reverse: boolean;
+  keepLength?: boolean;
   playbackMode: string;    // "OneShot" | "Gate"
   chokeGroup: number;
   mute: boolean;
@@ -149,6 +150,7 @@ export interface JuceLayerData {
   fadeIn: number;
   fadeOut: number;
   reverse: boolean;
+  keepLength?: boolean;
   smartTrim: boolean;
   mute: boolean;
   solo: boolean;
@@ -265,6 +267,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     fadeInMs:       jl.fadeIn  * playbackRangeMs,
     fadeOutMs:      jl.fadeOut * playbackRangeMs,
     reverse:        jl.reverse,
+    keepLength:     jl.keepLength ?? true,
     smartTrim:      jl.smartTrim,
     mute:           jl.mute,
     solo:           jl.solo,
@@ -422,6 +425,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     fadeInMs:       jp.fadeIn  * playbackRangeMs,
     fadeOutMs:      jp.fadeOut * playbackRangeMs,
     reverse:        jp.reverse,
+    keepLength:     jp.keepLength ?? true,
     smartTrim:      existing.smartTrim ?? true,
     mute:           false,
     solo:           false,
@@ -480,6 +484,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     fadeInMs:       jp.fadeIn  * playbackRangeMs,
     fadeOutMs:      jp.fadeOut * playbackRangeMs,
     reverse:        jp.reverse,
+    keepLength:     jp.keepLength ?? true,
     playMode:       jp.playbackMode as PlayMode,
     chokeGroup:     jp.chokeGroup,
     mute:           jp.mute,
@@ -586,6 +591,7 @@ export function sendPadPatchToJuce(
   if (patch.mute         !== undefined) sendToJuce('setMute',         { index, value: patch.mute });
   if (patch.solo         !== undefined) sendToJuce('setSolo',         { index, value: patch.solo });
   if (patch.reverse      !== undefined) sendToJuce('setReverse',      { index, value: patch.reverse });
+  if (patch.keepLength   !== undefined) sendToJuce('setKeepLength',   { index, value: patch.keepLength });
   if (patch.playMode     !== undefined) sendToJuce('setPlaybackMode', { index, value: patch.playMode });
   if (patch.chokeGroup   !== undefined) sendToJuce('setChoke',        { index, value: patch.chokeGroup });
   if (patch.outputAssign !== undefined) sendToJuce('setOutput',       { index, value: patch.outputAssign });
@@ -721,6 +727,8 @@ function sendLayerPatches(
       sendToJuce('setLayerRelease', { index, layerIndex: li, value: b.release });
     if (a.reverse !== b.reverse)
       sendToJuce('setLayerReverse', { index, layerIndex: li, value: b.reverse });
+    if (a.keepLength !== b.keepLength)
+      sendToJuce('setLayerKeepLength', { index, layerIndex: li, value: b.keepLength });
 
     if (a.startMs !== b.startMs || a.endMs !== b.endMs
         || a.fadeInMs !== b.fadeInMs || a.fadeOutMs !== b.fadeOutMs) {

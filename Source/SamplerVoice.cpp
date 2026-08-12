@@ -427,6 +427,11 @@ namespace
     }
 }
 
+void DrumVoice::prepare(double hostSampleRate, int maximumBlockSize)
+{
+    keepLengthEngine.prepare(hostSampleRate, maximumBlockSize);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 発音開始
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,7 +452,11 @@ void DrumVoice::start(int    padIdx,
                       uint64_t serial,
                       int    startDelaySamp,
                       bool   previewVoice,
-                      bool   swapChannels) noexcept
+                      bool   swapChannels,
+                      bool   keepLength,
+                      double sourceRateRatio,
+                      float  initialPitchSemitones,
+                      float  perVoicePitchOffset) noexcept
 {
     padIndex      = padIdx;
     isActive      = true;
@@ -463,12 +472,21 @@ void DrumVoice::start(int    padIdx,
     isReleasing   = false;
     playbackRatio = (pRatio > 0.001) ? pRatio : 0.001;   // ゼロ除算ガード
     reversed      = rev;
+    keepLengthEnabled = keepLength && keepLengthEngine.isPrepared();
+    keepLengthWetMix = std::abs(initialPitchSemitones) > 1.0e-3f ? 1.0f : 0.0f;
+    humanizePitchOffset = perVoicePitchOffset;
     fadeInSamples  = fadeInSamp;
     fadeOutSamples = fadeOutSamp;
     samplesRendered = 0;
     startDelaySamples = juce::jmax(0, startDelaySamp);
     eqState.reset();
     fxState.reset();
+
+    if (keepLengthEnabled)
+        keepLengthEngine.start(startSamp, endSamp, sourceRateRatio, rev,
+                               initialPitchSemitones);
+    else
+        keepLengthEngine.reset();
 
     // 逆再生の場合は終端から開始
     if (reversed)
@@ -532,7 +550,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                        int                             outputStartSample,
                        int                             numSamples,
                        const LayerData&                layer,
-                       double                          hostSampleRate) noexcept
+                       double                          hostSampleRate,
+                       float                           pitchSemitones) noexcept
 {
     if (!isActive) return false;
 
@@ -639,6 +658,106 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
         }
     }
     const bool useFxChain = runtimeFxCount > 0;
+
+    if (keepLengthEnabled)
+    {
+        int callPosition = 0;
+        while (callPosition < numSamples && isActive)
+        {
+            if (startDelaySamples > 0)
+            {
+                const int silence = juce::jmin(startDelaySamples, numSamples - callPosition);
+                startDelaySamples -= silence;
+                callPosition += silence;
+                continue;
+            }
+
+            const int chunk = juce::jmin(numSamples - callPosition,
+                                         keepLengthEngine.getScratchCapacity());
+            const int generated = keepLengthEngine.process(source,
+                                                           pitchSemitones,
+                                                           chunk);
+            if (generated <= 0)
+            {
+                isActive = false;
+                break;
+            }
+
+            const float* rawLeft = keepLengthEngine.getLeft();
+            const float* rawRight = keepLengthEngine.getRight();
+            const float* dryLeft = keepLengthEngine.getDryLeft();
+            const float* dryRight = keepLengthEngine.getDryRight();
+            const float targetWetMix = std::abs(pitchSemitones) > 1.0e-3f ? 1.0f : 0.0f;
+            const float wetMixStep = hostSampleRate > 0.0
+                ? static_cast<float>(1.0 / (hostSampleRate * 0.005))
+                : 1.0f;
+            for (int i = 0; i < generated; ++i)
+            {
+                if (isReleasing)
+                {
+                    envelope -= releaseRate;
+                    if (envelope <= 0.0f)
+                    {
+                        isActive = false;
+                        break;
+                    }
+                }
+                else if (envelope < 1.0f)
+                {
+                    envelope = std::min(1.0f, envelope + attackRate);
+                }
+
+                float fadeGain = 1.0f;
+                if (fadeInSamples > 0 && samplesRendered < fadeInSamples)
+                    fadeGain *= static_cast<float>(samplesRendered)
+                              / static_cast<float>(fadeInSamples);
+
+                if (fadeOutSamples > 0)
+                {
+                    const int remaining = keepLengthEngine.getOutputLength() - samplesRendered;
+                    if (remaining < fadeOutSamples)
+                        fadeGain *= juce::jlimit(0.0f, 1.0f,
+                                                static_cast<float>(remaining)
+                                              / static_cast<float>(fadeOutSamples));
+                }
+
+                keepLengthWetMix += juce::jlimit(-wetMixStep, wetMixStep,
+                                                  targetWetMix - keepLengthWetMix);
+                const float pitchShiftedLeft = dryLeft[i]
+                    + (rawLeft[i] - dryLeft[i]) * keepLengthWetMix;
+                const float pitchShiftedRight = dryRight[i]
+                    + (rawRight[i] - dryRight[i]) * keepLengthWetMix;
+                const float fxL = useFxChain
+                    ? processFxChainSample(pitchShiftedLeft, true, fxState, runtimeFx, runtimeFxCount)
+                    : useEq ? processEqSample(pitchShiftedLeft, eqState.left, eqCoeffs)
+                            : pitchShiftedLeft;
+                const float fxR = useFxChain
+                    ? processFxChainSample(pitchShiftedRight, false, fxState, runtimeFx, runtimeFxCount)
+                    : useEq ? processEqSample(pitchShiftedRight, eqState.right, eqCoeffs)
+                            : pitchShiftedRight;
+                const float outSampleL = fxL * gainL * envelope * fadeGain;
+                const float outSampleR = fxR * gainR * envelope * fadeGain;
+                outL[callPosition + i] += swapLR ? outSampleR : outSampleL;
+                outR[callPosition + i] += swapLR ? outSampleL : outSampleR;
+                lastPeakLevel = std::max(lastPeakLevel,
+                                         std::max(std::abs(outSampleL), std::abs(outSampleR)));
+                ++samplesRendered;
+            }
+
+            samplePos = keepLengthEngine.getSourcePosition();
+            callPosition += generated;
+
+            if (! isActive
+                || generated < chunk
+                || keepLengthEngine.getOutputPosition() >= keepLengthEngine.getOutputLength())
+            {
+                isActive = false;
+                break;
+            }
+        }
+
+        return isActive;
+    }
 
     const bool canUseUnityForwardPath =
         ! reversed &&

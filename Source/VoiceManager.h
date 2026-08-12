@@ -24,6 +24,7 @@ public:
     static constexpr int MAX_VOICES = 64;
 
     VoiceManager() noexcept;
+    void prepare(double hostSampleRate, int maximumBlockSize);
 
     // ── Note On ────────────────────────────────────────────────────────────
     void noteOn(int                  padIndex,

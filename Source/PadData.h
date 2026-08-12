@@ -157,6 +157,7 @@ struct LayerData
 
     // ── 再生（サンプル単位の挙動） ─────────────────────────────────────────
     bool reverse   { false };
+    bool keepLength { true };
     bool smartTrim { true };
 
     // ── Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立） ────────────────
@@ -242,6 +243,7 @@ struct PadData
 
     // ── 逆再生 ───────────────────────────────────────────────────────────────
     bool  reverse { false };                // true = 終端から始端に向かって再生
+    bool  keepLength { true };              // Pitch変更時もトリム範囲の長さを維持
 
     // ── 再生モード ────────────────────────────────────────────────────────────
     PlaybackMode playbackMode { PlaybackMode::OneShot };

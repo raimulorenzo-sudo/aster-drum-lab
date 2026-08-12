@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, useCallback, useMemo, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import styles from './App.module.css';
 import { Header } from './components/Header/Header';
 import type { HeaderKitItem, UiScale } from './components/Header/Header';
@@ -56,6 +65,8 @@ import { FADER_UNITY_POS, gainToPosition } from './utils/fader';
 export const MASTER_UNITY = FADER_UNITY_POS;
 const DESIGN_WIDTH = 1400;
 const DESIGN_HEIGHT = 852;
+const MIN_VIEWPORT_SCALE = 0.5;
+const MAX_VIEWPORT_SCALE = 2;
 
 interface SavedKitState {
   /** Schema version. Missing or < 2 → pad.volume is in legacy linear-gain
@@ -98,6 +109,16 @@ interface LayerTriggerData {
 interface SystemStatsData {
   cpuPercent?: number;
   sampleBytes?: number;
+}
+
+interface DemoState {
+  isDemo: boolean;
+  durationSeconds: number;
+  started: boolean;
+  remainingSeconds: number;
+  expired: boolean;
+  offlineRenderBlocked: boolean;
+  kitSavingEnabled: boolean;
 }
 
 interface PadTriggerData {
@@ -260,6 +281,16 @@ async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> 
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────
   const [pads, setPads] = useState<PadParams[]>(INITIAL_PADS);
+  const [demoState, setDemoState] = useState<DemoState>({
+    isDemo: false,
+    durationSeconds: 1200,
+    started: false,
+    remainingSeconds: 1200,
+    expired: false,
+    offlineRenderBlocked: false,
+    kitSavingEnabled: true,
+  });
+  const demoWarningsShownRef = useRef({ fiveMinutes: false, oneMinute: false });
   /** Always points to the latest pads state — safe to read inside callbacks */
   const padsRef = useRef(pads);
   const [selectedIndex, setSelectedIndex] = useState<number>(4); // 初期: OPEN HAT
@@ -327,6 +358,15 @@ export default function App() {
   const [outputMode, setOutputMode] = useState<OutputMode>('48Outs');
   const [uiScale, setUiScale] = useState<UiScale>(1);
   const [viewportScale, setViewportScale] = useState(1);
+  const [isWindowResizing, setIsWindowResizing] = useState(false);
+  const resizeDragRef = useRef<{
+    pointerId: number;
+    startScreenX: number;
+    startScreenY: number;
+    startScale: number;
+  } | null>(null);
+  const pendingResizeScaleRef = useRef<number | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const [masterKnob, setMasterKnob] = useState(MASTER_UNITY);
   const [masterClipHit, setMasterClipHit] = useState(false);
   const [previewPlayback, setPreviewPlayback] = useState<PreviewPlayback>({
@@ -371,7 +411,40 @@ export default function App() {
 
   // ── Refs for bridge callbacks (avoid stale closures) ─────────────────
   useEffect(() => { padsRef.current = pads; }, [pads]);
+  useEffect(() => {
+    const unsubscribe = onJuceEvent('demoState', raw => {
+      const next = raw as Partial<DemoState>;
+      if (typeof next.isDemo !== 'boolean') return;
+      setDemoState({
+        isDemo: next.isDemo,
+        durationSeconds: typeof next.durationSeconds === 'number' ? next.durationSeconds : 1200,
+        started: Boolean(next.started),
+        remainingSeconds: typeof next.remainingSeconds === 'number' ? next.remainingSeconds : 1200,
+        expired: Boolean(next.expired),
+        offlineRenderBlocked: Boolean(next.offlineRenderBlocked),
+        kitSavingEnabled: next.kitSavingEnabled !== false,
+      });
+    });
+    sendToJuce('requestDemoState', {});
+    return unsubscribe;
+  }, []);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  useEffect(() => {
+    if (!demoState.isDemo || !demoState.started || demoState.expired) return;
+    if (demoState.durationSeconds >= 300
+        && demoState.remainingSeconds <= 60
+        && !demoWarningsShownRef.current.oneMinute) {
+      demoWarningsShownRef.current.oneMinute = true;
+      setToastMessage('Demo: 1 minute of audio time remaining.');
+    } else if (demoState.durationSeconds >= 300
+               && demoState.remainingSeconds <= 300
+               && !demoWarningsShownRef.current.fiveMinutes) {
+      demoWarningsShownRef.current.fiveMinutes = true;
+      setToastMessage('Demo: 5 minutes of audio time remaining.');
+    }
+  }, [demoState]);
+
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => {
     pageRef.current = page === 'A' ? 0 : page === 'B' ? 1 : 2;
@@ -383,13 +456,108 @@ export default function App() {
         window.innerWidth / DESIGN_WIDTH,
         window.innerHeight / DESIGN_HEIGHT,
       );
-      setViewportScale(Math.max(0.5, Math.min(2, scale)));
+      setViewportScale(Math.max(MIN_VIEWPORT_SCALE, Math.min(MAX_VIEWPORT_SCALE, scale)));
     };
 
     updateViewportScale();
     window.addEventListener('resize', updateViewportScale);
     return () => window.removeEventListener('resize', updateViewportScale);
   }, []);
+
+  const requestEditorScale = useCallback((scale: number) => {
+    pendingResizeScaleRef.current = Math.max(
+      MIN_VIEWPORT_SCALE,
+      Math.min(MAX_VIEWPORT_SCALE, scale),
+    );
+
+    if (resizeFrameRef.current !== null) return;
+    resizeFrameRef.current = window.requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      const pendingScale = pendingResizeScaleRef.current;
+      pendingResizeScaleRef.current = null;
+      if (pendingScale !== null)
+        sendToJuce('setUiScale', { scale: pendingScale });
+    });
+  }, []);
+
+  const flushEditorScale = useCallback(() => {
+    if (resizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    }
+
+    const pendingScale = pendingResizeScaleRef.current;
+    pendingResizeScaleRef.current = null;
+    if (pendingScale !== null)
+      sendToJuce('setUiScale', { scale: pendingScale });
+  }, []);
+
+  useEffect(() => () => {
+    if (resizeFrameRef.current !== null)
+      window.cancelAnimationFrame(resizeFrameRef.current);
+  }, []);
+
+  const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    resizeDragRef.current = {
+      pointerId: event.pointerId,
+      startScreenX: event.screenX,
+      startScreenY: event.screenY,
+      startScale: Math.max(
+        MIN_VIEWPORT_SCALE,
+        Math.min(
+          MAX_VIEWPORT_SCALE,
+          Math.min(window.innerWidth / DESIGN_WIDTH, window.innerHeight / DESIGN_HEIGHT),
+        ),
+      ),
+    };
+    setIsWindowResizing(true);
+  }, []);
+
+  const handleResizePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    const deltaX = event.screenX - drag.startScreenX;
+    const deltaY = event.screenY - drag.startScreenY;
+    const projectedScaleDelta = (
+      deltaX * DESIGN_WIDTH + deltaY * DESIGN_HEIGHT
+    ) / (
+      DESIGN_WIDTH * DESIGN_WIDTH + DESIGN_HEIGHT * DESIGN_HEIGHT
+    );
+    requestEditorScale(drag.startScale + projectedScaleDelta);
+  }, [requestEditorScale]);
+
+  const finishResizeDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    resizeDragRef.current = null;
+    flushEditorScale();
+    setIsWindowResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+  }, [flushEditorScale]);
+
+  const handleResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const direction = event.key === 'ArrowUp' || event.key === 'ArrowRight'
+      ? 1
+      : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+        ? -1
+        : 0;
+    if (direction === 0) return;
+
+    event.preventDefault();
+    const currentScale = Math.min(
+      window.innerWidth / DESIGN_WIDTH,
+      window.innerHeight / DESIGN_HEIGHT,
+    );
+    requestEditorScale(currentScale + direction * 0.05);
+  }, [requestEditorScale]);
 
   /** Index of the pad currently being auditoned (-1 = none) */
   const auditionedPadRef = useRef(-1);
@@ -1361,6 +1529,7 @@ export default function App() {
     fadeInMs: 0,
     fadeOutMs: 0,
     reverse: false,
+    keepLength: true,
     mute: false,
     solo: false,
     velocityMin: 0,
@@ -1735,6 +1904,7 @@ export default function App() {
         style={{ '--fit-scale': viewportScale } as CSSProperties}
       >
         <Header
+          isDemo={demoState.isDemo}
           kitName={`${
             // Derive the header label from the same data the dropdown uses
             // (kitItems + currentKitPath) so the checked entry and the label
@@ -1836,6 +2006,34 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <div
+        className={`${styles.resizeGrip} ${isWindowResizing ? styles.resizeGripActive : ''}`}
+        role="separator"
+        aria-label="Resize plugin window"
+        aria-orientation="horizontal"
+        tabIndex={0}
+        title="Drag to resize"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={finishResizeDrag}
+        onPointerCancel={finishResizeDrag}
+        onKeyDown={handleResizeKeyDown}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 21L21 4" />
+          <path d="M10 21L21 10" />
+          <path d="M16 21L21 16" />
+        </svg>
+      </div>
+
+      {demoState.isDemo && (demoState.expired || demoState.offlineRenderBlocked) && (
+        <div className={styles.demoNotice} role="status" aria-live="polite">
+          {demoState.offlineRenderBlocked
+            ? 'Demo: offline export is available in the Full version.'
+            : 'Demo audio time has ended. Restart your DAW to continue testing.'}
+        </div>
+      )}
 
       {/* HTML file picker — only used in browser dev mode */}
       <input
@@ -2115,12 +2313,16 @@ export default function App() {
           <div className={styles.loadKitDialog} role="dialog" aria-modal="true" aria-label="Unsaved Kit Changes" onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.dialogTitle}>Unsaved Kit Changes</div>
             <div className={styles.dialogText}>
-              Save changes to {kitName === 'Default' ? 'Empty Kit' : kitName} before switching kits?
+              {demoState.isDemo
+                ? 'Kit saving is unavailable in the Demo. Discard these changes and switch kits?'
+                : `Save changes to ${kitName === 'Default' ? 'Empty Kit' : kitName} before switching kits?`}
             </div>
             <div className={styles.dialogActions}>
               <button type="button" onClick={() => confirmPendingKitSwitch('cancel')}>Cancel</button>
               <button type="button" onClick={() => confirmPendingKitSwitch('discard')}>Don&apos;t Save</button>
-              <button type="button" onClick={() => confirmPendingKitSwitch('save')}>Save</button>
+              {!demoState.isDemo && (
+                <button type="button" onClick={() => confirmPendingKitSwitch('save')}>Save</button>
+              )}
             </div>
           </div>
         </div>

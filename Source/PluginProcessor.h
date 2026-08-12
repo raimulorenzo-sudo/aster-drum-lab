@@ -5,6 +5,7 @@
 #include "VoiceManager.h"
 #include "PadParameterSpecs.h"
 #include "LayerParameterSpecs.h"
+#include "DemoMode.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DrumSamplerAudioProcessor  ─  プラグインのメインクラス（バックエンド）
@@ -59,6 +60,10 @@ public:
     bool loadSampleForPad(int padIndex, const juce::File& file);
     // 任意 Layer にサンプルを読み込む。layerIndex==0 は loadSampleForPad と等価。
     bool loadSampleForLayer(int padIndex, int layerIndex, const juce::File& file);
+    void setKeepLengthOnSampleLoad(bool enabled) noexcept
+    {
+        keepLengthOnSampleLoad.store(enabled, std::memory_order_relaxed);
+    }
 
     // パッドのサンプルを消去（padName は残す）
     void clearPadSample(int padIndex);
@@ -199,6 +204,10 @@ public:
     juce::String getAutomationSlotTargetName(int slotIndex) const;
     int getAutomationLearnSlot() const noexcept;
     bool consumeAutomationSlotsChanged() noexcept;
+    bool wasDemoOfflineRenderBlocked() const noexcept
+    {
+        return demoOfflineRenderBlocked.load(std::memory_order_acquire);
+    }
 
 private:
     // Phase 4: バスレイアウトを構築（コンストラクタ初期化子で使う）
@@ -285,6 +294,9 @@ private:
     // v7+: DAW automation (=parameterChanged path) で kit を書いた後、UI へ
     // 状態を push する必要があることを示すフラグ。Timer がこれを消費する。
     std::atomic<bool> kitChangedByAutomation { false };
+    std::atomic<bool> demoOfflineRenderBlocked { false };
+    std::atomic<bool> keepLengthOnSampleLoad { true };
+    float demoOutputGain { 1.0f };
 
 public:
     /** WebView Editor 側の Timer から消費する: DAW automation 起因の kit 変化があるか。 */

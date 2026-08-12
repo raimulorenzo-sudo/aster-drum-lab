@@ -142,6 +142,7 @@ function defaultPad(i: number): PadParams {
     playMode: 'OneShot',
     chokeGroup: 0,
     reverse: false,
+    keepLength: true,
     smartTrim: true,
     mute: false,
     solo: false,

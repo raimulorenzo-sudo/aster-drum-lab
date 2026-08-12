@@ -31,6 +31,12 @@ VoiceManager::VoiceManager() noexcept
         padLayers.fill(0.0f);
 }
 
+void VoiceManager::prepare(double hostSampleRate, int maximumBlockSize)
+{
+    for (auto& voice : voices)
+        voice.prepare(hostSampleRate, maximumBlockSize);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 空きボイスを探す（全部使用中なら index 0 を返す＝最古を奪う）
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,8 +394,11 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     const double pitchRatio      = std::pow(2.0, static_cast<double>(humanizedPitch) / 12.0);
     const double playbackRatio   = sampleRateRatio * pitchRatio;
 
-    const int fadeInSamp  = static_cast<int>(L.fadeIn  * rangeSamples / playbackRatio);
-    const int fadeOutSamp = static_cast<int>(L.fadeOut * rangeSamples / playbackRatio);
+    const double fadeTimelineSamples = L.keepLength
+        ? rangeSamples / juce::jmax(1.0e-9, sampleRateRatio)
+        : rangeSamples / playbackRatio;
+    const int fadeInSamp  = static_cast<int>(L.fadeIn  * fadeTimelineSamples);
+    const int fadeOutSamp = static_cast<int>(L.fadeOut * fadeTimelineSamples);
 
     // ── ボイスを起動 ──────────────────────────────────────────────────────
     const int slot = findFreeVoice();
@@ -421,7 +430,11 @@ void VoiceManager::startLayerVoice(int                     padIndex,
             ++triggerSerialCounter,
             startDelaySamples,
             previewVoice,
-            pad.swapLR);
+            pad.swapLR,
+            L.keepLength,
+            sampleRateRatio,
+            humanizedPitch,
+            humanize.pitchOffset);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -545,7 +558,13 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         }
 
         const auto& layer = pad.layers[static_cast<size_t>(voice.layerIndex)];
-        voice.render(*src, *dst, startSample, numSamples, layer, hostSampleRate);
+        const float livePitch = juce::jlimit(
+            -48.0f, 48.0f,
+            layer.pitch + (layer.fine / 100.0f)
+                      + pad.padPitch + (pad.padFine / 100.0f)
+                      + voice.humanizePitchOffset);
+        voice.render(*src, *dst, startSample, numSamples, layer, hostSampleRate,
+                     livePitch);
 
         // ── パッドのピークを集計 ──────────────────────────────────────────
         const auto pu = static_cast<size_t>(voice.padIndex);

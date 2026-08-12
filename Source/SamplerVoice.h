@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PadData.h"
+#include "KeepLengthEngine.h"
 
 struct BiquadCoefficients
 {
@@ -145,6 +146,9 @@ struct DrumVoice
     // ── Phase 2: ピッチ / リバース / フェード ────────────────────────────
     double playbackRatio { 1.0  };   // 再生速度比（2^(semitones/12)）ピッチシフト
     bool   reversed      { false };  // true = 逆再生
+    bool   keepLengthEnabled { false };
+    float  keepLengthWetMix { 0.0f };
+    float  humanizePitchOffset { 0.0f };
     int    fadeInSamples { 0    };   // フェードイン長（出力サンプル数）
     int    fadeOutSamples{ 0    };   // フェードアウト長（出力サンプル数）
     int    samplesRendered{ 0   };   // レンダリング済みサンプル数（フェード計算用）
@@ -155,6 +159,9 @@ struct DrumVoice
     // ── Phase 3: レベル計測 ───────────────────────────────────────────────
     // render() が呼ばれるたびに更新される。VoiceManager が集計してミキサーメーターに渡す。
     float lastPeakLevel  { 0.0f };   // 直前ブロックのピーク出力振幅（線形、0〜1+）
+    KeepLengthEngine keepLengthEngine;
+
+    void prepare(double hostSampleRate, int maximumBlockSize);
 
     // ── 発音開始 ──────────────────────────────────────────────────────────
     // Phase 2 で追加した引数にはデフォルト値を付けているので、
@@ -176,7 +183,11 @@ struct DrumVoice
                uint64_t serial    = 0,      // 発音順
                int    startDelaySamp = 0,   // Humanize タイミング揺れ
                bool   previewVoice = false, // UI preview専用voice
-               bool   swapChannels = false  // Pad output L/R swap
+               bool   swapChannels = false, // Pad output L/R swap
+               bool   keepLength = false,
+               double sourceRateRatio = 1.0,
+               float  initialPitchSemitones = 0.0f,
+               float  perVoicePitchOffset = 0.0f
                ) noexcept;
 
     // ── リリース開始（Gate モード専用） ────────────────────────────────────
@@ -192,7 +203,8 @@ struct DrumVoice
                 int                             outputStartSample,
                 int                             numSamples,
                 const LayerData&                layer,
-                double                          hostSampleRate) noexcept;
+                double                          hostSampleRate,
+                float                           pitchSemitones) noexcept;
 
     float getPlaybackPositionNormalized() const noexcept;
 };

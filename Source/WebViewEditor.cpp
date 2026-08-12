@@ -195,11 +195,16 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
                       })
               )
 {
-    setSize(baseEditorWidth, baseEditorHeight);
-    setResizable(true, true);
-    setResizeLimits(minEditorWidth, minEditorHeight, maxEditorWidth, maxEditorHeight);
-
     addAndMakeVisible(webView);
+
+    // Keep host-driven resizing enabled for formats such as VST3. A native
+    // WebView sits above JUCE child components, so the resize grip itself is
+    // rendered inside the Web UI and sends setUiScale messages back here.
+    setResizable(true, false);
+    setResizeLimits(minEditorWidth, minEditorHeight, maxEditorWidth, maxEditorHeight);
+    if (auto* constrainer = getConstrainer())
+        constrainer->setFixedAspectRatio((double) baseEditorWidth / (double) baseEditorHeight);
+    setSize(baseEditorWidth, baseEditorHeight);
 
     // BinaryData の index.html を WebView に読み込む
     // JUCE 8 の resource provider は固定 origin (juce://juce.backend/ など) を使うので
@@ -537,6 +542,7 @@ void WebViewEditor::timerCallback()
     if (! initialKitSent)
     {
         broadcastKitState();
+        broadcastDemoState(true);
         broadcastSystemStats();
         lastStatsBroadcastMs = juce::Time::getMillisecondCounterHiRes();
         initialKitSent = true;
@@ -545,6 +551,7 @@ void WebViewEditor::timerCallback()
     }
 
     const bool hasAudioActivity = audioProcessor.hasRecentAudioActivity(0.75);
+    broadcastDemoState();
     broadcastPadTriggers();
 
     // v7+: DAW automation 起因の kit 変化があれば UI に push する。
@@ -750,6 +757,17 @@ void WebViewEditor::broadcastSystemStats()
     obj->setProperty("cpuPercent", (double) audioProcessor.getAudioProcessLoadPercent());
     obj->setProperty("sampleBytes", static_cast<double>(audioProcessor.getLoadedSampleBytes()));
     webView.emitEventIfBrowserIsVisible("systemStats", juce::var(obj));
+}
+
+void WebViewEditor::broadcastDemoState(bool force)
+{
+    const auto value = AsterDemoMode::getStateAsVar(
+        audioProcessor.wasDemoOfflineRenderBlocked());
+    const auto json = juce::JSON::toString(value, true);
+    if (!force && json == lastDemoStateJson)
+        return;
+    lastDemoStateJson = json;
+    webView.emitEventIfBrowserIsVisible("demoState", value);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1013,9 +1031,22 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         return (bool) payload.getProperty("value", false);
     };
 
+    if (type == "requestDemoState")
+    {
+        broadcastDemoState(true);
+        return;
+    }
+
     if (type == "ready")
     {
         broadcastKitState();
+        broadcastDemoState(true);
+    }
+    else if (type == "setPreference")
+    {
+        const auto key = payload.getProperty("key", {}).toString();
+        if (key == "keepLengthOnSampleLoad")
+            audioProcessor.setKeepLengthOnSampleLoad(getBool());
     }
     else if (type == "requestAutomationSlots")
     {
@@ -1208,6 +1239,18 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             audioProcessor.setAutomatablePadParameter(idx,
                                                       PadParameterSpecs::Param::Reverse,
                                                       getBool() ? 1.0f : 0.0f);
+            broadcastPadUpdate(idx);
+        }
+    }
+    else if (type == "setKeepLength")
+    {
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[static_cast<size_t>(idx)];
+            pad.keepLength = getBool();
+            pad.syncLayer0FromFlat();
+            audioProcessor.markKitDirty();
             broadcastPadUpdate(idx);
         }
     }
@@ -1725,6 +1768,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "saveKit")
     {
+       #if ASTER_DEMO_BUILD
+        broadcastDemoState(true);
+        return;
+       #else
         if (audioProcessor.saveKitToCurrentFile())
         {
             broadcastKitState();
@@ -1748,9 +1795,14 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 if (audioProcessor.saveKitToFile(file))
                     broadcastKitState();
             });
+       #endif
     }
     else if (type == "saveKitAs")
     {
+       #if ASTER_DEMO_BUILD
+        broadcastDemoState(true);
+        return;
+       #else
         const auto currentName = DrumSamplerAudioProcessor::isDefaultKitName(audioProcessor.getKit().kitName)
             ? juce::String("My Kit")
             : audioProcessor.getKit().kitName;
@@ -1771,6 +1823,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 if (audioProcessor.saveKitToFile(file))
                     broadcastKitState();
             });
+       #endif
     }
     else if (type == "loadKit")
     {
@@ -2066,7 +2119,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     // L2+ 用と考えてよい。ただし layerIdx を明示するため layerIdx==0 も受ける。
     else if (type == "setLayerVolume" || type == "setLayerPan" || type == "setLayerPitch"
           || type == "setLayerFine"
-          || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
+          || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse"
+          || type == "setLayerKeepLength")
     {
         const int idx = getIndex();
         const int layerIdx = (int) payload.getProperty("layerIndex", 0);
@@ -2087,8 +2141,14 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 else if (type == "setLayerAttack")  L.attack  = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerRelease") L.release = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerReverse") L.reverse = getBool();
-                if (type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
+                else if (type == "setLayerKeepLength") L.keepLength = getBool();
+                if (type == "setLayerAttack" || type == "setLayerRelease"
+                    || type == "setLayerReverse" || type == "setLayerKeepLength")
+                {
+                    if (layerIdx == 0)
+                        pad.syncFlatFromLayer0();
                     audioProcessor.markKitDirty();
+                }
             }
         }
     }

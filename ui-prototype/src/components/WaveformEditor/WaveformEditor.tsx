@@ -451,30 +451,31 @@ function WaveformEditorComponent({
         onChange(patch);
       };
 
-      const apply = (clientX: number, fine: boolean) => {
+      const patchFromPointer = (clientX: number, fine: boolean): Partial<PadParams> => {
         const pointerMs = msFromPointer(clientX, svg);
-        const nextMs = fine ? startValue + (pointerMs - startPointerMs) * 0.2 : pointerMs;
+        // Keep the grab offset instead of snapping the marker to the pointer.
+        // The visible lines/tabs have intentionally wide hit areas, so using
+        // the absolute pointer position made a marker jump as soon as a drag
+        // started and could look as if it bounced back after normalisation.
+        const deltaMs = (pointerMs - startPointerMs) * (fine ? 0.2 : 1.0);
         if (handle === 'start') {
-          emitPatch({ startMs: nextMs });
-        } else if (handle === 'end') {
-          emitPatch({ endMs: nextMs });
-        } else if (handle === 'fadeIn') {
-          emitPatch({ fadeInMs: nextMs - trim.startMs });
-        } else {
-          emitPatch({ fadeOutMs: trim.endMs - nextMs });
+          return { startMs: startValue + deltaMs };
         }
+        if (handle === 'end') {
+          return { endMs: startValue + deltaMs };
+        }
+        if (handle === 'fadeIn') {
+          return { fadeInMs: startValue + deltaMs };
+        }
+        return { fadeOutMs: startValue - deltaMs };
       };
 
-      const applyInitial = (clientX: number, fine: boolean) => {
-        const pointerMs = msFromPointer(clientX, svg);
-        const nextMs = fine ? startValue + (pointerMs - startPointerMs) * 0.2 : pointerMs;
-        if (handle === 'start') emitPatch({ startMs: nextMs }, true);
-        else if (handle === 'end') emitPatch({ endMs: nextMs }, true);
-        else if (handle === 'fadeIn') emitPatch({ fadeInMs: nextMs - trim.startMs }, true);
-        else emitPatch({ fadeOutMs: trim.endMs - nextMs }, true);
-      };
+      const apply = (clientX: number, fine: boolean, force = false) =>
+        emitPatch(patchFromPointer(clientX, fine), force);
 
-      applyInitial(e.clientX, e.metaKey || e.ctrlKey);
+      // Commit the unchanged starting value so grabbing any part of the wide
+      // hit area never moves the line before the pointer itself moves.
+      apply(e.clientX, e.metaKey || e.ctrlKey, true);
 
       const onMove = (ev: PointerEvent) => apply(ev.clientX, ev.metaKey || ev.ctrlKey);
       const onUp = () => {
@@ -575,7 +576,7 @@ function WaveformEditorComponent({
           </span>
         </div>
 
-        {/* ── 編集ツール: REVERSE / SMART TRIM / RE-ANALYZE ─────────── */}
+        {/* ── 編集ツール: REVERSE / KEEP LENGTH / SMART TRIM / RE-ANALYZE ─ */}
         <div className={styles.editTools}>
           <button
             type="button"
@@ -587,6 +588,15 @@ function WaveformEditorComponent({
             data-automation-target-name={selectedLayerIndexOf(pad) === 0 ? padAutomationTarget(padIndex, 'reverse', 'Reverse').name : undefined}
           >
             REVERSE
+          </button>
+          <button
+            type="button"
+            className={`${styles.toolBtn} ${pad.keepLength ? styles.toolBtnActive : ''}`}
+            onClick={() => onChange({ keepLength: !pad.keepLength })}
+            aria-pressed={pad.keepLength}
+            title="Pitchを変更してもサンプルの長さを維持"
+          >
+            KEEP LENGTH
           </button>
           <button
             type="button"

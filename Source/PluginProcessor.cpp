@@ -241,6 +241,7 @@ namespace
                         dL.fadeIn = sL.fadeIn;
                         dL.fadeOut = sL.fadeOut;
                         dL.reverse = sL.reverse;
+                        dL.keepLength = sL.keepLength;
                         dL.smartTrim = sL.smartTrim;
                         dL.velocityMin = sL.velocityMin;
                         dL.velocityMax = sL.velocityMax;
@@ -284,6 +285,7 @@ namespace
                 dst.fadeIn = src.fadeIn;
                 dst.fadeOut = src.fadeOut;
                 dst.reverse = src.reverse;
+                dst.keepLength = src.keepLength;
                 dst.playbackMode = src.playbackMode;
                 dst.chokeGroup = src.chokeGroup;
                 dst.velocitySens = src.velocitySens;
@@ -461,10 +463,11 @@ bool DrumSamplerAudioProcessor::consumeLearnedMidiNote(int& padIndex, int& midiN
 // ─────────────────────────────────────────────────────────────────────────────
 // prepareToPlay  ─  DAW が再生を始める前に呼ばれる
 // ─────────────────────────────────────────────────────────────────────────────
-void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
+void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     hostSampleRate = sampleRate;
     voiceManager.allNotesOff();
+    voiceManager.prepare(sampleRate, samplesPerBlock);
     // 開始時の不要な ramp を避けるため、現在のマスターボリュームにゲインを合わせる
     masterGainSmoothed = FaderCurve::positionToGain(juce::jlimit(0.0f, 1.0f, kit.masterVolume));
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
@@ -494,6 +497,29 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     const int numSamples = buffer.getNumSamples();
     if (numSamples <= 0) return;
+
+   #if ASTER_DEMO_BUILD
+    if (isNonRealtime())
+    {
+        demoOfflineRenderBlocked.store(true, std::memory_order_release);
+        voiceManager.allNotesOff();
+        voiceManager.clearPadLevels();
+        midiMessages.clear();
+        return;
+    }
+    demoOfflineRenderBlocked.store(false, std::memory_order_release);
+
+    // Once the shared 20-minute window has ended, a newly triggered voice
+    // must not leak a fresh fade. Voices which were already sounding at the
+    // boundary are allowed to complete the short fade below.
+    if (AsterDemoMode::hasExpired() && ! voiceManager.hasActiveVoices())
+    {
+        demoOutputGain = 0.0f;
+        voiceManager.clearPadLevels();
+        midiMessages.clear();
+        return;
+    }
+   #endif
 
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
@@ -588,6 +614,12 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 // Voice 生成は startVoicesForPad 内で従来通り条件分岐される
                 // (空 Layer はスキップ、Mute/Solo 反映、Polyphony 'Off' で skip 等)。
                 voiceManager.noteOn(padIndex, vel, kit, fileManager, hostSampleRate);
+               #if ASTER_DEMO_BUILD
+                // Empty/muted pads must not start the demo clock.  Start it only
+                // after the note has actually created an audible voice.
+                if (voiceManager.hasActiveVoices())
+                    AsterDemoMode::beginOnFirstSound();
+               #endif
             }
         }
         else if (msg.isNoteOff())
@@ -639,6 +671,22 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
         masterGainSmoothed = targetGain;
     }
+
+   #if ASTER_DEMO_BUILD
+    if (AsterDemoMode::hasExpired())
+    {
+        const float fadeSamples = static_cast<float>(juce::jmax(1.0, hostSampleRate * 0.1));
+        const float nextGain = juce::jmax(0.0f,
+            demoOutputGain - static_cast<float>(numSamples) / fadeSamples);
+        for (int i = 0; i < numBuses; ++i)
+            if (busBuffers[static_cast<size_t>(i)] != nullptr)
+                busBuffers[static_cast<size_t>(i)]->applyGainRamp(0, numSamples,
+                                                                  demoOutputGain, nextGain);
+        demoOutputGain = nextGain;
+        if (demoOutputGain <= 0.0f)
+            voiceManager.allNotesOff();
+    }
+   #endif
 
     // ── マスター出力ピーク計測（Bus 0, WebView メーター用） ───────────────
     if (busBuffers[0] != nullptr)
@@ -784,6 +832,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     pad.fadeIn = defaults.fadeIn;
     pad.fadeOut = defaults.fadeOut;
     pad.reverse = defaults.reverse;
+    pad.keepLength = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
     pad.playbackMode = defaults.playbackMode;
     pad.chokeGroup = defaults.chokeGroup;
     pad.mute = defaults.mute;
@@ -832,6 +881,11 @@ void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
     }
     if (! anyLayerHasSample) return;
 
+   #if ASTER_DEMO_BUILD
+    if (AsterDemoMode::hasExpired()) return;
+    AsterDemoMode::beginOnFirstSound();
+   #endif
+
     juce::Logger::writeToLog("[ASTER PLAY] auditionPadOn padIndex=" + juce::String(padIndex)
                              + " velocity=" + juce::String(velocity, 2)
                              + " layerCount=" + juce::String(padRef.layerCount()));
@@ -852,6 +906,11 @@ void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
     const auto& padRef = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= padRef.layerCount()) return;
     if (! fileManager.hasSample(padIndex, layerIndex)) return;
+
+   #if ASTER_DEMO_BUILD
+    if (AsterDemoMode::hasExpired()) return;
+    AsterDemoMode::beginOnFirstSound();
+   #endif
 
     juce::ScopedReadLock rl(fileManager.getReadWriteLock());
     // Waveform audition is an editor-focused preview: play only the visible
@@ -995,6 +1054,7 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     L.endPosition   = 1.0f;
     L.fadeIn        = 0.0f;
     L.fadeOut       = 0.0f;
+    L.keepLength    = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
 
     syncParametersFromKit();
     markKitDirty();
@@ -1397,6 +1457,10 @@ bool DrumSamplerAudioProcessor::isDefaultKitName(const juce::String& name)
 
 bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
 {
+   #if ASTER_DEMO_BUILD
+    juce::ignoreUnused(file);
+    return false;
+   #endif
     if (file == juce::File{}) return false;
 
     syncKitFromParameters();
@@ -1533,6 +1597,9 @@ bool DrumSamplerAudioProcessor::loadRecentKit(int recentIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    // Flush any host/automation changes that arrived since the last audio
+    // block so the Kit snapshot remains the complete source of truth.
+    syncKitFromParameters();
     syncFxAutomationSlots();
     auto root = juce::ValueTree { "DrumSamplerState" };
     root.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
@@ -1601,7 +1668,12 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
         markKitDirty();
     }
 
-    hydrateRuntimeFromKit(parameterTree.isValid() && ! needsVolumeMigration);
+    // The Kit tree is the complete plug-in snapshot and is also where values
+    // that are not exposed as parameters (for example Layer trim) live.  Keep
+    // it authoritative when restoring a DAW project, then mirror it into the
+    // APVTS.  This also prevents stale duplicate Layer-0 parameter values from
+    // overwriting the values that were actually saved in the Kit tree.
+    hydrateRuntimeFromKit(false);
     currentKitFile = juce::File{};
     // currentKitFile is the source of truth for the kit's identity. Once we
     // clear it, kit.kitName must follow so the UI never shows a saved-kit
@@ -2591,6 +2663,17 @@ void DrumSamplerAudioProcessor::syncKitFromParameters()
             if (layerIndex >= layerCount) continue; // 存在しない layer は kit 側スキップ
             for (const auto& spec : LayerParameterSpecs::all())
             {
+                // MAIN has legacy Pad parameters for these same three values.
+                // The UI writes those Pad parameters, so the duplicate Layer-0
+                // parameters may still contain their defaults.  Letting them
+                // win here resets MAIN to 0 dB / centre / zero pitch when a kit
+                // is saved.  Keep the long-standing Pad parameters canonical.
+                if (layerIndex == 0
+                    && (spec.param == LayerParameterSpecs::Param::Volume
+                        || spec.param == LayerParameterSpecs::Param::Pan
+                        || spec.param == LayerParameterSpecs::Param::Pitch))
+                    continue;
+
                 const auto id = LayerParameterSpecs::parameterID(padIndex, layerIndex, spec.param);
                 if (const auto* value = parameters.getRawParameterValue(id))
                     setLayerValueFromParameter(padIndex, layerIndex,

@@ -41,6 +41,7 @@ namespace PadDataJson
 
         // 再生
         obj->setProperty("reverse",       pad.reverse);
+        obj->setProperty("keepLength",    pad.keepLength);
         obj->setProperty("playbackMode",  juce::String(playbackModeName(pad.playbackMode)));
         obj->setProperty("chokeGroup",    pad.chokeGroup);
 
@@ -105,6 +106,7 @@ namespace PadDataJson
             lo->setProperty("fadeIn",        (double) L.fadeIn);
             lo->setProperty("fadeOut",       (double) L.fadeOut);
             lo->setProperty("reverse",   L.reverse);
+            lo->setProperty("keepLength", L.keepLength);
             lo->setProperty("smartTrim", L.smartTrim);
             lo->setProperty("mute",      L.mute);
             lo->setProperty("solo",      L.solo);

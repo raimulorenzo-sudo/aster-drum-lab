@@ -70,7 +70,9 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
       const measuredSize = measurePopup(panelRef.current, { width, height: 280 });
       // 直前のmain paneのmax-heightを引き継ぐと24行paneが極端に低くなるため、
       // automationだけは希望高を明示し、position helper側で画面内へ収める。
-      const size = automationPane ? { width, height: 520 } : measuredSize;
+      const size = automationPane
+        ? { width, height: 520 }
+        : measuredSize;
       setStyle(positionPopupFromAnchor(rect, size, {
         align: 'start',
         width,
@@ -184,9 +186,10 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
           <div className={styles.startupNoticeText}>
             <strong>Update available</strong>
             <span>ASTER Drum Lab v{startupNoticeVersion}</span>
+            <span>Use your purchase email to get the latest version.</span>
           </div>
           <button type="button" className={styles.startupUpdateButton} onClick={openOfficialDownload}>
-            Download update
+            Re-download from official site
           </button>
           <button
             type="button"
@@ -232,8 +235,9 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
             {updateState.status === 'available' && (
               <div className={styles.updateNotice} role="status">
                 <span>Version {updateState.version} is available.</span>
+                <span>Use your purchase email to receive a time-limited download link.</span>
                 <button type="button" className={styles.updateButton} onClick={openOfficialDownload}>
-                  Download update
+                  Re-download from official site
                 </button>
               </div>
             )}
@@ -271,11 +275,11 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
               <span className={styles.chevronBack}>◂</span> SETTINGS
             </button>
             <div className={styles.title}>PREFERENCES</div>
+            <PrefRow label="KEEP LENGTH on Sample Load" prefKey="keepLengthOnSampleLoad" defaultOn={true} syncOnMount />
             <PrefRow label="Smart Trim on Sample Load"   prefKey="smartTrimOnSampleLoad" defaultOn={true} />
             <PrefRow label="Auto Fade on Trim Edit"      prefKey="autoFadeOnTrim"        defaultOn={true} />
             <PrefRow label="Preview on Pad Click"        prefKey="previewOnPadClick"     defaultOn={true} />
             <PrefRow label="Preserve Pad Name on Load"   prefKey="preservePadNameOnSampleLoad" defaultOn={true} />
-            <PrefRow label="Output Name follows Pad"     prefKey="outputNameFollowsPadName"   defaultOn={true} />
             <div className={styles.hint}>※ 設定はプラグイン全体に適用</div>
           </>
         )}
@@ -335,10 +339,11 @@ interface PrefRowProps {
   label: string;
   prefKey: string;
   defaultOn: boolean;
+  syncOnMount?: boolean;
 }
 
 /** ローカル state + localStorage で保持。Standalone/プラグイン側にも sendToJuce で通知。 */
-function PrefRow({ label, prefKey, defaultOn }: PrefRowProps) {
+function PrefRow({ label, prefKey, defaultOn, syncOnMount = false }: PrefRowProps) {
   const storageKey = `ASTER_PREF_${prefKey}`;
   const [on, setOn] = useState<boolean>(() => {
     try {
@@ -347,6 +352,13 @@ function PrefRow({ label, prefKey, defaultOn }: PrefRowProps) {
       return raw === '1';
     } catch { return defaultOn; }
   });
+  useEffect(() => {
+    if (syncOnMount && isJuceAvailable())
+      sendToJuce('setPreference', { key: prefKey, value: on });
+    // The stored value is intentionally sent once when this preference mounts.
+    // Subsequent changes are sent by toggle().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefKey, syncOnMount]);
   const toggle = () => {
     const next = !on;
     setOn(next);

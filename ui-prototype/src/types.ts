@@ -48,6 +48,7 @@ export interface LayerParams {
 
   // 再生
   reverse: boolean;
+  keepLength: boolean;
   smartTrim: boolean;
 
   // Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立）
@@ -217,6 +218,7 @@ export interface PadParams {
   playMode: PlayMode;
   chokeGroup: number;      // 0..4
   reverse: boolean;
+  keepLength: boolean;
   smartTrim: boolean;
 
   // ミキサー

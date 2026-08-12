@@ -37,6 +37,7 @@ const LAYER_LEVEL_KEYS = [
   'waveformPeaks',
   'waveformChannels',
   'reverse',
+  'keepLength',
   'smartTrim',
   // Layer 単位で持つ EQ / FX / 極性反転 (PadParams 側にも optional として写しているのでキャストで通す)
 ] as const satisfies readonly (keyof PadParams & keyof LayerParams)[];
@@ -157,6 +158,7 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     waveformPeaks: pad.waveformPeaks,
     waveformChannels: pad.waveformChannels,
     reverse: pad.reverse,
+    keepLength: pad.keepLength,
     smartTrim: pad.smartTrim,
     mute: false,
     solo: false,
@@ -287,6 +289,7 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.waveformPeaks = newLayer0.waveformPeaks;
     patch.waveformChannels = newLayer0.waveformChannels;
     patch.reverse = newLayer0.reverse;
+    patch.keepLength = newLayer0.keepLength;
     patch.smartTrim = newLayer0.smartTrim;
   }
 

@@ -27,6 +27,7 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("fadeOut",         fadeOut,         nullptr);
 
     vt.setProperty("reverse",         reverse,         nullptr);
+    vt.setProperty("keepLength",      keepLength,      nullptr);
     vt.setProperty("smartTrim",       smartTrim,       nullptr);
 
     vt.setProperty("mute",            mute,            nullptr);
@@ -147,6 +148,10 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     fadeOut        = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn), fadeOut);
 
     reverse        = vt.getProperty("reverse",        reverse);
+    // Projects saved before KEEP LENGTH existed adopt the current ON default.
+    keepLength     = vt.hasProperty("keepLength")
+                   ? static_cast<bool>(vt.getProperty("keepLength"))
+                   : true;
     smartTrim      = vt.getProperty("smartTrim",      smartTrim);
 
     mute           = vt.getProperty("mute",           mute);
@@ -292,6 +297,7 @@ void PadData::syncLayer0FromFlat() noexcept
     L.fadeIn        = fadeIn;
     L.fadeOut       = fadeOut;
     L.reverse       = reverse;
+    L.keepLength    = keepLength;
     // smartTrim, mute, solo, velocityMin/Max は flat 側に対応フィールドが
     // ないので Layer 側の値をそのまま保持。
 }
@@ -318,6 +324,7 @@ void PadData::syncFlatFromLayer0() noexcept
     fadeIn        = L.fadeIn;
     fadeOut       = L.fadeOut;
     reverse       = L.reverse;
+    keepLength    = L.keepLength;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -382,6 +389,7 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("fadeIn",          fadeIn,          nullptr);
     vt.setProperty("fadeOut",         fadeOut,         nullptr);
     vt.setProperty("reverse",         reverse,         nullptr);
+    vt.setProperty("keepLength",      keepLength,      nullptr);
 
     // ── Layers（新形式） ──────────────────────────────────────────────────
     juce::ValueTree layersTree { "Layers" };
@@ -449,6 +457,9 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     fadeIn         = juce::jlimit(0.0f, 1.0f, fadeIn);
     fadeOut        = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn), fadeOut);
     reverse        = vt.getProperty("reverse",        reverse);
+    keepLength     = vt.hasProperty("keepLength")
+                   ? static_cast<bool>(vt.getProperty("keepLength"))
+                   : true;
 
     // ── Layers（新形式が優先。無ければ flat fields からの自動マイグレーション） ─
     layers.clear();
