@@ -5,6 +5,7 @@ import { midiNoteName, padDisplayColor } from '../../data/padData';
 import { waveformToBars } from '../../utils/waveform';
 import { registerPadFlashTarget, triggerPadFlash } from '../../utils/padFlashRegistry';
 import { padAutomationTarget } from '../../utils/automationTarget';
+import { OverflowMarquee } from '../OverflowMarquee/OverflowMarquee';
 
 interface PadCellProps {
   index: number;
@@ -196,9 +197,12 @@ function PadCellComponent({ index, pad, selected, onClick, onContextMenu, onChan
       <div className={styles.name} title={pad.padName}>{pad.padName}</div>
 
       {/* Sample File Name (補助、薄く小さく) */}
-      <div className={styles.sampleName} title={pad.sampleFilePath || pad.sampleFileName || '— empty —'}>
-        {pad.sampleMissing ? 'Missing Sample' : pad.sampleFileName || '— empty —'}
-      </div>
+      <OverflowMarquee
+        className={styles.sampleName}
+        text={pad.sampleMissing ? 'Missing Sample' : pad.sampleFileName || '— empty —'}
+        title={pad.sampleFilePath || pad.sampleFileName || '— empty —'}
+        disabled={pad.sampleMissing || !pad.sampleFileName}
+      />
 
       {/* 小さな波形プレビュー */}
       <div className={styles.preview} aria-hidden>

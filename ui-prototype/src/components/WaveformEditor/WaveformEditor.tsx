@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './WaveformEditor.module.css';
+import { OverflowMarquee } from '../OverflowMarquee/OverflowMarquee';
 import type { PadParams, PreviewPlayback, WaveformChannel } from '../../types';
 import { waveformChannelToStrokePath, waveformToPath } from '../../utils/waveform';
 import { midiNoteName } from '../../data/padData';
@@ -621,12 +622,12 @@ function WaveformEditorComponent({
         <div className={styles.sampleBlock}>
           <span className={styles.sampleNav}>‹ ›</span>
           <span className={styles.sampleLabel}>SAMPLE</span>
-          <span
+          <OverflowMarquee
             className={`${styles.filename} ${pad.sampleMissing ? styles.filenameMissing : ''}`}
             title={pad.sampleFilePath || pad.originalSampleFilePath || pad.sampleFileName || 'no sample'}
-          >
-            {pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
-          </span>
+            text={pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
+            disabled={pad.sampleMissing || !pad.sampleFileName}
+          />
           {pad.sampleMissing && (
             <button type="button" className={styles.relinkBtn} onClick={onRelinkSample}>
               RELINK
