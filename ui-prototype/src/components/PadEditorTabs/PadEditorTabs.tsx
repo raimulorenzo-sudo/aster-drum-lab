@@ -9,7 +9,7 @@ import type { PadParams } from '../../types';
 
 export type PadEditorTabId = 'TRIM' | 'PLAYBACK' | 'PAD' | 'FX';
 
-const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PLAYBACK', 'PAD', 'FX'];
+const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PAD', 'PLAYBACK', 'FX'];
 const TAB_LABELS: Record<PadEditorTabId, string> = {
   TRIM: 'TRIM',
   PLAYBACK: 'LAYER',
