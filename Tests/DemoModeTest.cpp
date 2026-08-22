@@ -30,6 +30,25 @@ int main()
 
     if constexpr (AsterDemoMode::isDemoBuild)
     {
+        if constexpr (AsterDemoMode::durationSeconds > 302)
+        {
+            ok &= require(AsterDemoMode::getScheduledOutputGain(299.0) == 1.0f,
+                          "the first five minutes must be unrestricted");
+            ok &= require(AsterDemoMode::getSecondsUntilNextMute(299.0) == 1,
+                          "the UI countdown must reach the first mute at five minutes");
+            ok &= require(AsterDemoMode::isScheduledMuteActive(300.5),
+                          "the scheduled mute must be active after five minutes");
+            ok &= require(AsterDemoMode::getScheduledOutputGain(300.5) == 0.0f,
+                          "the middle of the two-second mute must be silent");
+            ok &= require(AsterDemoMode::getScheduledOutputGain(302.0) == 1.0f,
+                          "audio must return after the two-second mute");
+            ok &= require(AsterDemoMode::getSecondsUntilNextMute(302.0) == 58,
+                          "the next scheduled mute must remain 60 seconds apart");
+            ok &= require(AsterDemoMode::getScheduledOutputGain(
+                              static_cast<double>(AsterDemoMode::durationSeconds)) == 0.0f,
+                          "audio must be silent at the configured expiry time");
+        }
+
         DrumSamplerAudioProcessor processor;
         processor.prepareToPlay(48000.0, 64);
 

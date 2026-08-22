@@ -509,12 +509,10 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
     demoOfflineRenderBlocked.store(false, std::memory_order_release);
 
-    // Once the shared 20-minute window has ended, a newly triggered voice
-    // must not leak a fresh fade. Voices which were already sounding at the
-    // boundary are allowed to complete the short fade below.
+    // Once the shared 20-minute window has ended, newly triggered voices must
+    // not leak any audio.
     if (AsterDemoMode::hasExpired() && ! voiceManager.hasActiveVoices())
     {
-        demoOutputGain = 0.0f;
         voiceManager.clearPadLevels();
         midiMessages.clear();
         return;
@@ -673,19 +671,29 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
    #if ASTER_DEMO_BUILD
-    if (AsterDemoMode::hasExpired())
+    // The first five minutes are unrestricted. From 05:00 onward, apply a
+    // two-second mute every 60 seconds with short fades at both edges. The
+    // same wall-clock schedule is shared by every plug-in instance.
+    const auto demoElapsedAtBlockStart = AsterDemoMode::getElapsedSeconds();
+    const auto demoBlockDuration = hostSampleRate > 0.0
+        ? static_cast<double>(numSamples) / hostSampleRate
+        : 0.0;
+    const auto demoGainAtStart = AsterDemoMode::getScheduledOutputGain(
+        demoElapsedAtBlockStart);
+    const auto demoGainAtEnd = AsterDemoMode::getScheduledOutputGain(
+        demoElapsedAtBlockStart + demoBlockDuration);
+
+    if (! (juce::approximatelyEqual(demoGainAtStart, 1.0f)
+           && juce::approximatelyEqual(demoGainAtEnd, 1.0f)))
     {
-        const float fadeSamples = static_cast<float>(juce::jmax(1.0, hostSampleRate * 0.1));
-        const float nextGain = juce::jmax(0.0f,
-            demoOutputGain - static_cast<float>(numSamples) / fadeSamples);
         for (int i = 0; i < numBuses; ++i)
             if (busBuffers[static_cast<size_t>(i)] != nullptr)
-                busBuffers[static_cast<size_t>(i)]->applyGainRamp(0, numSamples,
-                                                                  demoOutputGain, nextGain);
-        demoOutputGain = nextGain;
-        if (demoOutputGain <= 0.0f)
-            voiceManager.allNotesOff();
+                busBuffers[static_cast<size_t>(i)]->applyGainRamp(
+                    0, numSamples, demoGainAtStart, demoGainAtEnd);
     }
+
+    if (AsterDemoMode::hasExpired())
+        voiceManager.allNotesOff();
    #endif
 
     // ── マスター出力ピーク計測（Bus 0, WebView メーター用） ───────────────

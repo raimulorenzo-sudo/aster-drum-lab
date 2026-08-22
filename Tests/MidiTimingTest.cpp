@@ -325,6 +325,11 @@ bool mainLayerStateAndKitPersistenceAreStable()
         return false;
     }
 
+    // Demo builds intentionally reject standalone kit files. DAW state
+    // persistence above remains required and is the supported Demo workflow.
+    if constexpr (AsterDemoMode::isDemoBuild)
+        return true;
+
     const auto kitFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getNonexistentChildFile("aster-main-persistence", ".asterkit", false);
     const bool saved = processor.saveKitToFile(kitFile);

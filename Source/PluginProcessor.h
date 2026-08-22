@@ -296,7 +296,6 @@ private:
     std::atomic<bool> kitChangedByAutomation { false };
     std::atomic<bool> demoOfflineRenderBlocked { false };
     std::atomic<bool> keepLengthOnSampleLoad { true };
-    float demoOutputGain { 1.0f };
 
 public:
     /** WebView Editor 側の Timer から消費する: DAW automation 起因の kit 変化があるか。 */
