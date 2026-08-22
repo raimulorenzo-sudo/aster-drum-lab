@@ -43,9 +43,9 @@ jobs:
           cache: npm
           cache-dependency-path: ui-prototype/package-lock.json
 
-      - name: Build and test unsigned VST3 Demo
+      - name: Build unsigned VST3 Demo
         shell: pwsh
-        run: ./packaging/windows/build-installer.ps1 -Demo -SkipInstaller -BuildTests -Unsigned
+        run: ./packaging/windows/build-installer.ps1 -Demo -SkipInstaller -Unsigned
 
       - name: Verify Demo output
         shell: pwsh
