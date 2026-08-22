@@ -19,10 +19,12 @@ if (-not $Version) { throw "Could not read the project version from CMakeLists.t
 $ReleaseTag = $Version
 $DemoCMakeValue = "OFF"
 $BuildDirName = "build-release-windows"
+$VstBaseName = "ASTERDrumLab"
 if ($Demo) {
     $ReleaseTag = "$Version-Demo"
     $DemoCMakeValue = "ON"
     $BuildDirName = "build-release-windows-demo"
+    $VstBaseName = "ASTERDrumLabDemo"
     # The public Demo deliverable is VST3 only. Never let a locally configured
     # licensed AAX SDK change the contents of this package.
     $AaxSdkPath = ""
@@ -120,7 +122,7 @@ if (-not $SkipBuild) {
     }
 }
 
-$VstBinary = Join-Path $Artefacts "VST3\ASTERDrumLab.vst3\Contents\x86_64-win\ASTERDrumLab.vst3"
+$VstBinary = Join-Path $Artefacts "VST3\$VstBaseName.vst3\Contents\x86_64-win\$VstBaseName.vst3"
 $AaxBundle = Join-Path $Artefacts "AAX\ASTERDrumLab.aaxplugin"
 $AaxBinary = Join-Path $AaxBundle "Contents\x64\ASTERDrumLab.aaxplugin"
 $binaries = @($VstBinary)
@@ -130,7 +132,7 @@ foreach ($file in $binaries) {
     Sign-File $file
 }
 
-$VstBundle = Join-Path $Artefacts "VST3\ASTERDrumLab.vst3"
+$VstBundle = Join-Path $Artefacts "VST3\$VstBaseName.vst3"
 $VstArchive = Join-Path $DistDir "ASTER-Drum-Lab-$ReleaseTag-Windows-x64-VST3.zip"
 Remove-Item $VstArchive -Force -ErrorAction SilentlyContinue
 $VstArchiveInputs = @($VstBundle)

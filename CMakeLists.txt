@@ -65,25 +65,40 @@ else()
 endif()
 
 # AAX SDK 2.9 documents an AAE limitation that rejects Windows AAX binary
-# filenames containing spaces. Keep the DAW-visible plug-in name unchanged,
-# but use a space-free physical filename for all Windows plug-in artefacts.
+# filenames containing spaces. Keep Windows plug-in artefact filenames
+# space-free while retaining the human-readable DAW name.
 set(ASTER_PRODUCT_FILE_NAME "ASTER Drum Lab")
+set(ASTER_PLUGIN_NAME "ASTER Drum Lab")
+set(ASTER_PLUGIN_CODE Adlb)
+set(ASTER_BUNDLE_ID "com.enigma.asterdrumlab")
+
+if(ASTER_DEMO_BUILD)
+    set(ASTER_PRODUCT_FILE_NAME "ASTER Drum Lab Demo")
+    set(ASTER_PLUGIN_NAME "ASTER Drum Lab Demo")
+    set(ASTER_PLUGIN_CODE Adld)
+    set(ASTER_BUNDLE_ID "com.enigma.asterdrumlab.demo")
+endif()
+
 if(WIN32)
-    set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLab")
+    if(ASTER_DEMO_BUILD)
+        set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLabDemo")
+    else()
+        set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLab")
+    endif()
 endif()
 
 # ── プラグイン定義 ─────────────────────────────────────────────────────────────
 juce_add_plugin(DrumSampler
 
     PLUGIN_MANUFACTURER_CODE  Enig
-    PLUGIN_CODE               Adlb
+    PLUGIN_CODE               ${ASTER_PLUGIN_CODE}
 
     FORMATS                   ${ASTER_PLUGIN_FORMATS}
 
     PRODUCT_NAME              "${ASTER_PRODUCT_FILE_NAME}"
-    PLUGIN_NAME               "ASTER Drum Lab"
+    PLUGIN_NAME               "${ASTER_PLUGIN_NAME}"
     COMPANY_NAME              "ENIGMA"
-    BUNDLE_ID                 "com.enigma.asterdrumlab"
+    BUNDLE_ID                 "${ASTER_BUNDLE_ID}"
 
     IS_SYNTH                  TRUE
     NEEDS_MIDI_INPUT          TRUE

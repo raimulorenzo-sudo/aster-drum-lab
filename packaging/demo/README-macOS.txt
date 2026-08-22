@@ -4,11 +4,11 @@ ASTER Drum Lab Demo — macOS AU / VST3
 INSTALLATION
 
 AU:
-Copy "ASTER Drum Lab.component" to:
+Copy "ASTER Drum Lab Demo.component" to:
   ~/Library/Audio/Plug-Ins/Components
 
 VST3:
-Copy "ASTER Drum Lab.vst3" to:
+Copy "ASTER Drum Lab Demo.vst3" to:
   ~/Library/Audio/Plug-Ins/VST3
 
 Restart your DAW after installation.
@@ -29,8 +29,8 @@ DEMO LIMITATIONS
 
 IMPORTANT
 
-The Demo and Full versions use the same plug-in identity and cannot be
-installed side by side. Installing the Full version replaces the Demo.
+The Demo appears in your DAW as "ASTER Drum Lab Demo" and uses a separate
+plug-in identity, so it can be installed alongside the Full version.
 
 This testing package uses ad-hoc macOS signing and is not notarized. macOS may
 display a security warning. A Developer ID signed and notarized package is
@@ -45,11 +45,11 @@ ASTER Drum Lab Demo — macOS AU / VST3
 インストール
 
 AU：
-「ASTER Drum Lab.component」を以下へコピーしてください。
+「ASTER Drum Lab Demo.component」を以下へコピーしてください。
   ~/Library/Audio/Plug-Ins/Components
 
 VST3：
-「ASTER Drum Lab.vst3」を以下へコピーしてください。
+「ASTER Drum Lab Demo.vst3」を以下へコピーしてください。
   ~/Library/Audio/Plug-Ins/VST3
 
 コピー後、DAWを再起動してください。
@@ -69,8 +69,8 @@ Demo版の制限
 
 重要
 
-Demo版と通常版は同じプラグインIDを使用するため、同時にインストール
-できません。通常版をインストールするとDemo版が置き換えられます。
+Demo版はDAW上で「ASTER Drum Lab Demo」と表示され、通常版とは異なる
+プラグインIDを使用するため、通常版と同時にインストールできます。
 
 このテスト用パッケージはmacOSのad-hoc署名で、公証されていません。
 一般公開時に警告なしで配布するには、Developer ID署名と公証が必要です。

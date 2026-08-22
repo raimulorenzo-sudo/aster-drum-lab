@@ -3,7 +3,7 @@ ASTER Drum Lab Demo — Windows VST3
 
 INSTALLATION
 
-Copy "ASTERDrumLab.vst3" to:
+Copy "ASTERDrumLabDemo.vst3" to:
   C:\Program Files\Common Files\VST3
 
 Restart your DAW after installation.
@@ -24,8 +24,8 @@ DEMO LIMITATIONS
 
 IMPORTANT
 
-The Demo and Full versions use the same plug-in identity and cannot be
-installed side by side. Installing the Full version replaces the Demo.
+The Demo appears in your DAW as "ASTER Drum Lab Demo" and uses a separate
+plug-in identity, so it can be installed alongside the Full version.
 
 GitHub Actions test artifacts are unsigned unless an Authenticode certificate
 is configured. Windows may display a security warning for unsigned builds.
@@ -38,7 +38,7 @@ ASTER Drum Lab Demo — Windows VST3
 
 インストール
 
-「ASTERDrumLab.vst3」を以下へコピーしてください。
+「ASTERDrumLabDemo.vst3」を以下へコピーしてください。
   C:\Program Files\Common Files\VST3
 
 コピー後、DAWを再起動してください。
@@ -58,8 +58,8 @@ Demo版の制限
 
 重要
 
-Demo版と通常版は同じプラグインIDを使用するため、同時にインストール
-できません。通常版をインストールするとDemo版が置き換えられます。
+Demo版はDAW上で「ASTER Drum Lab Demo」と表示され、通常版とは異なる
+プラグインIDを使用するため、通常版と同時にインストールできます。
 
 GitHub Actionsのテスト成果物は、Authenticode証明書を設定しない限り
 未署名です。Windowsでセキュリティ警告が表示される場合があります。
