@@ -506,6 +506,47 @@
   color: var(--sec);
 }
 
+/* ── Compressor: dynamics と信号フローを分離した2段レイアウト ──────── */
+.compControls {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.compDynamicsRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.compFlowRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr) 12px minmax(0, 1fr);
+  align-items: start;
+  justify-items: center;
+  gap: 0;
+  min-width: 0;
+  padding: 8px 2px 4px;
+  border-top: 1px solid rgba(176, 138, 214, 0.18);
+  background: linear-gradient(180deg, rgba(176, 138, 214, 0.04), transparent 72%);
+}
+
+.signalArrow {
+  align-self: center;
+  margin-top: 10px;
+  color: rgba(176, 138, 214, 0.68);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1;
+  text-shadow: 0 0 5px rgba(176, 138, 214, 0.22);
+}
+
 /* ── Compressor: ゲインリダクションメーター ─────────────────────────── */
 .grMeter {
   display: flex;
@@ -651,6 +692,51 @@
   border-radius: var(--radius-sm);
   background: rgba(14, 17, 20, 0.98);
   box-shadow: var(--panel-shadow-section);
+}
+
+.contextAutomation {
+  width: 228px;
+}
+
+.contextDivider {
+  height: 1px;
+  margin: 4px 5px;
+  background: rgba(132, 146, 156, 0.18);
+}
+
+.contextLabel {
+  padding: 5px 8px 4px;
+  color: var(--accent-cyan);
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.automationTargetList {
+  max-height: min(360px, calc(100vh - 120px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.automationTargetList button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.automationTargetList button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automationTargetList button b {
+  flex: 0 0 auto;
+  color: var(--accent-cyan);
+  font-size: 7px;
+  letter-spacing: 0.04em;
 }
 
 .contextMenu button {

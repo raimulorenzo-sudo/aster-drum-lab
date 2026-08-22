@@ -127,9 +127,11 @@ function defaultPad(i: number): PadParams {
     padVolume: 0.75,
     padPan: 0,
     padPitch: 0,
+    padFine: 0,
     pan: 0,
     pitch: 0,
-    attack: 0.002,
+    fine: 0,
+    attack: 0,
     release: 0.05,
     sampleLengthMs: 500,
     waveformPeaks: [],
@@ -140,12 +142,14 @@ function defaultPad(i: number): PadParams {
     playMode: 'OneShot',
     chokeGroup: 0,
     reverse: false,
+    keepLength: true,
     smartTrim: true,
     mute: false,
     solo: false,
     velocitySens: 1.0,
     humanize: 0,
     outputAssign: 0,
+    swapLR: false,
   };
 }
 

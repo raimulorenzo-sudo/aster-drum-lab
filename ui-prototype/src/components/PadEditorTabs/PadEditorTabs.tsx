@@ -9,7 +9,13 @@ import type { PadParams } from '../../types';
 
 export type PadEditorTabId = 'TRIM' | 'PLAYBACK' | 'PAD' | 'FX';
 
-const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PLAYBACK', 'PAD', 'FX'];
+const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PAD', 'PLAYBACK', 'FX'];
+const TAB_LABELS: Record<PadEditorTabId, string> = {
+  TRIM: 'TRIM',
+  PLAYBACK: 'LAYER',
+  PAD: 'PAD',
+  FX: 'FX',
+};
 
 interface Props {
   pad: PadParams;
@@ -33,7 +39,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
             className={`${styles.tab} ${active === id ? styles.tabActive : ''}`}
             onClick={() => setActive(id)}
           >
-            {id}
+            {TAB_LABELS[id]}
           </button>
         ))}
         <div className={styles.spacer} />
@@ -48,7 +54,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
         {active === 'TRIM'     && <TrimTab     pad={pad} padIndex={padIndex} onChange={onChange} />}
         {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} liveVelocity={liveVelocity} />}
         {active === 'PAD'      && <PadTab      pad={pad} padIndex={padIndex} onChange={onChange} />}
-        {active === 'FX'       && <FxTab       pad={pad}                     onChange={onChange} />}
+        {active === 'FX'       && <FxTab       pad={pad} padIndex={padIndex} onChange={onChange} />}
       </div>
     </div>
   );

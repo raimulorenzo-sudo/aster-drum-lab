@@ -27,6 +27,7 @@ namespace PadDataJson
         obj->setProperty("volume", (double) pad.volume);
         obj->setProperty("pan",    (double) pad.pan);
         obj->setProperty("pitch",  (double) pad.pitch);
+        obj->setProperty("fine",   (double) pad.fine);
 
         // エンベロープ
         obj->setProperty("attack",  (double) pad.attack);
@@ -40,6 +41,7 @@ namespace PadDataJson
 
         // 再生
         obj->setProperty("reverse",       pad.reverse);
+        obj->setProperty("keepLength",    pad.keepLength);
         obj->setProperty("playbackMode",  juce::String(playbackModeName(pad.playbackMode)));
         obj->setProperty("chokeGroup",    pad.chokeGroup);
 
@@ -47,6 +49,7 @@ namespace PadDataJson
         obj->setProperty("mute",         pad.mute);
         obj->setProperty("solo",         pad.solo);
         obj->setProperty("outputAssign", pad.outputAssign);
+        obj->setProperty("swapLR",       pad.swapLR);
 
         // パフォーマンス
         obj->setProperty("velocitySens", (double) pad.velocitySens);
@@ -76,10 +79,11 @@ namespace PadDataJson
             obj->setProperty("velCurve", juce::var(vc));
         }
 
-        // Pad-level Vol / Pan / Pitch
+        // Pad-level Vol / Pan / Pitch / Fine
         obj->setProperty("padVolume",    (double) pad.padVolume);
         obj->setProperty("padPan",       (double) pad.padPan);
         obj->setProperty("padPitch",     (double) pad.padPitch);
+        obj->setProperty("padFine",      (double) pad.padFine);
 
         // ── Layers ─────────────────────────────────────────────────────────
         juce::Array<juce::var> layerArr;
@@ -94,6 +98,7 @@ namespace PadDataJson
             lo->setProperty("volume",  (double) L.volume);
             lo->setProperty("pan",     (double) L.pan);
             lo->setProperty("pitch",   (double) L.pitch);
+            lo->setProperty("fine",    (double) L.fine);
             lo->setProperty("attack",  (double) L.attack);
             lo->setProperty("release", (double) L.release);
             lo->setProperty("startPosition", (double) L.startPosition);
@@ -101,6 +106,7 @@ namespace PadDataJson
             lo->setProperty("fadeIn",        (double) L.fadeIn);
             lo->setProperty("fadeOut",       (double) L.fadeOut);
             lo->setProperty("reverse",   L.reverse);
+            lo->setProperty("keepLength", L.keepLength);
             lo->setProperty("smartTrim", L.smartTrim);
             lo->setProperty("mute",      L.mute);
             lo->setProperty("solo",      L.solo);
@@ -174,6 +180,7 @@ namespace PadDataJson
                 {
                     params->setProperty("attack",  (double) slot.transient.attack);
                     params->setProperty("sustain", (double) slot.transient.sustain);
+                    params->setProperty("output",  (double) slot.transient.outputDb);
                 }
                 else if (slot.type == LayerFxType::Compressor)
                 {
@@ -181,7 +188,9 @@ namespace PadDataJson
                     params->setProperty("ratio",     (double) slot.compressor.ratio);
                     params->setProperty("attack",    (double) slot.compressor.attack);
                     params->setProperty("release",   (double) slot.compressor.release);
+                    params->setProperty("makeup",    (double) slot.compressor.makeupDb);
                     params->setProperty("mix",       (double) slot.compressor.mix);
+                    params->setProperty("output",    (double) slot.compressor.outputDb);
                 }
                 fx->setProperty("params", juce::var(params));
                 fxArr.add(juce::var(fx));

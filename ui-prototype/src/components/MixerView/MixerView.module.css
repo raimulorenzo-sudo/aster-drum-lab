@@ -435,6 +435,11 @@
   background: rgba(255, 255, 255, 0.025);
 }
 
+.head:focus,
+.head:focus-visible {
+  outline: none;
+}
+
 .numBadge {
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -470,8 +475,42 @@
   opacity: 0.78;
 }
 
+.marqueeText {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.head:hover [data-mixer-marquee][data-overflow='true'],
+.head:focus-visible [data-mixer-marquee][data-overflow='true'] {
+  text-overflow: clip;
+}
+
+.head:hover [data-mixer-marquee][data-overflow='true'] .marqueeText,
+.head:focus-visible [data-mixer-marquee][data-overflow='true'] .marqueeText {
+  animation: mixerLabelMarquee var(--marquee-duration) ease-in-out forwards;
+}
+
+@keyframes mixerLabelMarquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(calc(-1 * var(--marquee-distance))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .head:hover [data-mixer-marquee][data-overflow='true'] .marqueeText,
+  .head:focus-visible [data-mixer-marquee][data-overflow='true'] .marqueeText {
+    animation: none;
+  }
+}
+
+.channelLoaded .name {
+  opacity: 1;
+  font-weight: 600;
+  filter: brightness(1.32) saturate(1.18);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.56);
+}
+
 .channelSelected .numBadge { color: var(--platinum-gold); opacity: 1; }
-.channelSelected .name { color: #ebe3d0; }
+.channelSelected:not(.channelLoaded) .name { color: #ebe3d0; }
 
 /* ═══════════════════════════════════════════════════════════════════
    Pan セクション
@@ -976,11 +1015,12 @@
   display: grid;
   grid-template-columns:
     40px
+    92px
     minmax(165px, 1fr)
     minmax(165px, 1fr)
     auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 8px 14px;
   background:
     var(--noise-warm),

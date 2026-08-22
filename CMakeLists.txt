@@ -4,8 +4,11 @@ cmake_minimum_required(VERSION 3.22)
 if(POLICY CMP0175)
     cmake_policy(SET CMP0175 OLD)
 endif()
+if(POLICY CMP0169)
+    cmake_policy(SET CMP0169 OLD)
+endif()
 
-project(AsterDrumLab VERSION 0.1.0)
+project(AsterDrumLab VERSION 1.0.2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +16,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(ASTER_COPY_PLUGIN_AFTER_BUILD
     "Copy built plug-ins into the current user's plug-in folders"
     ON)
+option(ASTER_BUILD_TESTS
+    "Build ASTER DSP regression tests"
+    OFF)
+option(ASTER_DEMO_BUILD
+    "Build the time-limited ASTER Drum Lab demo"
+    OFF)
+set(ASTER_DEMO_DURATION_SECONDS "1200" CACHE STRING
+    "Demo audio duration in seconds (release default: 1200)")
 
 # ── JUCE 8 を自動ダウンロード ─────────────────────────────────────────────────
 # 初回 configure で JUCE をクローンします。
@@ -26,17 +37,68 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+# Realtime pitch shifting for KEEP LENGTH. Pin the exact version validated by
+# the automation/CPU regression tests so macOS and Windows builds stay aligned.
+# Use Signalsmith's portable FFT on every platform. Besides keeping macOS and
+# Windows on the tested code path, this avoids legacy Accelerate/Carbon type
+# names colliding with JUCE's Point and Component types in shared headers.
+set(SIGNALSMITH_USE_ACCELERATE OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    SignalsmithStretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        57b93f4e9206a089a45387eaa39bdc9f310d3308
+)
+FetchContent_MakeAvailable(SignalsmithStretch)
+
+set(ASTER_AAX_SDK_PATH "" CACHE PATH "Path to the licensed AAX SDK")
+if(NOT ASTER_AAX_SDK_PATH AND DEFINED ENV{AAX_SDK_PATH})
+    set(ASTER_AAX_SDK_PATH "$ENV{AAX_SDK_PATH}")
+endif()
+
+set(ASTER_PLUGIN_FORMATS VST3 AU)
+if(ASTER_AAX_SDK_PATH)
+    juce_set_aax_sdk_path("${ASTER_AAX_SDK_PATH}")
+    list(APPEND ASTER_PLUGIN_FORMATS AAX)
+    message(STATUS "AAX enabled with SDK: ${ASTER_AAX_SDK_PATH}")
+else()
+    message(STATUS "AAX disabled (set ASTER_AAX_SDK_PATH or AAX_SDK_PATH to enable)")
+endif()
+
+# AAX SDK 2.9 documents an AAE limitation that rejects Windows AAX binary
+# filenames containing spaces. Keep Windows plug-in artefact filenames
+# space-free while retaining the human-readable DAW name.
+set(ASTER_PRODUCT_FILE_NAME "ASTER Drum Lab")
+set(ASTER_PLUGIN_NAME "ASTER Drum Lab")
+set(ASTER_PLUGIN_CODE Adlb)
+set(ASTER_BUNDLE_ID "com.enigma.asterdrumlab")
+
+if(ASTER_DEMO_BUILD)
+    set(ASTER_PRODUCT_FILE_NAME "ASTER Drum Lab Demo")
+    set(ASTER_PLUGIN_NAME "ASTER Drum Lab Demo")
+    set(ASTER_PLUGIN_CODE Adld)
+    set(ASTER_BUNDLE_ID "com.enigma.asterdrumlab.demo")
+endif()
+
+if(WIN32)
+    if(ASTER_DEMO_BUILD)
+        set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLabDemo")
+    else()
+        set(ASTER_PRODUCT_FILE_NAME "ASTERDrumLab")
+    endif()
+endif()
+
 # ── プラグイン定義 ─────────────────────────────────────────────────────────────
 juce_add_plugin(DrumSampler
 
     PLUGIN_MANUFACTURER_CODE  Enig
-    PLUGIN_CODE               Adlb
+    PLUGIN_CODE               ${ASTER_PLUGIN_CODE}
 
-    FORMATS                   VST3 AU
+    FORMATS                   ${ASTER_PLUGIN_FORMATS}
 
-    PRODUCT_NAME              "ASTER Drum Lab"
+    PRODUCT_NAME              "${ASTER_PRODUCT_FILE_NAME}"
+    PLUGIN_NAME               "${ASTER_PLUGIN_NAME}"
     COMPANY_NAME              "ENIGMA"
-    BUNDLE_ID                 "com.enigma.asterdrumlab"
+    BUNDLE_ID                 "${ASTER_BUNDLE_ID}"
 
     IS_SYNTH                  TRUE
     NEEDS_MIDI_INPUT          TRUE
@@ -61,6 +123,7 @@ target_sources(DrumSampler
         Source/LayerParameterSpecs.cpp
         Source/KitData.cpp
         Source/AudioFileManager.cpp
+        Source/KeepLengthEngine.cpp
         Source/SamplerVoice.cpp
         Source/VoiceManager.cpp
         Source/SmartTrim.cpp
@@ -70,6 +133,7 @@ target_sources(DrumSampler
         Source/MixerChannelStrip.cpp
         Source/MixerView.cpp
         Source/RoutingPresets.cpp
+        Source/DemoMode.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/WebViewEditor.cpp        # NEW: WebView ベースの新エディタ
@@ -104,10 +168,12 @@ juce_add_binary_data(DrumSamplerWebUI
 target_compile_definitions(DrumSampler
     PUBLIC
         JUCE_WEB_BROWSER=1              # WebView を有効化
-        JUCE_USE_WIN_WEBVIEW2=1         # Windows: WebView2 を使用 (将来用)
+        $<$<PLATFORM_ID:Windows>:JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1>
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_REPORT_APP_USAGE=0
+        ASTER_DEMO_BUILD=$<BOOL:${ASTER_DEMO_BUILD}>
+        ASTER_DEMO_DURATION_SECONDS=${ASTER_DEMO_DURATION_SECONDS}
 )
 
 # ── リンクライブラリ ────────────────────────────────────────────────────────────
@@ -121,8 +187,53 @@ target_link_libraries(DrumSampler
         juce::juce_gui_basics
         juce::juce_gui_extra            # WebBrowserComponent はここ
         juce::juce_dsp
+        juce::juce_cryptography
     PUBLIC
+        signalsmith-stretch
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+if(ASTER_BUILD_TESTS)
+    enable_testing()
+
+    add_executable(DrumSamplerTimingTests
+        Tests/MidiTimingTest.cpp
+    )
+
+    target_include_directories(DrumSamplerTimingTests
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+            "${juce_SOURCE_DIR}/modules"
+    )
+
+    target_link_libraries(DrumSamplerTimingTests
+        PRIVATE
+            DrumSampler
+    )
+
+    add_test(NAME DrumSamplerMidiTiming COMMAND DrumSamplerTimingTests)
+
+    add_executable(DrumSamplerKeepLengthTests
+        Tests/KeepLengthTest.cpp
+    )
+    target_include_directories(DrumSamplerKeepLengthTests
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+            "${juce_SOURCE_DIR}/modules"
+    )
+    target_link_libraries(DrumSamplerKeepLengthTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerKeepLength COMMAND DrumSamplerKeepLengthTests)
+
+    add_executable(DrumSamplerDemoModeTests
+        Tests/DemoModeTest.cpp
+    )
+    target_include_directories(DrumSamplerDemoModeTests
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+            "${juce_SOURCE_DIR}/modules"
+    )
+    target_link_libraries(DrumSamplerDemoModeTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerDemoMode COMMAND DrumSamplerDemoModeTests)
+endif()

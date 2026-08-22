@@ -4,6 +4,14 @@
  */
 export type PlayMode = 'OneShot' | 'Gate';
 
+/** 波形プレビュー用の符号付き min/max エンベロープ（L/R 共通スケール）。 */
+export interface WaveformChannel {
+  min: number[];
+  max: number[];
+  /** 各バケット内の極値順。0=min→max、1=max→min。 */
+  extremeOrder?: number[];
+}
+
 /**
  * Layer のすべてのパラメータ（1 Pad は複数 Layer を持てる）。
  * JUCE 側の LayerData と同期する。
@@ -23,6 +31,7 @@ export interface LayerParams {
   volume: number;       // 0..1 (fader position)
   pan: number;          // -1..1
   pitch: number;        // -24..24 semitones
+  fine: number;         // -100..100 cents
 
   // エンベロープ
   attack: number;       // sec
@@ -35,9 +44,11 @@ export interface LayerParams {
   fadeOutMs: number;
   sampleLengthMs?: number;
   waveformPeaks?: number[];
+  waveformChannels?: WaveformChannel[];
 
   // 再生
   reverse: boolean;
+  keepLength: boolean;
   smartTrim: boolean;
 
   // Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立）
@@ -110,6 +121,7 @@ export type DriveType =
 export interface TransientParams {
   attack: number;
   sustain: number;
+  output: number;
 }
 
 export interface CompressorParams {
@@ -117,7 +129,9 @@ export interface CompressorParams {
   ratio: number;
   attack: number;
   release: number;
+  makeup: number;
   mix: number;
+  output: number;
 }
 
 /** ASTER シンプル 4 band EQ パラメータ。Low/High は shelf、Mid は bell。 */
@@ -185,6 +199,7 @@ export interface PadParams {
   volume: number;          // 0..1
   pan: number;             // -1..1
   pitch: number;           // -24..24 semitones
+  fine: number;            // -100..100 cents (selected Layer mirror)
 
   // エンベロープ
   attack: number;          // sec
@@ -193,6 +208,7 @@ export interface PadParams {
   // トリム
   sampleLengthMs?: number; // ms。JUCE 側から実サンプル長が来る場合はそれを使う
   waveformPeaks?: number[]; // 0..1 の軽量ピーク列。空/未定義なら波形なし
+  waveformChannels?: WaveformChannel[]; // mono=1、stereo=2 の符号付き min/max 波形
   startMs: number;         // ms
   endMs: number;           // ms
   fadeInMs: number;
@@ -202,6 +218,7 @@ export interface PadParams {
   playMode: PlayMode;
   chokeGroup: number;      // 0..4
   reverse: boolean;
+  keepLength: boolean;
   smartTrim: boolean;
 
   // ミキサー
@@ -214,6 +231,7 @@ export interface PadParams {
 
   // 出力
   outputAssign: number;    // 0..47 → "Out 1" ... "Out 48"
+  swapLR?: boolean;        // Pad出力の左右チャンネルを交換
 
   /**
    * Pad-level Volume（Layer Volume の上位段、Q3: 線形掛け算）
@@ -224,6 +242,8 @@ export interface PadParams {
   padPan?: number;
   /** Pad-level Pitch。全 Layer の相対音程を保ったまま移調する */
   padPitch?: number;
+  /** Pad-level Fine Tune。全 Layer を -100..100 cents の範囲で微調整する */
+  padFine?: number;
 
   /**
    * Layer 一覧。1 Pad は常に最低 1 Layer を持つ。

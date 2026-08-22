@@ -52,6 +52,7 @@ private:
     bool metersWereActive { false };
     int fastTimerTick { 0 };
     double lastStatsBroadcastMs { 0.0 };
+    juce::String lastDemoStateJson;
 
     struct PendingSampleByteDrop
     {
@@ -70,8 +71,10 @@ private:
 
     // C++ → JS: 現在の Kit を JSON でブロードキャスト
     void broadcastKitState();
+    void broadcastAutomationSlots();
     void broadcastKitList();
     void broadcastPadUpdate(int padIndex);
+    void broadcastDemoState(bool force = false);
     juce::var padToWebVar(int padIndex) const;
     juce::var kitToWebVar() const;
 

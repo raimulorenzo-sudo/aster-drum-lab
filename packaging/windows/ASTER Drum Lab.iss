@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "1.0.2"
 #endif
 #ifndef BuildRoot
   #error BuildRoot must point to DrumSampler_artefacts\Release
@@ -36,14 +36,20 @@ VersionInfoDescription={#AppName} Installer
 VersionInfoProductName={#AppName}
 
 [Files]
-Source: "{#BuildRoot}\VST3\ASTER Drum Lab.vst3\*"; DestDir: "{commoncf64}\VST3\ASTER Drum Lab.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#BuildRoot}\VST3\ASTERDrumLab.vst3\*"; DestDir: "{commoncf64}\VST3\ASTERDrumLab.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef IncludeAAX
+Source: "{#BuildRoot}\AAX\ASTERDrumLab.aaxplugin\*"; DestDir: "{commoncf64}\Avid\Audio\Plug-Ins\ASTERDrumLab.aaxplugin"; Flags: ignoreversion recursesubdirs createallsubdirs
+#endif
 Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; Flags: deleteafterinstall
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Flags: waituntilterminated; Check: NeedsWebView2
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{commoncf64}\VST3\ASTER Drum Lab.vst3"
+Type: filesandordirs; Name: "{commoncf64}\VST3\ASTERDrumLab.vst3"
+#ifdef IncludeAAX
+Type: filesandordirs; Name: "{commoncf64}\Avid\Audio\Plug-Ins\ASTERDrumLab.aaxplugin"
+#endif
 
 [Code]
 function HasWebView2Version(RootKey: Integer; SubKey: String): Boolean;

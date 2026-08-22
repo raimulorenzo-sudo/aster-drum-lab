@@ -83,6 +83,7 @@ struct LayerTransientFx
 {
     float attack { 0.0f };
     float sustain { 0.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerCompressorFx
@@ -91,7 +92,9 @@ struct LayerCompressorFx
     float ratio { 4.0f };
     float attack { 8.0f };
     float release { 80.0f };
+    float makeupDb { 0.0f };
     float mix { 1.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerFxSlot
@@ -140,9 +143,10 @@ struct LayerData
     float volume { 0.75f };
     float pan    { 0.0f };       // -1=L, 0=center, 1=R
     float pitch  { 0.0f };       // 半音単位
+    float fine   { 0.0f };       // cents (-100..100)
 
     // ── エンベロープ ───────────────────────────────────────────────────────
-    float attack  { 0.002f };    // 秒
+    float attack  { 0.0f };      // 秒（0 = 原音の立ち上がりを維持）
     float release { 0.05f  };    // 秒
 
     // ── トリム ─────────────────────────────────────────────────────────────
@@ -153,6 +157,7 @@ struct LayerData
 
     // ── 再生（サンプル単位の挙動） ─────────────────────────────────────────
     bool reverse   { false };
+    bool keepLength { true };
     bool smartTrim { true };
 
     // ── Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立） ────────────────
@@ -222,9 +227,10 @@ struct PadData
     float volume { 0.75f };
     float pan    { 0.0f };                   // -1.0（左）〜 0.0（中央）〜 1.0（右）
     float pitch  { 0.0f };                   // 半音単位（Phase 2 以降で有効化）
+    float fine   { 0.0f };                   // cents (-100..100)、Layer 0 mirror
 
     // ── エンベロープ ──────────────────────────────────────────────────────────
-    float attack  { 0.002f };                // 秒（立ち上がり時間）
+    float attack  { 0.0f };                  // 秒（0 = 即時に最大音量）
     float release { 0.05f  };               // 秒（フェードアウト時間）
 
     // ── トリム位置（0.0〜1.0） ────────────────────────────────────────────────
@@ -237,6 +243,7 @@ struct PadData
 
     // ── 逆再生 ───────────────────────────────────────────────────────────────
     bool  reverse { false };                // true = 終端から始端に向かって再生
+    bool  keepLength { true };              // Pitch変更時もトリム範囲の長さを維持
 
     // ── 再生モード ────────────────────────────────────────────────────────────
     PlaybackMode playbackMode { PlaybackMode::OneShot };
@@ -257,6 +264,7 @@ struct PadData
     // デフォルトは KitData::resetToDefaults() で全 Pad を Main に設定。
     // 旧版（-1 = Main / 0〜7 = Aux）の値は KitData::fromValueTree() で 0〜47 に変換される。
     int  outputAssign { 0 };
+    bool swapLR { false };                      // Pad出力の左右チャンネルを交換
 
     // ── ベロシティ / ヒューマナイズ ───────────────────────────────────────────
     float velocitySens { 1.0f };            // 0.0=ベロシティ無視, 1.0=完全追従
@@ -277,14 +285,15 @@ struct PadData
     VelCurve velCurve;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Pad-level Volume / Pan / Pitch（Layer パラメータの上位段）
+    // Pad-level Volume / Pan / Pitch / Fine（Layer パラメータの上位段）
     //
-    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan/Pitch → Output Routing
-    // 既存プリセット互換のため初期値は unity / center / 0 semitone。
+    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan/Pitch/Fine → Output Routing
+    // 既存プリセット互換のため初期値は unity / center / 0 semitone / 0 cent。
     // ─────────────────────────────────────────────────────────────────────────
     float padVolume { 0.75f };  // fader position（0.75 = 0 dB unity）
     float padPan    { 0.0f  };  // -1.0〜1.0
     float padPitch  { 0.0f  };  // semitones
+    float padFine   { 0.0f  };  // cents (-100..100)
 
     // ── Layers（1 つ以上、最大 MAX_LAYERS_PER_PAD） ───────────────────────────
     // 既存の flat fields（sampleFilePath / volume / pan / ... など）は

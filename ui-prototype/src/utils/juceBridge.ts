@@ -11,7 +11,7 @@
  *   (C++ → JS via backend.emitByBackend called internally when C++ calls emitEventIfBrowserIsVisible)
  */
 
-import type { PadParams, PlayMode, KitPage, OutputMode, LayerParams, EqParams, FxSlot, FilterParams, FilterSlope } from '../types';
+import type { PadParams, PlayMode, KitPage, OutputMode, LayerParams, EqParams, FxSlot, FilterParams, FilterSlope, WaveformChannel } from '../types';
 import { NEUTRAL_EQ } from '../types';
 import { INITIAL_PADS } from '../data/padData';
 import {
@@ -92,6 +92,7 @@ export interface JucePadData {
   volume: number;
   pan: number;
   pitch: number;
+  fine?: number;
   attack: number;
   release: number;
   startPosition: number;   // normalised 0..1 within sample
@@ -100,12 +101,15 @@ export interface JucePadData {
   fadeOut: number;         // normalised 0..1 of playback range
   sampleLengthMs?: number; // actual sample duration when known
   waveformPeaks?: number[]; // lightweight 0..1 peaks generated from actual sample data
+  waveformChannels?: WaveformChannel[];
   reverse: boolean;
+  keepLength?: boolean;
   playbackMode: string;    // "OneShot" | "Gate"
   chokeGroup: number;
   mute: boolean;
   solo: boolean;
   outputAssign: number;
+  swapLR?: boolean;
   velocitySens: number;
   humanize: number;
 
@@ -116,10 +120,11 @@ export interface JucePadData {
   // VEL Curve (v7+). Optional for backward compat.
   velCurve?: { preset: number; p1x: number; p1y: number; p2x: number; p2y: number };
 
-  // Pad-level Vol/Pan/Pitch. Optional for backward compat.
+  // Pad-level Vol/Pan/Pitch/Fine. Optional for backward compat.
   padVolume?: number;
   padPan?: number;
   padPitch?: number;
+  padFine?: number;
 
   // Layers (v6+). Optional for backward compat with older C++ builds.
   layers?: JuceLayerData[];
@@ -137,6 +142,7 @@ export interface JuceLayerData {
   volume: number;
   pan: number;
   pitch: number;
+  fine?: number;
   attack: number;
   release: number;
   startPosition: number;
@@ -144,6 +150,7 @@ export interface JuceLayerData {
   fadeIn: number;
   fadeOut: number;
   reverse: boolean;
+  keepLength?: boolean;
   smartTrim: boolean;
   mute: boolean;
   solo: boolean;
@@ -154,6 +161,7 @@ export interface JuceLayerData {
   // Runtime-only (injected by padToWebVar, not persisted to .asterkit)
   sampleLengthMs?: number;
   waveformPeaks?: number[];
+  waveformChannels?: WaveformChannel[];
 }
 
 export interface JuceKitData {
@@ -190,6 +198,31 @@ function argbToHexColor(argb: number): string {
   return '#' + [r, g, b].map(n => n.toString(16).padStart(2, '0')).join('');
 }
 
+function normalizeWaveformChannels(value: unknown): WaveformChannel[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const channels = value.slice(0, 2).flatMap(raw => {
+    if (!raw || typeof raw !== 'object') return [];
+    const candidate = raw as Partial<WaveformChannel>;
+    if (!Array.isArray(candidate.min) || !Array.isArray(candidate.max)) return [];
+    const count = Math.min(candidate.min.length, candidate.max.length);
+    if (count < 2) return [];
+    const clampSigned = (sample: unknown) => {
+      const number = Number(sample);
+      return Number.isFinite(number) ? Math.max(-1, Math.min(1, number)) : 0;
+    };
+    return [{
+      min: candidate.min.slice(0, count).map(clampSigned),
+      max: candidate.max.slice(0, count).map(clampSigned),
+      extremeOrder: Array.isArray(candidate.extremeOrder)
+        ? candidate.extremeOrder.slice(0, count).map(value => Number(value) === 1 ? 1 : 0)
+        : undefined,
+    }];
+  });
+
+  return channels.length > 0 ? channels : undefined;
+}
+
 /**
  * Convert a single JuceLayerData to a React LayerParams.
  * fallbackLengthMs: top-level pad sampleLengthMs — used only when the layer
@@ -213,6 +246,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
   const waveformPeaks = Array.isArray(jl.waveformPeaks)
     ? jl.waveformPeaks.filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(1, Number(v))))
     : undefined;
+  const waveformChannels = normalizeWaveformChannels(jl.waveformChannels);
 
   return {
     sampleFileName: jl.sampleFileName,
@@ -222,15 +256,18 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     volume:         jl.volume,
     pan:            jl.pan,
     pitch:          jl.pitch,
+    fine:           typeof jl.fine === 'number' ? jl.fine : 0,
     attack:         jl.attack,
     release:        jl.release,
     sampleLengthMs: layerLengthMs,
     waveformPeaks,
+    waveformChannels,
     startMs,
     endMs,
     fadeInMs:       jl.fadeIn  * playbackRangeMs,
     fadeOutMs:      jl.fadeOut * playbackRangeMs,
     reverse:        jl.reverse,
+    keepLength:     jl.keepLength ?? true,
     smartTrim:      jl.smartTrim,
     mute:           jl.mute,
     solo:           jl.solo,
@@ -330,6 +367,7 @@ function normalizeFxChain(chain: FxSlot[] | undefined): FxSlot[] | undefined {
           params: {
             attack: Number(slot.params?.attack ?? 0),
             sustain: Number(slot.params?.sustain ?? 0),
+            output: Number(slot.params?.output ?? 0),
           },
         };
       case 'COMPRESSOR':
@@ -341,7 +379,9 @@ function normalizeFxChain(chain: FxSlot[] | undefined): FxSlot[] | undefined {
             ratio: Number(slot.params?.ratio ?? 4),
             attack: Number(slot.params?.attack ?? 8),
             release: Number(slot.params?.release ?? 80),
+            makeup: Number(slot.params?.makeup ?? 0),
             mix: Number(slot.params?.mix ?? 1),
+            output: Number(slot.params?.output ?? 0),
           },
         };
     }
@@ -363,31 +403,62 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
   const padColor = isCustomColor ? argbToHexColor(jp.padColourARGB as number) : undefined;
 
   // Layers (v6+). If older C++ omits it, derive Layer 0 from flat fields.
-  const layers: LayerParams[] = Array.isArray(jp.layers) && jp.layers.length > 0
-    ? jp.layers.map(jl => juceLayerToReact(jl, sampleLengthMs))
-    : [{
-        sampleFileName: jp.sampleFileName,
-        sampleFilePath: jp.sampleFilePath,
-        sampleMissing:  jp.sampleMissing,
-        volume:         jp.volume,
-        pan:            jp.pan,
-        pitch:          jp.pitch,
-        attack:         jp.attack,
-        release:        jp.release,
-        sampleLengthMs,
-        startMs,
-        endMs,
-        fadeInMs:       jp.fadeIn  * playbackRangeMs,
-        fadeOutMs:      jp.fadeOut * playbackRangeMs,
-        reverse:        jp.reverse,
-        smartTrim:      existing.smartTrim ?? true,
-        mute:           false,
-        solo:           false,
-        velocityMin:    0,
-        velocityMax:    127,
-        eq:             cloneEq(NEUTRAL_EQ),
-        fxChain:        undefined,
-      }];
+  //
+  // Some WKWebView/JUCE combinations can expose a native array with a valid
+  // `length` but missing numeric slots. Array.prototype.map() preserves those
+  // holes, which made the UI show e.g. "2/8" while rendering no Layer tabs or
+  // velocity rows. Build a dense array explicitly and recover a missing slot
+  // from the optimistic/current React state whenever possible.
+  const flatLayer: LayerParams = {
+    sampleFileName: jp.sampleFileName,
+    sampleFilePath: jp.sampleFilePath,
+    sampleMissing:  jp.sampleMissing,
+    volume:         jp.volume,
+    pan:            jp.pan,
+    pitch:          jp.pitch,
+    fine:           typeof jp.fine === 'number' ? jp.fine : 0,
+    attack:         jp.attack,
+    release:        jp.release,
+    sampleLengthMs,
+    startMs,
+    endMs,
+    fadeInMs:       jp.fadeIn  * playbackRangeMs,
+    fadeOutMs:      jp.fadeOut * playbackRangeMs,
+    reverse:        jp.reverse,
+    keepLength:     jp.keepLength ?? true,
+    smartTrim:      existing.smartTrim ?? true,
+    mute:           false,
+    solo:           false,
+    velocityMin:    0,
+    velocityMax:    127,
+    eq:             cloneEq(NEUTRAL_EQ),
+    fxChain:        undefined,
+  };
+
+  const rawLayers = Array.isArray(jp.layers) ? jp.layers : [];
+  const layers: LayerParams[] = rawLayers.length > 0
+    ? Array.from({ length: rawLayers.length }, (_, index) => {
+        const rawLayer = rawLayers[index];
+        if (rawLayer && typeof rawLayer === 'object')
+          return juceLayerToReact(rawLayer, sampleLengthMs);
+
+        const currentLayer = existing.layers?.[index];
+        if (currentLayer)
+          return currentLayer;
+
+        return index === 0
+          ? flatLayer
+          : {
+              ...flatLayer,
+              sampleFileName: '',
+              sampleFilePath: '',
+              sampleMissing: false,
+              layerName: `Layer ${index + 1}`,
+              waveformPeaks: undefined,
+              waveformChannels: undefined,
+            };
+      })
+    : [flatLayer];
 
   return {
     ...existing,
@@ -400,22 +471,26 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     volume:         jp.volume,
     pan:            jp.pan,
     pitch:          jp.pitch,
+    fine:           typeof jp.fine === 'number' ? jp.fine : 0,
     attack:         jp.attack,
     release:        jp.release,
     sampleLengthMs,
     waveformPeaks:  Array.isArray(jp.waveformPeaks)
       ? jp.waveformPeaks.filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(1, Number(v))))
       : [],
+    waveformChannels: normalizeWaveformChannels(jp.waveformChannels),
     startMs,
     endMs,
     fadeInMs:       jp.fadeIn  * playbackRangeMs,
     fadeOutMs:      jp.fadeOut * playbackRangeMs,
     reverse:        jp.reverse,
+    keepLength:     jp.keepLength ?? true,
     playMode:       jp.playbackMode as PlayMode,
     chokeGroup:     jp.chokeGroup,
     mute:           jp.mute,
     solo:           jp.solo,
     outputAssign:   jp.outputAssign,
+    swapLR:         jp.swapLR ?? false,
     velocitySens:   jp.velocitySens,
     humanize:       jp.humanize,
     polyphony:      typeof jp.polyphony  === 'number' ? jp.polyphony  : existing.polyphony,
@@ -430,6 +505,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     padVolume:      typeof jp.padVolume === 'number' ? jp.padVolume : 0.75,
     padPan:         typeof jp.padPan === 'number' ? jp.padPan : 0.0,
     padPitch:       typeof jp.padPitch === 'number' ? jp.padPitch : 0.0,
+    padFine:        typeof jp.padFine === 'number' ? jp.padFine : 0.0,
     layers,
     selectedLayerIndex: existing.selectedLayerIndex ?? 0,
   };
@@ -509,14 +585,17 @@ export function sendPadPatchToJuce(
   if (patch.padVolume    !== undefined) sendToJuce('setPadVolume',    { index, value: patch.padVolume });
   if (patch.padPan       !== undefined) sendToJuce('setPadPan',       { index, value: patch.padPan });
   if (patch.padPitch     !== undefined) sendToJuce('setPadPitch',     { index, value: patch.padPitch });
+  if (patch.padFine      !== undefined) sendToJuce('setPadFine',      { index, value: patch.padFine });
   if (patch.pan          !== undefined) sendToJuce('setPan',          { index, value: patch.pan });
   if (patch.pitch        !== undefined) sendToJuce('setPitch',        { index, value: patch.pitch });
   if (patch.mute         !== undefined) sendToJuce('setMute',         { index, value: patch.mute });
   if (patch.solo         !== undefined) sendToJuce('setSolo',         { index, value: patch.solo });
   if (patch.reverse      !== undefined) sendToJuce('setReverse',      { index, value: patch.reverse });
+  if (patch.keepLength   !== undefined) sendToJuce('setKeepLength',   { index, value: patch.keepLength });
   if (patch.playMode     !== undefined) sendToJuce('setPlaybackMode', { index, value: patch.playMode });
   if (patch.chokeGroup   !== undefined) sendToJuce('setChoke',        { index, value: patch.chokeGroup });
   if (patch.outputAssign !== undefined) sendToJuce('setOutput',       { index, value: patch.outputAssign });
+  if (patch.swapLR       !== undefined) sendToJuce('setPadSwapLR',    { index, value: patch.swapLR });
   if (patch.attack       !== undefined) sendToJuce('setAttack',       { index, value: patch.attack });
   if (patch.release      !== undefined) sendToJuce('setRelease',      { index, value: patch.release });
   if (patch.velocitySens !== undefined) sendToJuce('setVelocitySens', { index, value: patch.velocitySens });
@@ -629,6 +708,8 @@ function sendLayerPatches(
         slots: serializeFxChain(b.fxChain ?? []),
       });
     }
+    if ((a.fine ?? 0) !== (b.fine ?? 0))
+      sendToJuce('setLayerFine', { index, layerIndex: li, value: b.fine ?? 0 });
 
     // L2+ の音作りパラメータは flat 側を通らないので、ここから per-layer message
     // を出す。Layer 0 は flat 経由 (setVolume 等) で既に C++ に届いている。
@@ -646,6 +727,8 @@ function sendLayerPatches(
       sendToJuce('setLayerRelease', { index, layerIndex: li, value: b.release });
     if (a.reverse !== b.reverse)
       sendToJuce('setLayerReverse', { index, layerIndex: li, value: b.reverse });
+    if (a.keepLength !== b.keepLength)
+      sendToJuce('setLayerKeepLength', { index, layerIndex: li, value: b.keepLength });
 
     if (a.startMs !== b.startMs || a.endMs !== b.endMs
         || a.fadeInMs !== b.fadeInMs || a.fadeOutMs !== b.fadeOutMs) {

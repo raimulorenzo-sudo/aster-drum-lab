@@ -7,7 +7,7 @@ export const MAX_LAYERS_PER_PAD = 8;
  * UI が「Layer N の値で Pad を編集している」ように見せるためのヘルパー。
  *
  * 信号フロー（types.ts に対応）:
- *   Layer Vol/Pan/Pitch → Pad Vol/Pan → Output Routing → Main/Multi Out
+ *   Layer Vol/Pan/Pitch/Fine → Pad Vol/Pan/Pitch/Fine → Output Routing
  *
  * 既存の WaveformEditor / PadControlSections は flat な PadParams を読む前提で
  * 書かれているので、選択中 Layer の値を flat フィールドに「上書き」した
@@ -26,6 +26,7 @@ const LAYER_LEVEL_KEYS = [
   'volume',
   'pan',
   'pitch',
+  'fine',
   'attack',
   'release',
   'startMs',
@@ -34,7 +35,9 @@ const LAYER_LEVEL_KEYS = [
   'fadeOutMs',
   'sampleLengthMs',
   'waveformPeaks',
+  'waveformChannels',
   'reverse',
+  'keepLength',
   'smartTrim',
   // Layer 単位で持つ EQ / FX / 極性反転 (PadParams 側にも optional として写しているのでキャストで通す)
 ] as const satisfies readonly (keyof PadParams & keyof LayerParams)[];
@@ -144,6 +147,7 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     volume: pad.volume,
     pan: pad.pan,
     pitch: pad.pitch,
+    fine: pad.fine,
     attack: pad.attack,
     release: pad.release,
     startMs: pad.startMs,
@@ -152,7 +156,9 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     fadeOutMs: pad.fadeOutMs,
     sampleLengthMs: pad.sampleLengthMs,
     waveformPeaks: pad.waveformPeaks,
+    waveformChannels: pad.waveformChannels,
     reverse: pad.reverse,
+    keepLength: pad.keepLength,
     smartTrim: pad.smartTrim,
     mute: false,
     solo: false,
@@ -176,7 +182,37 @@ export function layerFromFlat(pad: PadParams): LayerParams {
 
 /** 現在の `layers` を [Layer0] 互換で取得する（無ければ flat から組み立て）。 */
 export function ensureLayers(pad: PadParams): LayerParams[] {
-  return pad.layers && pad.layers.length > 0 ? pad.layers : [seedLayerFromFlat(pad)];
+  const layers = pad.layers;
+  if (!layers || layers.length === 0) return [seedLayerFromFlat(pad)];
+
+  // JUCE の native integration が環境によって穴あき配列を返しても、
+  // `.length` と実際に描画できる行数が食い違わないようにする。
+  // 正常な配列は参照をそのまま返し、通常時の React 再描画は増やさない。
+  let needsRepair = false;
+  for (let i = 0; i < layers.length; i += 1) {
+    if (!(i in layers) || !layers[i]) {
+      needsRepair = true;
+      break;
+    }
+  }
+  if (!needsRepair) return layers;
+
+  const flatLayer = seedLayerFromFlat(pad);
+  return Array.from({ length: layers.length }, (_, index) => {
+    const layer = layers[index];
+    if (layer) return layer;
+    if (index === 0) return flatLayer;
+
+    return {
+      ...flatLayer,
+      sampleFileName: '',
+      sampleFilePath: '',
+      sampleMissing: false,
+      layerName: `Layer ${index + 1}`,
+      waveformPeaks: undefined,
+      waveformChannels: undefined,
+    };
+  });
 }
 
 /**
@@ -197,6 +233,7 @@ export function patchAddLayer(pad: PadParams): Partial<PadParams> | null {
     sampleMissing: undefined,
     layerName: undefined,
     waveformPeaks: undefined,
+    waveformChannels: undefined,
     sampleLengthMs: undefined,
     mute: false,
     solo: false,
@@ -241,6 +278,7 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.volume = newLayer0.volume;
     patch.pan = newLayer0.pan;
     patch.pitch = newLayer0.pitch;
+    patch.fine = newLayer0.fine;
     patch.attack = newLayer0.attack;
     patch.release = newLayer0.release;
     patch.startMs = newLayer0.startMs;
@@ -249,7 +287,9 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.fadeOutMs = newLayer0.fadeOutMs;
     patch.sampleLengthMs = newLayer0.sampleLengthMs;
     patch.waveformPeaks = newLayer0.waveformPeaks;
+    patch.waveformChannels = newLayer0.waveformChannels;
     patch.reverse = newLayer0.reverse;
+    patch.keepLength = newLayer0.keepLength;
     patch.smartTrim = newLayer0.smartTrim;
   }
 

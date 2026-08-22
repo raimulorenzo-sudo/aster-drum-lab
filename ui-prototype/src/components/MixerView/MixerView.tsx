@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './MixerView.module.css';
 import { Knob } from '../Knob/Knob';
+import { SettingsMenu } from '../SettingsMenu/SettingsMenu';
+import { AutomationModeButton } from '../AutomationAssign/AutomationAssign';
 import { OutputAssignDropdown } from '../OutputAssignDropdown/OutputAssignDropdown';
 import { pageRange } from '../../data/padData';
 import { defaultPadParam } from '../../data/parameterSpecs';
@@ -16,6 +18,7 @@ import { registerMasterMeter, registerPadMeter } from '../../utils/meterRegistry
 import { registerResourceMeter } from '../../utils/resourceRegistry';
 import { registerPadClipNode } from '../../utils/clipRegistry';
 import { sendToJuce } from '../../utils/juceBridge';
+import { masterAutomationTarget, padAutomationTarget } from '../../utils/automationTarget';
 
 interface MixerViewProps {
   pads: PadParams[];                                    // 全 48 Pad
@@ -61,6 +64,18 @@ const ROUTING_STATUS_LABEL: Record<RoutingStatus, string> = {
   CUSTOM: 'CUSTOM',
 };
 
+function prepareMixerLabelMarquees(head: HTMLElement) {
+  head.querySelectorAll<HTMLElement>('[data-mixer-marquee]').forEach(label => {
+    const text = label.firstElementChild as HTMLElement | null;
+    if (!text) return;
+
+    const distance = Math.max(0, text.scrollWidth - label.clientWidth);
+    label.dataset.overflow = distance > 1 ? 'true' : 'false';
+    label.style.setProperty('--marquee-distance', `${distance}px`);
+    label.style.setProperty('--marquee-duration', `${Math.min(9, Math.max(3.5, 2 + distance / 22))}s`);
+  });
+}
+
 function MixerViewComponent({
   pads,
   page,
@@ -83,6 +98,8 @@ function MixerViewComponent({
   const routingStatus = useMemo(() => detectRoutingStatus(pads), [pads]);
   const [customRoutingSnapshot, setCustomRoutingSnapshot] = useState<number[] | null>(null);
   const canRecallCustomRouting = customRoutingSnapshot !== null && customRoutingSnapshot.length === pads.length;
+  const settingsGearRef = useRef<HTMLButtonElement | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ── Multi-selection editing (一時的。保存しない) ────────────────────────
   // selection: 選択中チャンネルの絶対 index 集合。空 = 単一 selectedIndex のみ扱う。
@@ -416,13 +433,25 @@ function MixerViewComponent({
 
       {/* ── フッター ─────────────────────────────────────────────── */}
       <div className={styles.footer}>
-        <button className={styles.gear} aria-label="mixer settings">
+        <button
+          ref={settingsGearRef}
+          className={styles.gear}
+          aria-label="settings"
+          aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen(open => !open)}
+        >
           <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
             <path d="M9 2.2 10.1 4.1 12.3 4.3 12.8 6.4 14.5 7.8 13.5 9.8 13.9 12 11.9 13 10.7 14.9 8.5 14.3 6.5 15 5.4 13 3.3 12.5 3.6 10.3 2.2 8.7 3.7 7.1 3.9 4.9 6.1 4.5 7.4 2.8Z"
               fill="currentColor" opacity="0.9" />
             <circle cx="9" cy="9" r="2.3" fill="var(--bg-deep)" />
           </svg>
         </button>
+        <SettingsMenu
+          anchorRef={settingsGearRef}
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
+        <AutomationModeButton />
         <ResourceMeter kind="cpu" label="CPU" />
         <ResourceMeter kind="mem" label="MEM" />
         <MasterOutputBlock
@@ -543,7 +572,12 @@ function ChannelStripBodyImpl({
 
   const sampleName = pad.sampleFileName;
   const padName = pad.padName;
-  const isEmpty = !sampleName;
+  const channelColor = pad.padColor ?? pad.categoryColor;
+  const hasLoadedSample = [
+    { sampleFileName: sampleName, sampleFilePath: pad.sampleFilePath, sampleMissing: pad.sampleMissing },
+    ...(pad.layers ?? []),
+  ].some(layer => Boolean(layer.sampleFileName || layer.sampleFilePath) && !layer.sampleMissing);
+  const isEmpty = !hasLoadedSample;
 
   const volumeFromDragDelta = (
     clientY: number,
@@ -626,6 +660,7 @@ function ChannelStripBodyImpl({
   const channelClass = [
     styles.channel,
     selected ? styles.channelSelected : '',
+    hasLoadedSample ? styles.channelLoaded : '',
     isEmpty ? styles.channelEmpty : '',
     pad.mute ? styles.channelMuted : '',
   ].join(' ');
@@ -645,6 +680,8 @@ function ChannelStripBodyImpl({
       <div
         className={styles.head}
         onMouseDown={onMouseDownAudition}
+        onMouseEnter={e => prepareMixerLabelMarquees(e.currentTarget)}
+        onFocus={e => prepareMixerLabelMarquees(e.currentTarget)}
         role="button"
         tabIndex={0}
         aria-label={`Audition ${padName}`}
@@ -652,13 +689,18 @@ function ChannelStripBodyImpl({
         <div className={styles.numBadge}>{String(absoluteIndex + 1).padStart(2, '0')}</div>
         <div
           className={styles.name}
-          style={{ color: pad.padColor ?? pad.categoryColor }}
+          style={{ color: channelColor }}
           title={padName}
+          data-mixer-marquee
         >
-          {padName}
+          <span className={styles.marqueeText}>{padName}</span>
         </div>
-        <div className={styles.sample} title={sampleName || '— empty —'}>
-          {sampleName || '— empty —'}
+        <div
+          className={styles.sample}
+          title={sampleName || '— empty —'}
+          data-mixer-marquee
+        >
+          <span className={styles.marqueeText}>{sampleName || '— empty —'}</span>
         </div>
       </div>
 
@@ -676,6 +718,7 @@ function ChannelStripBodyImpl({
           parseInput={parsePanInput}
           onChange={(v) => onPanCommit(v)}
           onReset={onResetPan}
+          automationTarget={padAutomationTarget(absoluteIndex, 'padPan', `${padName} Pad Pan`)}
         />
         <div className={styles.panLabel}>{panLabel}</div>
       </div>
@@ -718,6 +761,8 @@ function ChannelStripBodyImpl({
             aria-valuemax={1}
             aria-valuenow={padVolume}
             tabIndex={0}
+            data-automation-target-id={padAutomationTarget(absoluteIndex, 'padVolume', `${padName} Pad Volume`).id}
+            data-automation-target-name={padAutomationTarget(absoluteIndex, 'padVolume', `${padName} Pad Volume`).name}
           >
             <span className={styles.faderUnity} />
             {/* transform-only な実装に変更:
@@ -772,6 +817,9 @@ function ChannelStripBodyImpl({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onChange({ mute: !pad.mute }); }}
           aria-pressed={pad.mute}
+          data-automation-compact="true"
+          data-automation-target-id={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).id}
+          data-automation-target-name={padAutomationTarget(absoluteIndex, 'mute', `${padName} Mute`).name}
         >M</button>
         <button
           type="button"
@@ -783,6 +831,9 @@ function ChannelStripBodyImpl({
             onChange(on ? { solo: true, mute: false } : { solo: false });
           }}
           aria-pressed={pad.solo}
+          data-automation-compact="true"
+          data-automation-target-id={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).id}
+          data-automation-target-name={padAutomationTarget(absoluteIndex, 'solo', `${padName} Solo`).name}
         >S</button>
       </div>
     </article>
@@ -883,6 +934,7 @@ const MasterOutputBlock = memo(function MasterOutputBlock({
           return parsed === null ? null : dbToPosition(parsed);
         }}
         onChange={onMasterKnobChange}
+        automationTarget={masterAutomationTarget}
       />
       {editingOutput ? (
         <input

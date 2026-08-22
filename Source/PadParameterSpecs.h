@@ -23,6 +23,7 @@ namespace PadParameterSpecs
         PadVolume,  // Pad total volume, after all layer volumes
         PadPan,
         PadPitch,
+        PadFine,
     };
 
     struct Spec
@@ -36,7 +37,7 @@ namespace PadParameterSpecs
         bool         isBoolean;
     };
 
-    constexpr int numAutomatableParams = 17;
+    constexpr int numAutomatableParams = 18;
 
     const std::array<Spec, numAutomatableParams>& all() noexcept;
 

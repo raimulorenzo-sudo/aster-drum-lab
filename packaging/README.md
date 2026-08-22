@@ -26,6 +26,11 @@ For local installer testing only:
 packaging/macos/build-pkg.sh --unsigned
 ```
 
+Set `AAX_SDK_PATH` (or place AAX SDK 2.9 at
+`$HOME/SDKs/aax-sdk-2-9-0`) to include the universal AAX plug-in alongside AU
+and VST3. AAX distribution additionally requires Avid/PACE signing; ordinary
+Apple code signing alone is not sufficient for release in Pro Tools.
+
 ## Windows
 
 Run from a Visual Studio 2022 developer PowerShell on Windows with:
@@ -36,7 +41,42 @@ Run from a Visual Studio 2022 developer PowerShell on Windows with:
 - CMake
 - .NET SDK
 - Inno Setup 6
+- AAX SDK 2.9 (optional, for AAX builds)
 - An Authenticode code-signing certificate
+
+### VST3 and AAX only
+
+To build the Windows x64 VST3 and AAX bundles without creating an EXE/MSI:
+
+```powershell
+$env:AAX_SDK_PATH = "C:\SDKs\aax-sdk-2-9-0"
+.\packaging\windows\build-plugins.ps1
+```
+
+For a distributable AAX build, connect the licensed iLok, install the PACE
+Eden/Fusion signing tools, and set the signing values locally. Do not add these
+values or files to Git:
+
+```powershell
+$env:PACE_CUSTOMER_NUMBER = "<set locally>"
+$env:PACE_CUSTOMER_NAME = "ENIGMA"
+$env:PACE_PRODUCT_NAME = "ASTER Drum Lab"
+$env:WINDOWS_CERT_PFX = "C:\secure\enigma-code-signing.pfx"
+$env:WINDOWS_CERT_PASSWORD = "<set locally>"
+.\packaging\windows\build-plugins.ps1 -SignVST3 -SignAAX -Install
+```
+
+`build-plugins.ps1` invokes PACE `wraptool` for the AAX bundle, verifies both
+the PACE and Authenticode signatures, creates VST3/AAX ZIP files and SHA-256
+checksums under `dist`, and optionally installs both bundles. It never creates
+an installer.
+
+The DAW-visible name remains `ASTER Drum Lab`. The Windows plug-in filename is
+`ASTERDrumLab` without spaces because AAX SDK 2.9 documents an AAE limitation
+for Windows AAX filenames containing spaces.
+
+See `WINDOWS_CODEX_HANDOFF.md` for the complete Windows machine setup and the
+ready-to-paste Codex prompt.
 
 ```powershell
 $env:WINDOWS_CERT_PFX = "C:\secure\enigma-code-signing.pfx"
@@ -53,6 +93,10 @@ For local installer testing only:
 ```powershell
 .\packaging\windows\build-installer.ps1 -Unsigned
 ```
+
+Set `AAX_SDK_PATH` (or place the SDK at `C:\SDKs\aax-sdk-2-9-0`) to build
+VST3 and AAX from the same source and include both in the installer. Without an
+AAX SDK, the script continues to build the VST3-only installer.
 
 ## GitHub Actions
 

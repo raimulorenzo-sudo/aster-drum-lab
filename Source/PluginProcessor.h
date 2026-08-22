@@ -5,6 +5,7 @@
 #include "VoiceManager.h"
 #include "PadParameterSpecs.h"
 #include "LayerParameterSpecs.h"
+#include "DemoMode.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DrumSamplerAudioProcessor  ─  プラグインのメインクラス（バックエンド）
@@ -59,6 +60,10 @@ public:
     bool loadSampleForPad(int padIndex, const juce::File& file);
     // 任意 Layer にサンプルを読み込む。layerIndex==0 は loadSampleForPad と等価。
     bool loadSampleForLayer(int padIndex, int layerIndex, const juce::File& file);
+    void setKeepLengthOnSampleLoad(bool enabled) noexcept
+    {
+        keepLengthOnSampleLoad.store(enabled, std::memory_order_relaxed);
+    }
 
     // パッドのサンプルを消去（padName は残す）
     void clearPadSample(int padIndex);
@@ -114,6 +119,7 @@ public:
     // ── 試聴（Pad クリックから呼ばれる） ────────────────────────────────
     // UI スレッドから呼ぶ。read lock を取って VoiceManager::noteOn を発火する。
     void auditionPadOn(int padIndex, float velocity = 1.0f);
+    void auditionLayerOn(int padIndex, int layerIndex, float velocity = 1.0f);
     void auditionPadOff(int padIndex);
 
     // パッドのデータへのアクセス
@@ -185,6 +191,24 @@ public:
     void syncParametersFromKit();
     void syncKitFromParameters();
 
+    // ── User-assignable DAW automation slots ─────────────────────────
+    static constexpr int automationSlotCount = 24;
+    void beginAutomationLearn(int slotIndex) noexcept;
+    void cancelAutomationLearn() noexcept;
+    void assignAutomationSlot(int slotIndex, const juce::String& parameterID);
+    void clearAutomationSlot(int slotIndex);
+    void setFxAutomationTargetValue(const juce::String& targetID,
+                                    float normalizedValue,
+                                    bool notifyHost = true);
+    juce::String getAutomationSlotTargetID(int slotIndex) const;
+    juce::String getAutomationSlotTargetName(int slotIndex) const;
+    int getAutomationLearnSlot() const noexcept;
+    bool consumeAutomationSlotsChanged() noexcept;
+    bool wasDemoOfflineRenderBlocked() const noexcept
+    {
+        return demoOfflineRenderBlocked.load(std::memory_order_acquire);
+    }
+
 private:
     // Phase 4: バスレイアウトを構築（コンストラクタ初期化子で使う）
     static BusesProperties buildBuses();
@@ -212,6 +236,20 @@ private:
     void registerParameterListeners();
     void removeParameterListeners();
     void parameterChanged(const juce::String& parameterID, float newValue) override;
+    static juce::String automationSlotParameterID(int slotIndex);
+    static int automationSlotIndexFromParameterID(const juce::String& parameterID);
+    int findParameterIndex(const juce::String& parameterID) const;
+    int assignedAutomationSlotForTarget(const juce::String& parameterID) const;
+    static int fxAutomationTargetCode(const juce::String& targetID);
+    static juce::String fxAutomationTargetName(const juce::String& targetID);
+    float getFxAutomationTargetValue(int targetCode) const;
+    void applyFxAutomationTargetValue(int targetCode, float normalizedValue);
+    void syncFxAutomationSlots();
+    void setAutomationSlotTarget(int slotIndex, const juce::String& parameterID);
+    void captureAutomationLearnTarget(const juce::String& parameterID);
+    void setParameterValueFromUi(const juce::String& parameterID,
+                                 float normalizedValue,
+                                 bool notifyHost);
 
     KitData          kit;
     juce::AudioProcessorValueTreeState parameters;
@@ -246,9 +284,18 @@ private:
     std::atomic<int> learnedMidiNote { -1 };
     std::atomic<bool> parametersNeedSync { false };
     std::atomic<bool> suppressParameterCallbacks { false };
+    std::array<juce::String, automationSlotCount> automationSlotTargets {};
+    std::array<std::atomic<int>, automationSlotCount> automationSlotTargetIndices {};
+    std::array<std::atomic<int>, automationSlotCount> automationSlotFxTargetCodes {};
+    std::array<std::atomic<float>, automationSlotCount> automationSlotFxValues {};
+    std::array<std::atomic<bool>, automationSlotCount> automationSlotFxDirty {};
+    std::atomic<int> automationLearnSlot { -1 };
+    std::atomic<bool> automationSlotsChanged { false };
     // v7+: DAW automation (=parameterChanged path) で kit を書いた後、UI へ
     // 状態を push する必要があることを示すフラグ。Timer がこれを消費する。
     std::atomic<bool> kitChangedByAutomation { false };
+    std::atomic<bool> demoOfflineRenderBlocked { false };
+    std::atomic<bool> keepLengthOnSampleLoad { true };
 
 public:
     /** WebView Editor 側の Timer から消費する: DAW automation 起因の kit 変化があるか。 */

@@ -12,6 +12,9 @@ namespace
     // マスター出力ボリュームの APVTS パラメータ ID。Pad/Layer のように index を持たない
     // 単一グローバルパラメータ。
     constexpr const char* kMasterVolumeParamId = "masterVolume";
+    constexpr const char* kAutomationSlotPrefix = "asterAutomationSlot";
+    const juce::Identifier kAutomationSlotsStateId { "AUTOMATION_SLOTS" };
+    const juce::Identifier kDemoSessionId { "demoSessionId" };
 
     juce::NormalisableRange<float> rangeFor(const PadParameterSpecs::Spec& spec)
     {
@@ -231,6 +234,7 @@ namespace
                     if (options.padParameters)
                     {
                         dL.pitch = sL.pitch;
+                        dL.fine = sL.fine;
                         dL.attack = sL.attack;
                         dL.release = sL.release;
                         dL.startPosition = sL.startPosition;
@@ -238,6 +242,7 @@ namespace
                         dL.fadeIn = sL.fadeIn;
                         dL.fadeOut = sL.fadeOut;
                         dL.reverse = sL.reverse;
+                        dL.keepLength = sL.keepLength;
                         dL.smartTrim = sL.smartTrim;
                         dL.velocityMin = sL.velocityMin;
                         dL.velocityMax = sL.velocityMax;
@@ -271,7 +276,9 @@ namespace
             if (options.padParameters)
             {
                 dst.pitch = src.pitch;
+                dst.fine = src.fine;
                 dst.padPitch = src.padPitch;
+                dst.padFine = src.padFine;
                 dst.attack = src.attack;
                 dst.release = src.release;
                 dst.startPosition = src.startPosition;
@@ -279,6 +286,7 @@ namespace
                 dst.fadeIn = src.fadeIn;
                 dst.fadeOut = src.fadeOut;
                 dst.reverse = src.reverse;
+                dst.keepLength = src.keepLength;
                 dst.playbackMode = src.playbackMode;
                 dst.chokeGroup = src.chokeGroup;
                 dst.velocitySens = src.velocitySens;
@@ -292,6 +300,7 @@ namespace
                 dst.pan = src.pan;
                 dst.padVolume = src.padVolume;
                 dst.padPan = src.padPan;
+                dst.swapLR = src.swapLR;
                 dst.mute = src.mute;
                 dst.solo = src.solo;
             }
@@ -338,6 +347,14 @@ DrumSamplerAudioProcessor::DrumSamplerAudioProcessor()
     : AudioProcessor(buildBuses()),
       parameters(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    for (auto& targetIndex : automationSlotTargetIndices)
+        targetIndex.store(-1, std::memory_order_relaxed);
+    for (auto& targetCode : automationSlotFxTargetCodes)
+        targetCode.store(-1, std::memory_order_relaxed);
+    for (auto& value : automationSlotFxValues)
+        value.store(0.0f, std::memory_order_relaxed);
+    for (auto& dirty : automationSlotFxDirty)
+        dirty.store(false, std::memory_order_relaxed);
     midiNoteTopad.fill(-1);
     rebuildMidiMap();
     syncParametersFromKit();
@@ -447,14 +464,16 @@ bool DrumSamplerAudioProcessor::consumeLearnedMidiNote(int& padIndex, int& midiN
 // ─────────────────────────────────────────────────────────────────────────────
 // prepareToPlay  ─  DAW が再生を始める前に呼ばれる
 // ─────────────────────────────────────────────────────────────────────────────
-void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int /*samplesPerBlock*/)
+void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     hostSampleRate = sampleRate;
     voiceManager.allNotesOff();
+    voiceManager.prepare(sampleRate, samplesPerBlock);
     // 開始時の不要な ramp を避けるため、現在のマスターボリュームにゲインを合わせる
     masterGainSmoothed = FaderCurve::positionToGain(juce::jlimit(0.0f, 1.0f, kit.masterVolume));
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
+    syncFxAutomationSlots();
 }
 
 void DrumSamplerAudioProcessor::releaseResources()
@@ -466,8 +485,8 @@ void DrumSamplerAudioProcessor::releaseResources()
 // processBlock  ─  オーディオ処理のメインループ（リアルタイムスレッド）
 //
 // 呼ばれるたびに:
-//   1. MIDI メッセージを処理して VoiceManager に発音/停止を指示
-//   2. アクティブな全ボイスをレンダリングして buffer に加算
+//   1. MIDI イベント位置までアクティブな Voice をレンダリング
+//   2. そのサンプル位置で発音/停止を処理し、次のイベントまで繰り返す
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer&         midiMessages)
@@ -480,8 +499,30 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     const int numSamples = buffer.getNumSamples();
     if (numSamples <= 0) return;
 
+   #if ASTER_DEMO_BUILD
+    if (isNonRealtime())
+    {
+        demoOfflineRenderBlocked.store(true, std::memory_order_release);
+        voiceManager.allNotesOff();
+        voiceManager.clearPadLevels();
+        midiMessages.clear();
+        return;
+    }
+    demoOfflineRenderBlocked.store(false, std::memory_order_release);
+
+    // Once the shared 20-minute window has ended, newly triggered voices must
+    // not leak any audio.
+    if (AsterDemoMode::hasExpired() && ! voiceManager.hasActiveVoices())
+    {
+        voiceManager.clearPadLevels();
+        midiMessages.clear();
+        return;
+    }
+   #endif
+
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
+    syncFxAutomationSlots();
 
     const bool hasMidi = ! midiMessages.isEmpty();
     if (! hasMidi && ! voiceManager.hasActiveVoices())
@@ -503,9 +544,51 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // ── 読み取りロックをブロック全体で保持 ────────────────────────────────
     juce::ScopedReadLock rl(fileManager.getReadWriteLock());
 
-    // ── MIDI イベントを処理 ────────────────────────────────────────────────
+    // ── 有効バスのサブバッファを集める ────────────────────────────────────
+    // バスごとに `getBusBuffer<float>(buffer, false, i)` で AudioBuffer を取り出す。
+    // 無効バスや非ステレオバスは nullptr を入れる（VoiceManager 側でスキップ）。
+    std::array<juce::AudioBuffer<float>, NUM_OUTPUTS> busBufStorage;
+    std::array<juce::AudioBuffer<float>*, NUM_OUTPUTS> busBuffers {};
+    const int numBuses = juce::jmin(getBusCount(false), NUM_OUTPUTS);
+
+    for (int i = 0; i < numBuses; ++i)
+    {
+        auto* bus = getBus(false, i);
+        if (bus != nullptr && bus->isEnabled())
+        {
+            busBufStorage[static_cast<size_t>(i)] = getBusBuffer(buffer, false, i);
+            if (busBufStorage[static_cast<size_t>(i)].getNumChannels() >= 2)
+                busBuffers[static_cast<size_t>(i)] = &busBufStorage[static_cast<size_t>(i)];
+        }
+    }
+
+    voiceManager.beginProcessBlock();
+    bool renderedAnySegment = false;
+    int renderPosition = 0;
+
+    const auto renderVoicesUntil = [&] (int endSample)
+    {
+        const int clampedEnd = juce::jlimit(renderPosition, numSamples, endSample);
+        const int segmentLength = clampedEnd - renderPosition;
+        if (segmentLength > 0 && busBuffers[0] != nullptr && voiceManager.hasActiveVoices())
+        {
+            voiceManager.process(busBuffers.data(),
+                                 numBuses,
+                                 kit.outputMode,
+                                 kit,
+                                 fileManager,
+                                 renderPosition,
+                                 segmentLength,
+                                 hostSampleRate);
+            renderedAnySegment = true;
+        }
+        renderPosition = clampedEnd;
+    };
+
+    // ── MIDI イベントをサンプル位置どおりに処理 ────────────────────────────
     for (const auto meta : midiMessages)
     {
+        renderVoicesUntil(juce::jlimit(0, numSamples, meta.samplePosition));
         const auto msg = meta.getMessage();
 
         if (msg.isNoteOn())
@@ -530,6 +613,12 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
                 // Voice 生成は startVoicesForPad 内で従来通り条件分岐される
                 // (空 Layer はスキップ、Mute/Solo 反映、Polyphony 'Off' で skip 等)。
                 voiceManager.noteOn(padIndex, vel, kit, fileManager, hostSampleRate);
+               #if ASTER_DEMO_BUILD
+                // Empty/muted pads must not start the demo clock.  Start it only
+                // after the note has actually created an audible voice.
+                if (voiceManager.hasActiveVoices())
+                    AsterDemoMode::beginOnFirstSound();
+               #endif
             }
         }
         else if (msg.isNoteOff())
@@ -545,7 +634,9 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    if (! voiceManager.hasActiveVoices())
+    renderVoicesUntil(numSamples);
+
+    if (! renderedAnySegment && ! voiceManager.hasActiveVoices())
     {
         voiceManager.clearPadLevels();
         markAudioActivity();
@@ -555,39 +646,12 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     markAudioActivity();
 
-    // ── 有効バスのサブバッファを集める ────────────────────────────────────
-    // バスごとに `getBusBuffer<float>(buffer, false, i)` で AudioBuffer を取り出す。
-    // 無効バスや非ステレオバスは nullptr を入れる（VoiceManager 側でスキップ）。
-    std::array<juce::AudioBuffer<float>, NUM_OUTPUTS> busBufStorage;
-    std::array<juce::AudioBuffer<float>*, NUM_OUTPUTS> busBuffers {};
-    const int numBuses = juce::jmin(getBusCount(false), NUM_OUTPUTS);
-
-    for (int i = 0; i < numBuses; ++i)
-    {
-        auto* bus = getBus(false, i);
-        if (bus != nullptr && bus->isEnabled())
-        {
-            busBufStorage[static_cast<size_t>(i)] = getBusBuffer(buffer, false, i);
-            if (busBufStorage[static_cast<size_t>(i)].getNumChannels() >= 2)
-                busBuffers[static_cast<size_t>(i)] = &busBufStorage[static_cast<size_t>(i)];
-        }
-    }
-
     // バス 0 が無効 or 存在しないなら何もできない
     if (busBuffers[0] == nullptr)
     {
         finishCpuMeasurement();
         return;
     }
-
-    // ── マルチアウトレンダリング ──────────────────────────────────────────
-    voiceManager.process(busBuffers.data(),
-                         numBuses,
-                         kit.outputMode,
-                         kit,
-                         fileManager,
-                         numSamples,
-                         hostSampleRate);
 
     // ── マスター出力ボリューム適用 ───────────────────────────────────────
     // フェーダー位置 → 線形ゲイン。全有効バスへ均一に掛け、ブロック間は
@@ -606,6 +670,31 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
         masterGainSmoothed = targetGain;
     }
+
+   #if ASTER_DEMO_BUILD
+    // The full 20-minute Demo session is uninterrupted. Fade only at the
+    // final expiry boundary, and share the timer across all plug-in instances.
+    const auto demoElapsedAtBlockStart = AsterDemoMode::getElapsedSeconds();
+    const auto demoBlockDuration = hostSampleRate > 0.0
+        ? static_cast<double>(numSamples) / hostSampleRate
+        : 0.0;
+    const auto demoGainAtStart = AsterDemoMode::getOutputGain(
+        demoElapsedAtBlockStart);
+    const auto demoGainAtEnd = AsterDemoMode::getOutputGain(
+        demoElapsedAtBlockStart + demoBlockDuration);
+
+    if (! (juce::approximatelyEqual(demoGainAtStart, 1.0f)
+           && juce::approximatelyEqual(demoGainAtEnd, 1.0f)))
+    {
+        for (int i = 0; i < numBuses; ++i)
+            if (busBuffers[static_cast<size_t>(i)] != nullptr)
+                busBuffers[static_cast<size_t>(i)]->applyGainRamp(
+                    0, numSamples, demoGainAtStart, demoGainAtEnd);
+    }
+
+    if (AsterDemoMode::hasExpired())
+        voiceManager.allNotesOff();
+   #endif
 
     // ── マスター出力ピーク計測（Bus 0, WebView メーター用） ───────────────
     if (busBuffers[0] != nullptr)
@@ -736,12 +825,14 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     const auto keepColourMode = pad.padColourMode;
     const int keepMidi = pad.midiNote;
     const int keepOutput = pad.outputAssign;
+    const bool keepSwapLR = pad.swapLR;
     const float keepVolume = pad.volume;
     const float keepPan = pad.pan;
 
     PadData defaults;
     pad.pan = defaults.pan;
     pad.pitch = defaults.pitch;
+    pad.fine = defaults.fine;
     pad.attack = defaults.attack;
     pad.release = defaults.release;
     pad.startPosition = defaults.startPosition;
@@ -749,6 +840,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     pad.fadeIn = defaults.fadeIn;
     pad.fadeOut = defaults.fadeOut;
     pad.reverse = defaults.reverse;
+    pad.keepLength = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
     pad.playbackMode = defaults.playbackMode;
     pad.chokeGroup = defaults.chokeGroup;
     pad.mute = defaults.mute;
@@ -765,6 +857,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     pad.padColourMode = keepColourMode;
     pad.midiNote = keepMidi;
     pad.outputAssign = keepOutput;
+    pad.swapLR = keepSwapLR;
     pad.volume = keepVolume;
     pad.pan = keepPan;
 
@@ -796,6 +889,11 @@ void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
     }
     if (! anyLayerHasSample) return;
 
+   #if ASTER_DEMO_BUILD
+    if (AsterDemoMode::hasExpired()) return;
+    AsterDemoMode::beginOnFirstSound();
+   #endif
+
     juce::Logger::writeToLog("[ASTER PLAY] auditionPadOn padIndex=" + juce::String(padIndex)
                              + " velocity=" + juce::String(velocity, 2)
                              + " layerCount=" + juce::String(padRef.layerCount()));
@@ -805,6 +903,35 @@ void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
     // Using the default (0) would silently skip every layer except MAIN,
     // making pad-click behave differently from MIDI noteOn.
     voiceManager.previewNoteOn(padIndex, velocity, kit, fileManager, hostSampleRate, -1);
+}
+
+void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
+                                                int layerIndex,
+                                                float velocity)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+
+    const auto& padRef = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= padRef.layerCount()) return;
+    if (! fileManager.hasSample(padIndex, layerIndex)) return;
+
+   #if ASTER_DEMO_BUILD
+    if (AsterDemoMode::hasExpired()) return;
+    AsterDemoMode::beginOnFirstSound();
+   #endif
+
+    juce::ScopedReadLock rl(fileManager.getReadWriteLock());
+    // Waveform audition is an editor-focused preview: play only the visible
+    // layer from its configured START, even if that layer/pad is muted or
+    // outside its velocity range.
+    voiceManager.previewNoteOn(padIndex,
+                               juce::jlimit(0.0f, 1.0f, velocity),
+                               kit,
+                               fileManager,
+                               hostSampleRate,
+                               layerIndex,
+                               -1.0f,
+                               /*ignoreMuteSoloAndVelocityRange=*/ true);
 }
 
 void DrumSamplerAudioProcessor::auditionPadOff(int padIndex)
@@ -935,6 +1062,7 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     L.endPosition   = 1.0f;
     L.fadeIn        = 0.0f;
     L.fadeOut       = 0.0f;
+    L.keepLength    = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
 
     syncParametersFromKit();
     markKitDirty();
@@ -1009,11 +1137,13 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
     auto& dst = kit.pads[static_cast<size_t>(padIndex)];
     const int keepMidi = dst.midiNote;
     const int keepOutput = dst.outputAssign;
+    const bool keepSwapLR = dst.swapLR;
 
     // 全フィールドをコピー → midiNote だけ元に戻す
     dst = padClipboard;
     dst.midiNote = keepMidi;
     dst.outputAssign = keepOutput;
+    dst.swapLR = keepSwapLR;
 
     // サンプルもコピー: Layer ごとのパスを再ロードする。Layer 0 だけを見ると
     // multi-layer pad の Paste 後に L2+ が無音になるため、全 Layer を同期する。
@@ -1072,6 +1202,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
     pad.midiNote     = keepMidi;
     // Full reset follows the kit default routing: Main.
     pad.outputAssign = 0;
+    pad.swapLR = false;
     pad.padColourARGB = keepColour;
     pad.padColourMode = keepColourMode;
     syncParametersFromKit();
@@ -1095,6 +1226,7 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     const bool         keepMissing = pad.sampleMissing;
     const int          keepMidi   = pad.midiNote;
     const int          keepOutput = pad.outputAssign;
+    const bool         keepSwapLR = pad.swapLR;
     const float        keepVolume = pad.volume;
     const auto         keepColour = pad.padColourARGB;
     const auto         keepColourMode = pad.padColourMode;
@@ -1110,6 +1242,7 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     pad.sampleFilePath = keepPath;
     pad.sampleMissing  = keepMissing;
     pad.outputAssign   = keepOutput;
+    pad.swapLR         = keepSwapLR;
     pad.padColourARGB  = keepColour;
     pad.padColourMode  = keepColourMode;
     pad.syncLayer0FromFlat();
@@ -1332,9 +1465,14 @@ bool DrumSamplerAudioProcessor::isDefaultKitName(const juce::String& name)
 
 bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
 {
+   #if ASTER_DEMO_BUILD
+    juce::ignoreUnused(file);
+    return false;
+   #endif
     if (file == juce::File{}) return false;
 
     syncKitFromParameters();
+    syncFxAutomationSlots();
     kit.kitVersion = CURRENT_KIT_VERSION;
     kit.pluginVersion = JucePlugin_VersionString;
 
@@ -1467,10 +1605,24 @@ bool DrumSamplerAudioProcessor::loadRecentKit(int recentIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
+    // Flush any host/automation changes that arrived since the last audio
+    // block so the Kit snapshot remains the complete source of truth.
+    syncKitFromParameters();
+    syncFxAutomationSlots();
     auto root = juce::ValueTree { "DrumSamplerState" };
     root.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
+    if constexpr (AsterDemoMode::isDemoBuild)
+        root.setProperty(kDemoSessionId,
+                         AsterDemoMode::getProcessSessionIdentifier(), nullptr);
     root.addChild(kit.toValueTree(), -1, nullptr);
     root.addChild(parameters.copyState(), -1, nullptr);
+
+    juce::ValueTree automationSlotsState { kAutomationSlotsStateId };
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        automationSlotsState.setProperty("target" + juce::String(slot + 1).paddedLeft('0', 2),
+                                         automationSlotTargets[static_cast<size_t>(slot)],
+                                         nullptr);
+    root.addChild(automationSlotsState, -1, nullptr);
 
     juce::MemoryOutputStream stream(destData, false);
     root.writeToStream(stream);
@@ -1486,6 +1638,20 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
 
     if (!tree.isValid()) return;
 
+    if constexpr (AsterDemoMode::isDemoBuild)
+    {
+        const auto savedSessionIdentifier = tree.getProperty(kDemoSessionId).toString();
+        if (! AsterDemoMode::stateBelongsToCurrentProcess(savedSessionIdentifier))
+        {
+            newKit();
+            for (int slot = 0; slot < automationSlotCount; ++slot)
+                setAutomationSlotTarget(slot, {});
+            demoOfflineRenderBlocked.store(false, std::memory_order_release);
+            keepLengthOnSampleLoad.store(true, std::memory_order_relaxed);
+            return;
+        }
+    }
+
     const auto kitTree = tree.hasType("Kit") ? tree : tree.getChildWithName("Kit");
     if (! kitTree.isValid()) return;
 
@@ -1499,6 +1665,16 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
     const auto parameterTree = tree.getChildWithName("PARAMETERS");
     if (parameterTree.isValid())
         parameters.replaceState(parameterTree);
+
+    const auto automationSlotsState = tree.getChildWithName(kAutomationSlotsStateId);
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        const auto propertyName = "target" + juce::String(slot + 1).paddedLeft('0', 2);
+        setAutomationSlotTarget(slot,
+            automationSlotsState.isValid()
+                ? automationSlotsState.getProperty(propertyName).toString()
+                : juce::String{});
+    }
 
     if (needsVolumeMigration)
     {
@@ -1517,7 +1693,12 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
         markKitDirty();
     }
 
-    hydrateRuntimeFromKit(parameterTree.isValid() && ! needsVolumeMigration);
+    // The Kit tree is the complete plug-in snapshot and is also where values
+    // that are not exposed as parameters (for example Layer trim) live.  Keep
+    // it authoritative when restoring a DAW project, then mirror it into the
+    // APVTS.  This also prevents stale duplicate Layer-0 parameter values from
+    // overwriting the values that were actually saved in the Kit tree.
+    hydrateRuntimeFromKit(false);
     currentKitFile = juce::File{};
     // currentKitFile is the source of truth for the kit's identity. Once we
     // clear it, kit.kitName must follow so the UI never shows a saved-kit
@@ -1615,9 +1796,453 @@ void DrumSamplerAudioProcessor::saveRecentKitPaths() const
     file.replaceWithText(content);
 }
 
+juce::String DrumSamplerAudioProcessor::automationSlotParameterID(int slotIndex)
+{
+    return juce::String(kAutomationSlotPrefix)
+         + juce::String(slotIndex + 1).paddedLeft('0', 2);
+}
+
+int DrumSamplerAudioProcessor::automationSlotIndexFromParameterID(const juce::String& parameterID)
+{
+    if (! parameterID.startsWith(kAutomationSlotPrefix))
+        return -1;
+
+    const int oneBased = parameterID.substring(juce::String(kAutomationSlotPrefix).length()).getIntValue();
+    return juce::isPositiveAndBelow(oneBased - 1, automationSlotCount) ? oneBased - 1 : -1;
+}
+
+int DrumSamplerAudioProcessor::findParameterIndex(const juce::String& parameterID) const
+{
+    const auto* target = parameters.getParameter(parameterID);
+    if (target == nullptr)
+        return -1;
+
+    const auto& processorParameters = getParameters();
+    for (int index = 0; index < processorParameters.size(); ++index)
+        if (processorParameters.getUnchecked(index) == target)
+            return index;
+    return -1;
+}
+
+int DrumSamplerAudioProcessor::assignedAutomationSlotForTarget(const juce::String& parameterID) const
+{
+    for (int slot = 0; parameterID.isNotEmpty() && slot < automationSlotCount; ++slot)
+        if (automationSlotTargets[static_cast<size_t>(slot)] == parameterID)
+            return slot;
+    return -1;
+}
+
+int DrumSamplerAudioProcessor::fxAutomationTargetCode(const juce::String& targetID)
+{
+    juce::StringArray tokens;
+    tokens.addTokens(targetID, ".", {});
+    if (tokens.size() != 5 || ! tokens[0].startsWith("pad")
+        || ! tokens[1].startsWith("layer") || tokens[2] != "fx")
+        return -1;
+
+    const int padIndex = tokens[0].substring(3).getIntValue() - 1;
+    const int layerIndex = tokens[1].substring(5).getIntValue() - 1;
+    if (! juce::isPositiveAndBelow(padIndex, NUM_PADS)
+        || ! juce::isPositiveAndBelow(layerIndex, MAX_LAYERS_PER_PAD))
+        return -1;
+
+    const auto typeName = tokens[3].toLowerCase();
+    const auto parameter = tokens[4];
+    int type = 0;
+    int param = 0;
+    if (typeName == "filter")
+    {
+        type = 1;
+        if      (parameter == "bypass")      param = 1;
+        else if (parameter == "hpEnabled")   param = 2;
+        else if (parameter == "hpCutoff")    param = 3;
+        else if (parameter == "hpSlope")     param = 4;
+        else if (parameter == "hpResonance") param = 5;
+        else if (parameter == "lpEnabled")   param = 6;
+        else if (parameter == "lpCutoff")    param = 7;
+        else if (parameter == "lpSlope")     param = 8;
+        else if (parameter == "lpResonance") param = 9;
+    }
+    else if (typeName == "drive")
+    {
+        type = 2;
+        if      (parameter == "bypass") param = 1;
+        else if (parameter == "type")   param = 2;
+        else if (parameter == "amount") param = 3;
+        else if (parameter == "tone")   param = 4;
+        else if (parameter == "mix")    param = 5;
+        else if (parameter == "output") param = 6;
+    }
+    else if (typeName == "transient")
+    {
+        type = 3;
+        if      (parameter == "bypass")  param = 1;
+        else if (parameter == "attack")  param = 2;
+        else if (parameter == "sustain") param = 3;
+        else if (parameter == "output")  param = 4;
+    }
+    else if (typeName == "compressor")
+    {
+        type = 4;
+        if      (parameter == "bypass")    param = 1;
+        else if (parameter == "threshold") param = 2;
+        else if (parameter == "ratio")     param = 3;
+        else if (parameter == "attack")    param = 4;
+        else if (parameter == "release")   param = 5;
+        else if (parameter == "makeup")    param = 6;
+        else if (parameter == "mix")       param = 7;
+        else if (parameter == "output")    param = 8;
+    }
+
+    return type > 0 && param > 0
+        ? (padIndex << 11) | (layerIndex << 8) | (type << 5) | param
+        : -1;
+}
+
+juce::String DrumSamplerAudioProcessor::fxAutomationTargetName(const juce::String& targetID)
+{
+    if (fxAutomationTargetCode(targetID) < 0)
+        return {};
+
+    juce::StringArray tokens;
+    tokens.addTokens(targetID, ".", {});
+    const auto type = tokens[3].toUpperCase();
+    const auto parameter = tokens[4];
+    juce::String label = parameter;
+    if      (parameter == "bypass")      label = "Bypass";
+    else if (parameter == "type")        label = "Type";
+    else if (parameter == "amount")      label = "Drive";
+    else if (parameter == "tone")        label = "Tone";
+    else if (parameter == "mix")         label = "Mix";
+    else if (parameter == "output")      label = "Output";
+    else if (parameter == "attack")      label = "Attack";
+    else if (parameter == "sustain")     label = "Sustain";
+    else if (parameter == "threshold")   label = "Threshold";
+    else if (parameter == "ratio")       label = "Ratio";
+    else if (parameter == "release")     label = "Release";
+    else if (parameter == "makeup")      label = "Make Up";
+    else if (parameter == "hpEnabled")   label = "High-Pass On";
+    else if (parameter == "hpCutoff")    label = "High-Pass Frequency";
+    else if (parameter == "hpSlope")     label = "High-Pass Slope";
+    else if (parameter == "hpResonance") label = "High-Pass Resonance";
+    else if (parameter == "lpEnabled")   label = "Low-Pass On";
+    else if (parameter == "lpCutoff")    label = "Low-Pass Frequency";
+    else if (parameter == "lpSlope")     label = "Low-Pass Slope";
+    else if (parameter == "lpResonance") label = "Low-Pass Resonance";
+    return tokens[0].replace("pad", "Pad ") + " "
+         + tokens[1].replace("layer", "L") + " " + type + " " + label;
+}
+
+float DrumSamplerAudioProcessor::getFxAutomationTargetValue(int targetCode) const
+{
+    if (targetCode < 0) return 0.0f;
+    const int padIndex = (targetCode >> 11) & 63;
+    const int layerIndex = (targetCode >> 8) & 7;
+    const int type = (targetCode >> 5) & 7;
+    const int param = targetCode & 31;
+    if (padIndex >= NUM_PADS) return 0.0f;
+    const auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex >= pad.layerCount()) return 0.0f;
+    const auto& chain = pad.layers[static_cast<size_t>(layerIndex)].fxChain;
+    const LayerFxType wanted = type == 1 ? LayerFxType::Filter
+                               : type == 2 ? LayerFxType::Drive
+                               : type == 3 ? LayerFxType::Transient
+                                           : LayerFxType::Compressor;
+    const auto found = std::find_if(chain.begin(), chain.end(), [wanted] (const auto& slot) { return slot.type == wanted; });
+    if (found == chain.end()) return 0.0f;
+    if (param == 1) return found->bypassed ? 1.0f : 0.0f;
+    const auto norm = [] (float value, float min, float max) { return juce::jlimit(0.0f, 1.0f, (value - min) / (max - min)); };
+    if (type == 1)
+    {
+        const auto freqNorm = [] (float hz) { return std::log10(juce::jlimit(20.0f, 20000.0f, hz) / 20.0f) / 3.0f; };
+        if (param == 2) return found->filter.hpEnabled ? 1.0f : 0.0f;
+        if (param == 3) return freqNorm(found->filter.hpCutoff);
+        if (param == 4) return found->filter.hpSlope >= 48 ? 1.0f : found->filter.hpSlope >= 24 ? 0.5f : 0.0f;
+        if (param == 5) return norm(found->filter.hpResonance, 0.2f, 8.0f);
+        if (param == 6) return found->filter.lpEnabled ? 1.0f : 0.0f;
+        if (param == 7) return freqNorm(found->filter.lpCutoff);
+        if (param == 8) return found->filter.lpSlope >= 48 ? 1.0f : found->filter.lpSlope >= 24 ? 0.5f : 0.0f;
+        if (param == 9) return norm(found->filter.lpResonance, 0.2f, 8.0f);
+    }
+    if (type == 2)
+    {
+        if (param == 2) return norm(static_cast<float>(found->drive.type), 0.0f, 6.0f);
+        if (param == 3) return found->drive.amount;
+        if (param == 4) return found->drive.tone;
+        if (param == 5) return found->drive.mix;
+        if (param == 6) return norm(found->drive.outputDb, -24.0f, 12.0f);
+    }
+    if (type == 3)
+    {
+        if (param == 2) return norm(found->transient.attack, -1.0f, 1.0f);
+        if (param == 3) return norm(found->transient.sustain, -1.0f, 1.0f);
+        if (param == 4) return norm(found->transient.outputDb, -24.0f, 12.0f);
+    }
+    if (type == 4)
+    {
+        if (param == 2) return norm(found->compressor.threshold, -48.0f, 0.0f);
+        if (param == 3) return norm(found->compressor.ratio, 1.0f, 20.0f);
+        if (param == 4) return norm(found->compressor.attack, 1.0f, 80.0f);
+        if (param == 5) return norm(found->compressor.release, 10.0f, 500.0f);
+        if (param == 6) return norm(found->compressor.makeupDb, 0.0f, 24.0f);
+        if (param == 7) return found->compressor.mix;
+        if (param == 8) return norm(found->compressor.outputDb, -24.0f, 12.0f);
+    }
+    return 0.0f;
+}
+
+void DrumSamplerAudioProcessor::applyFxAutomationTargetValue(int targetCode, float normalizedValue)
+{
+    if (targetCode < 0) return;
+    const int padIndex = (targetCode >> 11) & 63;
+    const int layerIndex = (targetCode >> 8) & 7;
+    const int type = (targetCode >> 5) & 7;
+    const int param = targetCode & 31;
+    if (padIndex >= NUM_PADS) return;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex >= pad.layerCount()) return;
+    auto& chain = pad.layers[static_cast<size_t>(layerIndex)].fxChain;
+    const LayerFxType wanted = type == 1 ? LayerFxType::Filter
+                               : type == 2 ? LayerFxType::Drive
+                               : type == 3 ? LayerFxType::Transient
+                                           : LayerFxType::Compressor;
+    const auto found = std::find_if(chain.begin(), chain.end(), [wanted] (const auto& slot) { return slot.type == wanted; });
+    if (found == chain.end()) return;
+    const float n = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    const auto denorm = [n] (float min, float max) { return min + n * (max - min); };
+    if (param == 1) { found->bypassed = n >= 0.5f; return; }
+    if (type == 1)
+    {
+        const float freq = 20.0f * std::pow(1000.0f, n);
+        if      (param == 2) found->filter.hpEnabled = n >= 0.5f;
+        else if (param == 3) found->filter.hpCutoff = freq;
+        else if (param == 4) found->filter.hpSlope = n >= 0.75f ? 48 : n >= 0.25f ? 24 : 12;
+        else if (param == 5) found->filter.hpResonance = denorm(0.2f, 8.0f);
+        else if (param == 6) found->filter.lpEnabled = n >= 0.5f;
+        else if (param == 7) found->filter.lpCutoff = freq;
+        else if (param == 8) found->filter.lpSlope = n >= 0.75f ? 48 : n >= 0.25f ? 24 : 12;
+        else if (param == 9) found->filter.lpResonance = denorm(0.2f, 8.0f);
+    }
+    else if (type == 2)
+    {
+        if      (param == 2) found->drive.type = juce::jlimit(0, 6, juce::roundToInt(n * 6.0f));
+        else if (param == 3) found->drive.amount = n;
+        else if (param == 4) found->drive.tone = n;
+        else if (param == 5) found->drive.mix = n;
+        else if (param == 6) found->drive.outputDb = denorm(-24.0f, 12.0f);
+    }
+    else if (type == 3)
+    {
+        if      (param == 2) found->transient.attack = denorm(-1.0f, 1.0f);
+        else if (param == 3) found->transient.sustain = denorm(-1.0f, 1.0f);
+        else if (param == 4) found->transient.outputDb = denorm(-24.0f, 12.0f);
+    }
+    else if (type == 4)
+    {
+        if      (param == 2) found->compressor.threshold = denorm(-48.0f, 0.0f);
+        else if (param == 3) found->compressor.ratio = denorm(1.0f, 20.0f);
+        else if (param == 4) found->compressor.attack = denorm(1.0f, 80.0f);
+        else if (param == 5) found->compressor.release = denorm(10.0f, 500.0f);
+        else if (param == 6) found->compressor.makeupDb = denorm(0.0f, 24.0f);
+        else if (param == 7) found->compressor.mix = n;
+        else if (param == 8) found->compressor.outputDb = denorm(-24.0f, 12.0f);
+    }
+}
+
+void DrumSamplerAudioProcessor::syncFxAutomationSlots()
+{
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        if (automationSlotFxDirty[static_cast<size_t>(slot)].exchange(false, std::memory_order_acq_rel))
+            applyFxAutomationTargetValue(
+                automationSlotFxTargetCodes[static_cast<size_t>(slot)].load(std::memory_order_acquire),
+                automationSlotFxValues[static_cast<size_t>(slot)].load(std::memory_order_acquire));
+}
+
+void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
+                                                        const juce::String& parameterID)
+{
+    if (! juce::isPositiveAndBelow(slotIndex, automationSlotCount))
+        return;
+
+    const int parameterIndex = parameterID.isNotEmpty() ? findParameterIndex(parameterID) : -1;
+    const int fxTargetCode = parameterID.isNotEmpty() ? fxAutomationTargetCode(parameterID) : -1;
+    if (parameterID.isNotEmpty()
+        && ((parameterIndex < 0 && fxTargetCode < 0)
+            || automationSlotIndexFromParameterID(parameterID) >= 0))
+        return;
+
+    // 1つの内部パラメータを複数Slotへ割り当てない。
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        if (slot != slotIndex && automationSlotTargets[static_cast<size_t>(slot)] == parameterID)
+        {
+            automationSlotTargets[static_cast<size_t>(slot)].clear();
+            automationSlotTargetIndices[static_cast<size_t>(slot)].store(-1, std::memory_order_release);
+            automationSlotFxTargetCodes[static_cast<size_t>(slot)].store(-1, std::memory_order_release);
+            automationSlotFxDirty[static_cast<size_t>(slot)].store(false, std::memory_order_release);
+        }
+    }
+
+    automationSlotTargets[static_cast<size_t>(slotIndex)] = parameterID;
+    automationSlotTargetIndices[static_cast<size_t>(slotIndex)].store(parameterIndex,
+                                                                      std::memory_order_release);
+    automationSlotFxTargetCodes[static_cast<size_t>(slotIndex)].store(fxTargetCode,
+                                                                      std::memory_order_release);
+    automationSlotFxDirty[static_cast<size_t>(slotIndex)].store(false, std::memory_order_release);
+
+    if (parameterIndex >= 0)
+    {
+        auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex));
+        const auto& processorParameters = getParameters();
+        if (slotParameter != nullptr && parameterIndex < processorParameters.size())
+        {
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValue(processorParameters.getUnchecked(parameterIndex)->getValue());
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+        }
+    }
+    else if (fxTargetCode >= 0)
+    {
+        if (auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex)))
+        {
+            const float value = getFxAutomationTargetValue(fxTargetCode);
+            automationSlotFxValues[static_cast<size_t>(slotIndex)].store(value, std::memory_order_release);
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValue(value);
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+        }
+    }
+
+    automationLearnSlot.store(-1, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::beginAutomationLearn(int slotIndex) noexcept
+{
+    if (! juce::isPositiveAndBelow(slotIndex, automationSlotCount))
+        return;
+    automationLearnSlot.store(slotIndex, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::cancelAutomationLearn() noexcept
+{
+    automationLearnSlot.store(-1, std::memory_order_release);
+    automationSlotsChanged.store(true, std::memory_order_release);
+}
+
+void DrumSamplerAudioProcessor::assignAutomationSlot(int slotIndex,
+                                                      const juce::String& parameterID)
+{
+    setAutomationSlotTarget(slotIndex, parameterID);
+}
+
+void DrumSamplerAudioProcessor::clearAutomationSlot(int slotIndex)
+{
+    setAutomationSlotTarget(slotIndex, {});
+}
+
+juce::String DrumSamplerAudioProcessor::getAutomationSlotTargetID(int slotIndex) const
+{
+    return juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? automationSlotTargets[static_cast<size_t>(slotIndex)]
+        : juce::String{};
+}
+
+juce::String DrumSamplerAudioProcessor::getAutomationSlotTargetName(int slotIndex) const
+{
+    const int parameterIndex = juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? automationSlotTargetIndices[static_cast<size_t>(slotIndex)].load(std::memory_order_acquire)
+        : -1;
+    const auto& processorParameters = getParameters();
+    if (parameterIndex >= 0 && parameterIndex < processorParameters.size())
+        return processorParameters.getUnchecked(parameterIndex)->getName(128);
+    return juce::isPositiveAndBelow(slotIndex, automationSlotCount)
+        ? fxAutomationTargetName(automationSlotTargets[static_cast<size_t>(slotIndex)])
+        : juce::String{};
+}
+
+void DrumSamplerAudioProcessor::setFxAutomationTargetValue(const juce::String& targetID,
+                                                            float normalizedValue,
+                                                            bool notifyHost)
+{
+    const int targetCode = fxAutomationTargetCode(targetID);
+    if (targetCode < 0) return;
+    const float value = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    if (notifyHost)
+        captureAutomationLearnTarget(targetID);
+
+    const int slotIndex = notifyHost ? assignedAutomationSlotForTarget(targetID) : -1;
+    if (slotIndex >= 0)
+    {
+        if (auto* slotParameter = parameters.getParameter(automationSlotParameterID(slotIndex)))
+        {
+            slotParameter->beginChangeGesture();
+            suppressParameterCallbacks.store(true, std::memory_order_release);
+            slotParameter->setValueNotifyingHost(value);
+            suppressParameterCallbacks.store(false, std::memory_order_release);
+            slotParameter->endChangeGesture();
+            automationSlotFxValues[static_cast<size_t>(slotIndex)].store(value, std::memory_order_release);
+        }
+    }
+    applyFxAutomationTargetValue(targetCode, value);
+}
+
+int DrumSamplerAudioProcessor::getAutomationLearnSlot() const noexcept
+{
+    return automationLearnSlot.load(std::memory_order_acquire);
+}
+
+bool DrumSamplerAudioProcessor::consumeAutomationSlotsChanged() noexcept
+{
+    return automationSlotsChanged.exchange(false, std::memory_order_acq_rel);
+}
+
+void DrumSamplerAudioProcessor::captureAutomationLearnTarget(const juce::String& parameterID)
+{
+    const int slotIndex = automationLearnSlot.exchange(-1, std::memory_order_acq_rel);
+    if (slotIndex >= 0)
+        setAutomationSlotTarget(slotIndex, parameterID);
+}
+
+void DrumSamplerAudioProcessor::setParameterValueFromUi(const juce::String& parameterID,
+                                                        float normalizedValue,
+                                                        bool notifyHost)
+{
+    auto* targetParameter = parameters.getParameter(parameterID);
+    if (targetParameter == nullptr)
+        return;
+
+    const float normalized = juce::jlimit(0.0f, 1.0f, normalizedValue);
+    if (notifyHost)
+        captureAutomationLearnTarget(parameterID);
+
+    const int slotIndex = notifyHost ? assignedAutomationSlotForTarget(parameterID) : -1;
+    auto* hostParameter = slotIndex >= 0
+        ? parameters.getParameter(automationSlotParameterID(slotIndex))
+        : targetParameter;
+    if (hostParameter == nullptr)
+        hostParameter = targetParameter;
+
+    if (notifyHost)
+        hostParameter->beginChangeGesture();
+
+    suppressParameterCallbacks.store(true, std::memory_order_release);
+    if (hostParameter != targetParameter)
+        targetParameter->setValueNotifyingHost(normalized);
+    hostParameter->setValueNotifyingHost(normalized);
+    suppressParameterCallbacks.store(false, std::memory_order_release);
+
+    if (notifyHost)
+        hostParameter->endChangeGesture();
+}
+
 void DrumSamplerAudioProcessor::registerParameterListeners()
 {
     parameters.addParameterListener(kMasterVolumeParamId, this);
+
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        parameters.addParameterListener(automationSlotParameterID(slot), this);
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
@@ -1634,6 +2259,9 @@ void DrumSamplerAudioProcessor::removeParameterListeners()
 {
     parameters.removeParameterListener(kMasterVolumeParamId, this);
 
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+        parameters.removeParameterListener(automationSlotParameterID(slot), this);
+
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
         for (const auto& spec : PadParameterSpecs::all())
@@ -1645,10 +2273,35 @@ void DrumSamplerAudioProcessor::removeParameterListeners()
     }
 }
 
-void DrumSamplerAudioProcessor::parameterChanged(const juce::String&, float)
+void DrumSamplerAudioProcessor::parameterChanged(const juce::String& parameterID, float newValue)
 {
     if (! suppressParameterCallbacks.load(std::memory_order_relaxed))
     {
+        const int slotIndex = automationSlotIndexFromParameterID(parameterID);
+        if (slotIndex >= 0)
+        {
+            const int targetIndex = automationSlotTargetIndices[static_cast<size_t>(slotIndex)]
+                                        .load(std::memory_order_acquire);
+            const auto& processorParameters = getParameters();
+            if (targetIndex >= 0 && targetIndex < processorParameters.size())
+            {
+                suppressParameterCallbacks.store(true, std::memory_order_release);
+                // APVTSのraw値も更新するため内部parameterにもlistener通知を通す。
+                // suppress中なので再帰的なkit syncは起こらない。
+                processorParameters.getUnchecked(targetIndex)->setValueNotifyingHost(newValue);
+                suppressParameterCallbacks.store(false, std::memory_order_release);
+            }
+            else
+            {
+                const auto index = static_cast<size_t>(slotIndex);
+                if (automationSlotFxTargetCodes[index].load(std::memory_order_acquire) >= 0)
+                {
+                    automationSlotFxValues[index].store(newValue, std::memory_order_release);
+                    automationSlotFxDirty[index].store(true, std::memory_order_release);
+                }
+            }
+        }
+
         parametersNeedSync.store(true, std::memory_order_release);
         // UI へ通知するためのフラグ — Timer がこれを拾って broadcastKitState を呼ぶ
         kitChangedByAutomation.store(true, std::memory_order_release);
@@ -1664,7 +2317,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
     const size_t totalParams =
         static_cast<size_t>(NUM_PADS * PadParameterSpecs::numAutomatableParams)
-      + static_cast<size_t>(NUM_PADS * MAX_LAYERS_PER_PAD * LayerParameterSpecs::numAutomatableParams);
+      + static_cast<size_t>(NUM_PADS * MAX_LAYERS_PER_PAD * LayerParameterSpecs::numAutomatableParams)
+      + static_cast<size_t>(automationSlotCount);
     params.reserve(totalParams);
 
     KitData defaultKit;
@@ -1674,7 +2328,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
         juce::ParameterID { kMasterVolumeParamId, 1 },
         "Master Volume",
         juce::NormalisableRange<float> { 0.0f, 1.0f },
-        defaultKit.masterVolume));
+        defaultKit.masterVolume,
+        juce::AudioParameterFloatAttributes().withAutomatable(false)));
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
@@ -1686,7 +2341,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
             // existing AU/VST3 parameter indices remain stable.
             if (spec.param == PadParameterSpecs::Param::PadVolume
                 || spec.param == PadParameterSpecs::Param::PadPan
-                || spec.param == PadParameterSpecs::Param::PadPitch)
+                || spec.param == PadParameterSpecs::Param::PadPitch
+                || spec.param == PadParameterSpecs::Param::PadFine)
                 continue;
 
             const auto id   = PadParameterSpecs::parameterID(padIndex, spec.param);
@@ -1697,7 +2353,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                 params.push_back(std::make_unique<juce::AudioParameterBool>(
                     juce::ParameterID { id, 1 },
                     name,
-                    spec.defaultValue >= 0.5f));
+                    spec.defaultValue >= 0.5f,
+                    juce::AudioParameterBoolAttributes().withAutomatable(false)));
             }
             else
             {
@@ -1705,7 +2362,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                     juce::ParameterID { id, 1 },
                     name,
                     rangeFor(spec),
-                    spec.defaultValue));
+                    spec.defaultValue,
+                    juce::AudioParameterFloatAttributes().withAutomatable(false)));
             }
         }
 
@@ -1721,7 +2379,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                     params.push_back(std::make_unique<juce::AudioParameterBool>(
                         juce::ParameterID { id, 1 },
                         name,
-                        spec.defaultValue >= 0.5f));
+                        spec.defaultValue >= 0.5f,
+                        juce::AudioParameterBoolAttributes().withAutomatable(false)));
                 }
                 else
                 {
@@ -1729,7 +2388,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
                         juce::ParameterID { id, 1 },
                         name,
                         rangeFor(spec),
-                        spec.defaultValue));
+                        spec.defaultValue,
+                        juce::AudioParameterFloatAttributes().withAutomatable(false)));
                 }
             }
         }
@@ -1738,7 +2398,8 @@ DrumSamplerAudioProcessor::createParameterLayout()
     for (const auto appendedParam : {
             PadParameterSpecs::Param::PadVolume,
             PadParameterSpecs::Param::PadPan,
-            PadParameterSpecs::Param::PadPitch })
+            PadParameterSpecs::Param::PadPitch,
+            PadParameterSpecs::Param::PadFine })
     {
         const auto& spec = PadParameterSpecs::specFor(appendedParam);
         for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
@@ -1748,8 +2409,22 @@ DrumSamplerAudioProcessor::createParameterLayout()
                 juce::ParameterID { PadParameterSpecs::parameterID(padIndex, spec.param), 1 },
                 PadParameterSpecs::parameterName(padIndex, pad, spec.param),
                 rangeFor(spec),
-                spec.defaultValue));
+                spec.defaultValue,
+                juce::AudioParameterFloatAttributes().withAutomatable(false)));
         }
+    }
+
+    // DAWにはこの24個だけをautomation対象として公開する。IDと順番は永久固定。
+    for (int slot = 0; slot < automationSlotCount; ++slot)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID { automationSlotParameterID(slot), 1 },
+            "ASTER AUTO " + juce::String(slot + 1).paddedLeft('0', 2),
+            juce::NormalisableRange<float> { 0.0f, 1.0f },
+            0.0f,
+            juce::AudioParameterFloatAttributes()
+                .withAutomatable(true)
+                .withMeta(true)));
     }
 
     return { params.begin(), params.end() };
@@ -1780,6 +2455,7 @@ float DrumSamplerAudioProcessor::getKitValueForParameter(int padIndex,
         case PadParameterSpecs::Param::PadVolume: return pad.padVolume;
         case PadParameterSpecs::Param::PadPan: return pad.padPan;
         case PadParameterSpecs::Param::PadPitch: return pad.padPitch;
+        case PadParameterSpecs::Param::PadFine: return pad.padFine;
     }
 
     return 0.0f;
@@ -1821,13 +2497,15 @@ void DrumSamplerAudioProcessor::setKitValueFromParameter(int padIndex,
         case PadParameterSpecs::Param::PadVolume: pad.padVolume   = v; break;
         case PadParameterSpecs::Param::PadPan: pad.padPan         = v; break;
         case PadParameterSpecs::Param::PadPitch: pad.padPitch     = v; break;
+        case PadParameterSpecs::Param::PadFine: pad.padFine       = v; break;
     }
 
     // Pad-level controls are separate stages after Layer processing. Legacy
     // flat parameters still mirror into Layer 0 for backwards compatibility.
     if (param != PadParameterSpecs::Param::PadVolume
         && param != PadParameterSpecs::Param::PadPan
-        && param != PadParameterSpecs::Param::PadPitch)
+        && param != PadParameterSpecs::Param::PadPitch
+        && param != PadParameterSpecs::Param::PadFine)
         pad.syncLayer0FromFlat();
 }
 
@@ -1845,20 +2523,7 @@ void DrumSamplerAudioProcessor::setAutomatablePadParameter(int padIndex,
     const float clamped = juce::jlimit(spec.minValue, spec.maxValue, value);
     const float currentValue = getKitValueForParameter(padIndex, param);
 
-    if (notifyHost)
-    {
-        parameter->beginChangeGesture();
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-        parameter->endChangeGesture();
-    }
-    else
-    {
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-    }
+    setParameterValueFromUi(id, parameter->convertTo0to1(clamped), notifyHost);
 
     setKitValueFromParameter(padIndex, param, clamped);
 
@@ -1885,15 +2550,7 @@ void DrumSamplerAudioProcessor::setAutomatableLayerParameter(int padIndex,
     const float currentValue = getLayerValueForParameter(padIndex, layerIndex,
                                                          static_cast<int>(param));
 
-    if (notifyHost)
-        parameter->beginChangeGesture();
-
-    suppressParameterCallbacks.store(true, std::memory_order_release);
-    parameter->setValueNotifyingHost(parameter->convertTo0to1(clamped));
-    suppressParameterCallbacks.store(false, std::memory_order_release);
-
-    if (notifyHost)
-        parameter->endChangeGesture();
+    setParameterValueFromUi(id, parameter->convertTo0to1(clamped), notifyHost);
 
     setLayerValueFromParameter(padIndex, layerIndex, static_cast<int>(param), clamped);
 
@@ -1928,15 +2585,7 @@ void DrumSamplerAudioProcessor::setPadSampleTrim(int padIndex,
         const float clamped = juce::jlimit(spec.minValue, spec.maxValue, value);
         const float normalizedValue = parameter->convertTo0to1(clamped);
 
-        if (notifyHost)
-            parameter->beginChangeGesture();
-
-        suppressParameterCallbacks.store(true, std::memory_order_release);
-        parameter->setValueNotifyingHost(normalizedValue);
-        suppressParameterCallbacks.store(false, std::memory_order_release);
-
-        if (notifyHost)
-            parameter->endChangeGesture();
+        setParameterValueFromUi(id, normalizedValue, notifyHost);
     };
 
     setParameter(PadParameterSpecs::Param::Start,   normalized.start);
@@ -1968,17 +2617,7 @@ void DrumSamplerAudioProcessor::setMasterVolumeParameter(float position, bool no
     const float clamped    = juce::jlimit(0.0f, 1.0f, position);
     const float normalized = parameter->convertTo0to1(clamped);
 
-    if (notifyHost)
-        parameter->beginChangeGesture();
-
-    // suppress: 自分が起こした変更で parameterChanged → 再 sync が走らないように。
-    // kit.masterVolume は下で直接書く。
-    suppressParameterCallbacks.store(true, std::memory_order_release);
-    parameter->setValueNotifyingHost(normalized);
-    suppressParameterCallbacks.store(false, std::memory_order_release);
-
-    if (notifyHost)
-        parameter->endChangeGesture();
+    setParameterValueFromUi(kMasterVolumeParamId, normalized, notifyHost);
 
     kit.masterVolume = clamped;
     if (notifyHost)
@@ -2049,6 +2688,17 @@ void DrumSamplerAudioProcessor::syncKitFromParameters()
             if (layerIndex >= layerCount) continue; // 存在しない layer は kit 側スキップ
             for (const auto& spec : LayerParameterSpecs::all())
             {
+                // MAIN has legacy Pad parameters for these same three values.
+                // The UI writes those Pad parameters, so the duplicate Layer-0
+                // parameters may still contain their defaults.  Letting them
+                // win here resets MAIN to 0 dB / centre / zero pitch when a kit
+                // is saved.  Keep the long-standing Pad parameters canonical.
+                if (layerIndex == 0
+                    && (spec.param == LayerParameterSpecs::Param::Volume
+                        || spec.param == LayerParameterSpecs::Param::Pan
+                        || spec.param == LayerParameterSpecs::Param::Pitch))
+                    continue;
+
                 const auto id = LayerParameterSpecs::parameterID(padIndex, layerIndex, spec.param);
                 if (const auto* value = parameters.getRawParameterValue(id))
                     setLayerValueFromParameter(padIndex, layerIndex,
@@ -2076,6 +2726,7 @@ float DrumSamplerAudioProcessor::getLayerValueForParameter(int padIndex,
         case LayerParameterSpecs::Param::Volume: return L.volume;
         case LayerParameterSpecs::Param::Pan:    return L.pan;
         case LayerParameterSpecs::Param::Pitch:  return L.pitch;
+        case LayerParameterSpecs::Param::Fine:   return L.fine;
         case LayerParameterSpecs::Param::VelMin: return static_cast<float>(L.velocityMin) / 127.0f;
         case LayerParameterSpecs::Param::VelMax: return static_cast<float>(L.velocityMax) / 127.0f;
         case LayerParameterSpecs::Param::EqBypass:      return L.eq.bypassed ? 1.0f : 0.0f;
@@ -2115,6 +2766,7 @@ void DrumSamplerAudioProcessor::setLayerValueFromParameter(int padIndex,
         case LayerParameterSpecs::Param::Volume: L.volume = v; break;
         case LayerParameterSpecs::Param::Pan:    L.pan    = v; break;
         case LayerParameterSpecs::Param::Pitch:  L.pitch  = v; break;
+        case LayerParameterSpecs::Param::Fine:   L.fine   = v; break;
         case LayerParameterSpecs::Param::VelMin:
         {
             const int mn = juce::jlimit(0, 127, static_cast<int>(std::round(v * 127.0f)));

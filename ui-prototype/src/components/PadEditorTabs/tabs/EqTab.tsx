@@ -7,6 +7,7 @@ import { selectedLayerIndexOf } from '../../../utils/layerView';
 
 interface Props {
   pad: PadParams;
+  padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
 }
 
@@ -32,7 +33,7 @@ function eqOfSelectedLayer(pad: PadParams): EqParams {
   return cloneEq(NEUTRAL_EQ);
 }
 
-export function EqTab({ pad, onChange }: Props) {
+export function EqTab({ pad, padIndex, onChange }: Props) {
   const eq = eqOfSelectedLayer(pad);
 
   const stateRef = useRef<{ eq: EqParams; onChange: (p: Partial<PadParams>) => void }>({
@@ -49,7 +50,7 @@ export function EqTab({ pad, onChange }: Props) {
   return (
     <div className={styles.root}>
       <div className={styles.chain}>
-        <EqBox eq={eq} patchEq={patchEq} />
+        <EqBox eq={eq} patchEq={patchEq} padIndex={padIndex} layerIndex={selectedLayerIndexOf(pad)} />
       </div>
     </div>
   );
