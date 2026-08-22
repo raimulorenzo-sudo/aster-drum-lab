@@ -117,10 +117,9 @@ interface DemoState {
   started: boolean;
   remainingSeconds: number;
   expired: boolean;
-  scheduledMuteActive: boolean;
-  nextMuteSeconds: number;
   offlineRenderBlocked: boolean;
   kitSavingEnabled: boolean;
+  contentResetsAfterRestart: boolean;
 }
 
 interface PadTriggerData {
@@ -132,9 +131,10 @@ interface MidiLearnedData {
   note?: number;
 }
 
-function formatDemoSeconds(value: number): string {
+function formatDemoTime(value: number): string {
   const seconds = Math.max(0, Math.ceil(value));
-  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function routingUndoPatch(current: PadParams, restored: PadParams): Partial<PadParams> {
@@ -294,10 +294,9 @@ export default function App() {
     started: false,
     remainingSeconds: 1200,
     expired: false,
-    scheduledMuteActive: false,
-    nextMuteSeconds: -1,
     offlineRenderBlocked: false,
     kitSavingEnabled: true,
+    contentResetsAfterRestart: false,
   });
   const demoWarningsShownRef = useRef({ fiveMinutes: false, oneMinute: false });
   /** Always points to the latest pads state — safe to read inside callbacks */
@@ -430,10 +429,9 @@ export default function App() {
         started: Boolean(next.started),
         remainingSeconds: typeof next.remainingSeconds === 'number' ? next.remainingSeconds : 1200,
         expired: Boolean(next.expired),
-        scheduledMuteActive: Boolean(next.scheduledMuteActive),
-        nextMuteSeconds: typeof next.nextMuteSeconds === 'number' ? next.nextMuteSeconds : -1,
         offlineRenderBlocked: Boolean(next.offlineRenderBlocked),
         kitSavingEnabled: next.kitSavingEnabled !== false,
+        contentResetsAfterRestart: Boolean(next.contentResetsAfterRestart),
       });
     });
     sendToJuce('requestDemoState', {});
@@ -2043,12 +2041,8 @@ export default function App() {
           {demoState.offlineRenderBlocked
             ? 'Demo: offline export is available in the Full version.'
             : demoState.expired
-              ? 'Demo audio time has ended. Restart your DAW to continue testing.'
-              : demoState.scheduledMuteActive
-                ? 'Demo mute in progress.'
-                : demoState.nextMuteSeconds >= 0
-                  ? `Next Demo mute in ${formatDemoSeconds(demoState.nextMuteSeconds)}.`
-                  : `Demo audio ends in ${formatDemoSeconds(demoState.remainingSeconds)}.`}
+              ? 'Demo expired — Restart your DAW to begin a new session. Plugin content will be reset.'
+              : `Demo time remaining: ${formatDemoTime(demoState.remainingSeconds)}. Content resets after restarting your DAW.`}
         </div>
       )}
 

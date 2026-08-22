@@ -14,6 +14,7 @@ namespace
     constexpr const char* kMasterVolumeParamId = "masterVolume";
     constexpr const char* kAutomationSlotPrefix = "asterAutomationSlot";
     const juce::Identifier kAutomationSlotsStateId { "AUTOMATION_SLOTS" };
+    const juce::Identifier kDemoSessionId { "demoSessionId" };
 
     juce::NormalisableRange<float> rangeFor(const PadParameterSpecs::Spec& spec)
     {
@@ -671,16 +672,15 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
    #if ASTER_DEMO_BUILD
-    // The first five minutes are unrestricted. From 05:00 onward, apply a
-    // two-second mute every 60 seconds with short fades at both edges. The
-    // same wall-clock schedule is shared by every plug-in instance.
+    // The full 20-minute Demo session is uninterrupted. Fade only at the
+    // final expiry boundary, and share the timer across all plug-in instances.
     const auto demoElapsedAtBlockStart = AsterDemoMode::getElapsedSeconds();
     const auto demoBlockDuration = hostSampleRate > 0.0
         ? static_cast<double>(numSamples) / hostSampleRate
         : 0.0;
-    const auto demoGainAtStart = AsterDemoMode::getScheduledOutputGain(
+    const auto demoGainAtStart = AsterDemoMode::getOutputGain(
         demoElapsedAtBlockStart);
-    const auto demoGainAtEnd = AsterDemoMode::getScheduledOutputGain(
+    const auto demoGainAtEnd = AsterDemoMode::getOutputGain(
         demoElapsedAtBlockStart + demoBlockDuration);
 
     if (! (juce::approximatelyEqual(demoGainAtStart, 1.0f)
@@ -1611,6 +1611,9 @@ void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
     syncFxAutomationSlots();
     auto root = juce::ValueTree { "DrumSamplerState" };
     root.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
+    if constexpr (AsterDemoMode::isDemoBuild)
+        root.setProperty(kDemoSessionId,
+                         AsterDemoMode::getProcessSessionIdentifier(), nullptr);
     root.addChild(kit.toValueTree(), -1, nullptr);
     root.addChild(parameters.copyState(), -1, nullptr);
 
@@ -1634,6 +1637,20 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
     const auto tree = juce::ValueTree::readFromStream(stream);
 
     if (!tree.isValid()) return;
+
+    if constexpr (AsterDemoMode::isDemoBuild)
+    {
+        const auto savedSessionIdentifier = tree.getProperty(kDemoSessionId).toString();
+        if (! AsterDemoMode::stateBelongsToCurrentProcess(savedSessionIdentifier))
+        {
+            newKit();
+            for (int slot = 0; slot < automationSlotCount; ++slot)
+                setAutomationSlotTarget(slot, {});
+            demoOfflineRenderBlocked.store(false, std::memory_order_release);
+            keepLengthOnSampleLoad.store(true, std::memory_order_relaxed);
+            return;
+        }
+    }
 
     const auto kitTree = tree.hasType("Kit") ? tree : tree.getChildWithName("Kit");
     if (! kitTree.isValid()) return;

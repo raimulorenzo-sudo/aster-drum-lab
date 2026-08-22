@@ -325,8 +325,9 @@ bool mainLayerStateAndKitPersistenceAreStable()
         return false;
     }
 
-    // Demo builds intentionally reject standalone kit files. DAW state
-    // persistence above remains required and is the supported Demo workflow.
+    // Demo builds intentionally reject standalone kit files. State created
+    // within the current DAW process still restores; a process restart is
+    // covered separately by DemoModeTest and resets the content.
     if constexpr (AsterDemoMode::isDemoBuild)
         return true;
 

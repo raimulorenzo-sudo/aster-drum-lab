@@ -2,12 +2,17 @@
 
 #include <atomic>
 #include <chrono>
-#include <cmath>
 
 namespace
 {
     using Clock = std::chrono::steady_clock;
     std::atomic<int64_t> demoStartNanoseconds { 0 };
+
+    const juce::String& processSessionIdentifier()
+    {
+        static const juce::String identifier = juce::Uuid().toString();
+        return identifier;
+    }
 
     int64_t nowNanoseconds() noexcept
     {
@@ -64,21 +69,7 @@ namespace AsterDemoMode
         return isDemoBuild && hasStarted() && getRemainingSeconds() <= 0.0;
     }
 
-    bool isScheduledMuteActive(double elapsedSeconds) noexcept
-    {
-        if constexpr (! isDemoBuild)
-            return false;
-
-        if (elapsedSeconds < unrestrictedSeconds
-            || elapsedSeconds >= static_cast<double>(durationSeconds))
-            return false;
-
-        const auto phase = std::fmod(elapsedSeconds - unrestrictedSeconds,
-                                     muteIntervalSeconds);
-        return phase >= 0.0 && phase < muteDurationSeconds;
-    }
-
-    float getScheduledOutputGain(double elapsedSeconds) noexcept
+    float getOutputGain(double elapsedSeconds) noexcept
     {
         if constexpr (! isDemoBuild)
             return 1.0f;
@@ -86,55 +77,30 @@ namespace AsterDemoMode
         if (elapsedSeconds >= static_cast<double>(durationSeconds))
             return 0.0f;
 
-        // Reach complete silence exactly at the 20-minute boundary without a
-        // discontinuity in the final audio block.
+        // Fade only at the final expiry boundary to avoid a discontinuity.
+        // There are no periodic Demo mutes during the 20-minute session.
         const auto remaining = static_cast<double>(durationSeconds) - elapsedSeconds;
-        if (remaining < muteFadeSeconds)
+        if (remaining < expiryFadeSeconds)
             return static_cast<float>(juce::jlimit(0.0, 1.0,
-                                                   remaining / muteFadeSeconds));
+                                                   remaining / expiryFadeSeconds));
 
-        if (! isScheduledMuteActive(elapsedSeconds))
-            return 1.0f;
-
-        const auto phase = std::fmod(elapsedSeconds - unrestrictedSeconds,
-                                     muteIntervalSeconds);
-        if (phase < muteFadeSeconds)
-            return static_cast<float>(1.0 - phase / muteFadeSeconds);
-
-        const auto fadeInStart = muteDurationSeconds - muteFadeSeconds;
-        if (phase >= fadeInStart)
-            return static_cast<float>((phase - fadeInStart) / muteFadeSeconds);
-
-        return 0.0f;
+        return 1.0f;
     }
 
-    int getSecondsUntilNextMute(double elapsedSeconds) noexcept
+    const juce::String& getProcessSessionIdentifier()
     {
-        if constexpr (! isDemoBuild)
-            return -1;
+        return processSessionIdentifier();
+    }
 
-        if (elapsedSeconds >= static_cast<double>(durationSeconds))
-            return -1;
-
-        double nextMuteAt = unrestrictedSeconds;
-        if (elapsedSeconds >= unrestrictedSeconds)
-        {
-            const auto phase = std::fmod(elapsedSeconds - unrestrictedSeconds,
-                                         muteIntervalSeconds);
-            if (phase < muteDurationSeconds)
-                return 0;
-            nextMuteAt = elapsedSeconds + (muteIntervalSeconds - phase);
-        }
-
-        if (nextMuteAt >= static_cast<double>(durationSeconds))
-            return -1;
-
-        return static_cast<int>(std::ceil(juce::jmax(0.0, nextMuteAt - elapsedSeconds)));
+    bool stateBelongsToCurrentProcess(const juce::String& savedSessionIdentifier)
+    {
+        return ! isDemoBuild
+            || (savedSessionIdentifier.isNotEmpty()
+                && savedSessionIdentifier == processSessionIdentifier());
     }
 
     juce::var getStateAsVar(bool offlineRenderBlocked)
     {
-        const auto elapsedSeconds = getElapsedSeconds();
         auto* state = new juce::DynamicObject();
         state->setProperty("isDemo", isDemoBuild);
         state->setProperty("durationSeconds", durationSeconds);
@@ -142,12 +108,9 @@ namespace AsterDemoMode
         state->setProperty("remainingSeconds",
                            static_cast<int>(std::ceil(getRemainingSeconds())));
         state->setProperty("expired", hasExpired());
-        state->setProperty("scheduledMuteActive",
-                           hasStarted() && isScheduledMuteActive(elapsedSeconds));
-        state->setProperty("nextMuteSeconds",
-                           hasStarted() ? getSecondsUntilNextMute(elapsedSeconds) : -1);
         state->setProperty("offlineRenderBlocked", isDemoBuild && offlineRenderBlocked);
         state->setProperty("kitSavingEnabled", ! isDemoBuild);
+        state->setProperty("contentResetsAfterRestart", isDemoBuild);
         return juce::var(state);
     }
 }

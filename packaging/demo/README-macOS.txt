@@ -16,16 +16,16 @@ Restart your DAW after installation.
 DEMO LIMITATIONS
 
 - The 20-minute timer starts with the first audible sound.
-- The first five minutes are unrestricted.
-- From 05:00 onward, audio fades to silence for approximately two seconds
-  every 60 seconds.
+- The full 20-minute session is uninterrupted.
 - Audio stops completely after 20 minutes.
 - Offline rendering/export is unavailable.
 - ASTER kit files cannot be saved.
-- DAW project state can be saved and restored.
+- Restarting the DAW starts a new 20-minute session and resets all samples,
+  kit settings, effects, routing, and automation assignments to defaults.
+- The DAW project itself and your original sample files are never deleted.
 - All pads, layers, effects, automation slots, KEEP LENGTH, and other sound
   controls remain available for evaluation.
-- Restart the DAW to begin a new Demo session.
+- Closing only the plug-in window does not restart the Demo session.
 
 IMPORTANT
 
@@ -57,15 +57,16 @@ VST3：
 Demo版の制限
 
 - 最初に音が鳴ってから20分間使用できます。
-- 最初の5分間は音声制限なしで試せます。
-- 5分経過後は60秒ごとに約2秒間、音声がフェードして無音になります。
+- 20分間は途中でミュートされず、すべての機能を試せます。
 - 20分経過後は完全に発音を停止します。
 - オフライン書き出しは使用できません。
 - ASTERキットファイルは保存できません。
-- DAWプロジェクトの状態は保存・復元できます。
+- DAWを再起動すると新しい20分セッションが始まり、サンプル、キット設定、
+  FX、ルーティング、オートメーション割り当ては初期状態に戻ります。
+- DAWプロジェクト自体と、ユーザーの元サンプルファイルは削除しません。
 - すべてのパッド、レイヤー、FX、オートメーションスロット、
   KEEP LENGTHなどの音作り機能を試せます。
-- DAWを再起動すると、新しいDemoセッションを開始できます。
+- プラグイン画面を閉じるだけではDemoセッションは再開しません。
 
 重要
 
