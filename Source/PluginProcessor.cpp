@@ -2558,6 +2558,43 @@ void DrumSamplerAudioProcessor::setAutomatableLayerParameter(int padIndex,
         markKitDirty();
 }
 
+void DrumSamplerAudioProcessor::setLayerVelocityRange(int padIndex,
+                                                      int layerIndex,
+                                                      int velocityMin,
+                                                      int velocityMax,
+                                                      bool notifyHost)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
+
+    const int lo = juce::jlimit(0, 127, juce::jmin(velocityMin, velocityMax));
+    const int hi = juce::jlimit(0, 127, juce::jmax(velocityMin, velocityMax));
+    auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
+    const bool changed = layer.velocityMin != lo || layer.velocityMax != hi;
+
+    const auto setParameter = [&] (LayerParameterSpecs::Param param, int value)
+    {
+        const auto id = LayerParameterSpecs::parameterID(padIndex, layerIndex, param);
+        auto* parameter = parameters.getParameter(id);
+        if (parameter == nullptr) return;
+        const float unitValue = static_cast<float>(value) / 127.0f;
+        setParameterValueFromUi(id, parameter->convertTo0to1(unitValue), notifyHost);
+    };
+
+    // Publish both automation values first, then commit the pair to LayerData.
+    // Updating through the individual setters would clamp VelMin against the
+    // previous VelMax (and vice versa), so ranges such as 0-20 -> 80-127 could
+    // incorrectly become 20-127.
+    setParameter(LayerParameterSpecs::Param::VelMin, lo);
+    setParameter(LayerParameterSpecs::Param::VelMax, hi);
+    layer.velocityMin = lo;
+    layer.velocityMax = hi;
+
+    if (notifyHost && changed)
+        markKitDirty();
+}
+
 void DrumSamplerAudioProcessor::setPadSampleTrim(int padIndex,
                                                  float startPosition,
                                                  float endPosition,

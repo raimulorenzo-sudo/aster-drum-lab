@@ -18,8 +18,8 @@ export function TrimTab({ pad, padIndex, onChange }: Props) {
   const trim = trimFromPad(pad);
   const totalMs = trim.sampleLengthMs;
   const playbackRangeMs = Math.max(1, trim.endMs - trim.startMs);
-  const ownerKey = padIndex;
   const layerIdx = selectedLayerIndexOf(pad);
+  const ownerKey = `${padIndex}:${layerIdx}`;
   const target = (suffix: string, name: string) => layerIdx === 0
     ? padAutomationTarget(padIndex, suffix, name)
     : undefined;

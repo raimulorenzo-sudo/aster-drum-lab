@@ -658,6 +658,7 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
         }
     }
     const bool useFxChain = runtimeFxCount > 0;
+    const float polarityGain = layer.polarityInvert ? -1.0f : 1.0f;
 
     if (keepLengthEnabled)
     {
@@ -735,8 +736,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                     ? processFxChainSample(pitchShiftedRight, false, fxState, runtimeFx, runtimeFxCount)
                     : useEq ? processEqSample(pitchShiftedRight, eqState.right, eqCoeffs)
                             : pitchShiftedRight;
-                const float outSampleL = fxL * gainL * envelope * fadeGain;
-                const float outSampleR = fxR * gainR * envelope * fadeGain;
+                const float outSampleL = fxL * gainL * envelope * fadeGain * polarityGain;
+                const float outSampleR = fxR * gainR * envelope * fadeGain * polarityGain;
                 outL[callPosition + i] += swapLR ? outSampleR : outSampleL;
                 outR[callPosition + i] += swapLR ? outSampleL : outSampleR;
                 lastPeakLevel = std::max(lastPeakLevel,
@@ -792,8 +793,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
             const float sR = useFxChain ? processFxChainSample(rawR, false, fxState, runtimeFx, runtimeFxCount)
                            : useEq ? processEqSample(rawR, eqState.right, eqCoeffs)
                            : rawR;
-            const float outSampleL = sL * gainL;
-            const float outSampleR = sR * gainR;
+            const float outSampleL = sL * gainL * polarityGain;
+            const float outSampleR = sR * gainR * polarityGain;
             outL[i] += swapLR ? outSampleR : outSampleL;
             outR[i] += swapLR ? outSampleL : outSampleR;
             lastPeakLevel = std::max(lastPeakLevel,
@@ -895,8 +896,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
         const float fxR = useFxChain ? processFxChainSample(sR, false, fxState, runtimeFx, runtimeFxCount)
                         : useEq ? processEqSample(sR, eqState.right, eqCoeffs)
                         : sR;
-        const float outSampleL = fxL * gainL * envelope * fadeGain;
-        const float outSampleR = fxR * gainR * envelope * fadeGain;
+        const float outSampleL = fxL * gainL * envelope * fadeGain * polarityGain;
+        const float outSampleR = fxR * gainR * envelope * fadeGain * polarityGain;
         outL[i] += swapLR ? outSampleR : outSampleL;
         outR[i] += swapLR ? outSampleL : outSampleR;
         lastPeakLevel = std::max(lastPeakLevel,

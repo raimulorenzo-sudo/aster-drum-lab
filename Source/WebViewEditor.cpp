@@ -1392,9 +1392,17 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "setSmartTrim")
     {
-        // smartTrim は PadData にメンバが無いため、グローバル設定 or no-op
-        // とりあえずログ
-        juce::Logger::writeToLog("setSmartTrim (UI only) idx=" + juce::String(getIndex()));
+        // Legacy bridge compatibility: old Web UI builds addressed MAIN only.
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+            if (! pad.layers.empty())
+            {
+                pad.layers[0].smartTrim = getBool();
+                audioProcessor.markKitDirty();
+            }
+        }
     }
     else if (type == "setPlaybackMode")
     {
@@ -1575,7 +1583,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 audioProcessor.clearLayerSample(idx, layerIdx);
             else
                 audioProcessor.clearPadSample(idx);
-            broadcastPadUpdate(idx);
+            if ((bool) payload.getProperty("broadcast", true))
+                broadcastPadUpdate(idx);
         }
     }
     else if (type == "loadSampleDialog")
@@ -2007,6 +2016,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     L.sampleFileName.clear();
                     L.sampleFilePath.clear();
                     L.sampleMissing = false;
+                    L.eq = {};
+                    L.fxChain.clear();
+                    L.polarityInvert = false;
                 }
 
                 const int newLayerIndex = pad.layerCount();
@@ -2023,8 +2035,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                         audioProcessor.getFileManager().loadFileForPad(idx, newLayerIndex, f);
                 }
 
+                audioProcessor.syncParametersFromKit();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+                if ((bool) payload.getProperty("broadcast", true))
+                    broadcastPadUpdate(idx);
             }
         }
     }
@@ -2055,8 +2069,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     // 新しい Layer 0 を flat fields に反映
                     pad.syncFlatFromLayer0();
                 }
+                audioProcessor.syncParametersFromKit();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+                if ((bool) payload.getProperty("broadcast", true))
+                    broadcastPadUpdate(idx);
             }
         }
     }
@@ -2069,15 +2085,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             auto& pad = audioProcessor.getKit().pads[(size_t) idx];
             if (layerIdx >= 0 && layerIdx < pad.layerCount())
             {
-                auto& L = pad.layers[(size_t) layerIdx];
+                const auto& L = pad.layers[(size_t) layerIdx];
                 const int lo = juce::jlimit(0, 127, (int) payload.getProperty("min", L.velocityMin));
                 const int hi = juce::jlimit(0, 127, (int) payload.getProperty("max", L.velocityMax));
-                audioProcessor.setAutomatableLayerParameter(
-                    idx, layerIdx, LayerParameterSpecs::Param::VelMin,
-                    static_cast<float>(juce::jmin(lo, hi)) / 127.0f, true);
-                audioProcessor.setAutomatableLayerParameter(
-                    idx, layerIdx, LayerParameterSpecs::Param::VelMax,
-                    static_cast<float>(juce::jmax(lo, hi)) / 127.0f, true);
+                audioProcessor.setLayerVelocityRange(idx, layerIdx, lo, hi, true);
             }
         }
     }
@@ -2092,7 +2103,6 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             {
                 pad.layers[(size_t) layerIdx].mute = getBool();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
             }
         }
     }
@@ -2110,7 +2120,24 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 L.solo = v;
                 if (v) L.mute = false;
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+            }
+        }
+    }
+    else if (type == "setLayerSmartTrim" || type == "setLayerPolarityInvert")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+            if (layerIdx >= 0 && layerIdx < pad.layerCount())
+            {
+                auto& L = pad.layers[(size_t) layerIdx];
+                if (type == "setLayerSmartTrim")
+                    L.smartTrim = getBool();
+                else
+                    L.polarityInvert = getBool();
+                audioProcessor.markKitDirty();
             }
         }
     }

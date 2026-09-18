@@ -277,9 +277,11 @@ int main()
                 "legacy pad without property must adopt KEEP LENGTH ON");
     LayerData roundTripLayer;
     roundTripLayer.keepLength = true;
+    roundTripLayer.polarityInvert = true;
     LayerData restoredLayer;
     restoredLayer.fromValueTree(roundTripLayer.toValueTree());
     ok &= check(restoredLayer.keepLength, "KEEP LENGTH was not persisted");
+    ok &= check(restoredLayer.polarityInvert, "PHASE was not persisted");
 
     DrumVoice fixedVoice;
     fixedVoice.prepare(sampleRate, blockSize);
@@ -312,6 +314,23 @@ int main()
                                     std::abs(output.getSample(0, i) - source.getSample(0, i)));
     ok &= check(zeroPitchError < 1.0e-6f,
                 "zero Pitch no longer uses the transparent dry path");
+
+    DrumVoice invertedVoice;
+    invertedVoice.prepare(sampleRate, blockSize);
+    invertedVoice.start(0, 0.0, source.getNumSamples(), 1.0f, 1.0f, true,
+                        0.0f, 0.05f, sampleRate, 1.0, false, 0, 0,
+                        source.getNumSamples(), 4, 0, false, false,
+                        false, 1.0, 0.0f, 0.0f);
+    layer.polarityInvert = true;
+    output.clear();
+    invertedVoice.render(source, output, 0, blockSize, layer, sampleRate, 0.0f);
+    float polarityError = 0.0f;
+    for (int i = 0; i < blockSize; ++i)
+        polarityError = juce::jmax(polarityError,
+                                   std::abs(output.getSample(0, i) + source.getSample(0, i)));
+    ok &= check(polarityError < 1.0e-6f,
+                "PHASE did not invert the rendered Layer signal");
+    layer.polarityInvert = false;
 
     DrumVoice legacyVoice;
     legacyVoice.prepare(sampleRate, blockSize);

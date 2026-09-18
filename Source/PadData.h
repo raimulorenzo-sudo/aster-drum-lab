@@ -159,6 +159,7 @@ struct LayerData
     bool reverse   { false };
     bool keepLength { true };
     bool smartTrim { true };
+    bool polarityInvert { false };
 
     // ── Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立） ────────────────
     //   優先順位: Pad.mute > Layer.solo（同 Pad 内） > Layer.mute

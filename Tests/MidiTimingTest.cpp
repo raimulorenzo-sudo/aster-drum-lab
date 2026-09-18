@@ -297,6 +297,8 @@ bool mainLayerStateAndKitPersistenceAreStable()
     processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pan, expectedPan);
     processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pitch, expectedPitch);
     processor.setPadSampleTrim(0, expectedStart, expectedEnd, 0.03f, 0.08f);
+    processor.getKit().pads[0].layers[0].smartTrim = false;
+    processor.getKit().pads[0].layers[0].polarityInvert = true;
 
     // Kit saving pulls current parameter values first.  MAIN's duplicate
     // Layer-0 parameters must not overwrite the values edited through the UI.
@@ -319,7 +321,9 @@ bool mainLayerStateAndKitPersistenceAreStable()
         || ! approximately(restoredMain.pan, expectedPan, 0.001f)
         || ! approximately(restoredMain.pitch, expectedPitch, 0.001f)
         || ! approximately(restoredMain.startPosition, expectedStart, 0.001f)
-        || ! approximately(restoredMain.endPosition, expectedEnd, 0.001f))
+        || ! approximately(restoredMain.endPosition, expectedEnd, 0.001f)
+        || restoredMain.smartTrim
+        || ! restoredMain.polarityInvert)
     {
         std::cerr << "DAW state restore changed MAIN volume, pan, pitch, or trim\n";
         return false;
@@ -348,7 +352,44 @@ bool mainLayerStateAndKitPersistenceAreStable()
         && approximately(kitMain.pan, expectedPan, 0.001f)
         && approximately(kitMain.pitch, expectedPitch, 0.001f)
         && approximately(kitMain.startPosition, expectedStart, 0.001f)
-        && approximately(kitMain.endPosition, expectedEnd, 0.001f);
+        && approximately(kitMain.endPosition, expectedEnd, 0.001f)
+        && ! kitMain.smartTrim
+        && kitMain.polarityInvert;
+}
+
+bool layerVelocityRangeAndAutomationSlotsAreStable()
+{
+    DrumSamplerAudioProcessor processor;
+    auto& pad = processor.getKit().pads[0];
+    pad.layers.resize(3);
+
+    processor.setLayerVelocityRange(0, 1, 0, 20, true);
+    processor.setLayerVelocityRange(0, 1, 80, 127, true);
+    if (pad.layers[1].velocityMin != 80 || pad.layers[1].velocityMax != 127)
+    {
+        std::cerr << "Atomic velocity range update was clamped against the previous range\n";
+        return false;
+    }
+
+    pad.layers[1].volume = 0.22f;
+    pad.layers[2].volume = 0.81f;
+    processor.syncParametersFromKit();
+
+    // Removing the middle layer shifts the former L3 into L2. The fixed DAW
+    // parameter slot for L2 must be refreshed, or a later parameter pull would
+    // restore the deleted layer's 0.22 value.
+    pad.layers.erase(pad.layers.begin() + 1);
+    processor.syncParametersFromKit();
+    pad.layers[1].volume = 0.05f;
+    processor.syncKitFromParameters();
+
+    if (! approximately(pad.layers[1].volume, 0.81f, 0.001f))
+    {
+        std::cerr << "Layer removal left a stale automation-slot value\n";
+        return false;
+    }
+
+    return true;
 }
 }
 
@@ -455,6 +496,13 @@ int main()
         return 1;
     }
 
+    if (! layerVelocityRangeAndAutomationSlotsAreStable())
+    {
+        std::cerr << "Layer velocity range or automation-slot sync mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
@@ -462,5 +510,6 @@ int main()
     std::cout << "Transient output volume and legacy persistence verified\n";
     std::cout << "24 fixed automation slots and assignment persistence verified\n";
     std::cout << "MAIN Layer volume, pan, pitch, and trim persistence verified\n";
+    std::cout << "Layer velocity range and add/remove automation-slot sync verified\n";
     return 0;
 }

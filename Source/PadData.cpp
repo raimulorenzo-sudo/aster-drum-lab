@@ -29,6 +29,7 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("reverse",         reverse,         nullptr);
     vt.setProperty("keepLength",      keepLength,      nullptr);
     vt.setProperty("smartTrim",       smartTrim,       nullptr);
+    vt.setProperty("polarityInvert",  polarityInvert,  nullptr);
 
     vt.setProperty("mute",            mute,            nullptr);
     vt.setProperty("solo",            solo,            nullptr);
@@ -153,6 +154,7 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
                    ? static_cast<bool>(vt.getProperty("keepLength"))
                    : true;
     smartTrim      = vt.getProperty("smartTrim",      smartTrim);
+    polarityInvert = vt.getProperty("polarityInvert", false);
 
     mute           = vt.getProperty("mute",           mute);
     solo           = vt.getProperty("solo",           solo);

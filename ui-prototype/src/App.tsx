@@ -596,6 +596,7 @@ export default function App() {
               kitName: newKitName, outputMode: newOutputMode } =
         juceKitToReact(kit, padsRef.current);
 
+      padsRef.current = newPads;
       setPads(newPads);
       setPage(newPage);
       setSelectedIndex(newIdx);
@@ -626,6 +627,7 @@ export default function App() {
       setPads(prev => {
         const next = [...prev];
         next[idx] = jucePadToReact(update.pad, prev[idx]);
+        padsRef.current = next;
         return next;
       });
       setKitDirty(true);
@@ -998,16 +1000,20 @@ export default function App() {
       setPads(prev => {
         const currentNote = prev[index]?.midiNote;
         if (duplicateIndex < 0 || currentNote === undefined) {
-          return prev.map((pad, padIndex) =>
+          const next = prev.map((pad, padIndex) =>
             padIndex === index ? { ...pad, midiNote: note } : pad,
           );
+          padsRef.current = next;
+          return next;
         }
 
-        return prev.map((pad, padIndex) => {
+        const next = prev.map((pad, padIndex) => {
           if (padIndex === index) return { ...pad, midiNote: note };
           if (padIndex === duplicateIndex) return { ...pad, midiNote: currentNote };
           return pad;
         });
+        padsRef.current = next;
+        return next;
       });
       if (shouldSwap) setToastMessage('MIDI notes swapped');
       setKitDirty(true);
@@ -1080,23 +1086,17 @@ export default function App() {
 
     // 1. Send to C++ before state update so currentPad is still the old value
     sendPadPatchToJuce(index, safePatch, currentPad);
-    // 2. Update React state
-    setPads(prev => {
-      if (safePatch.midiNote === undefined) {
-        return prev.map((p, i) => (i === index ? { ...p, ...safePatch } : p));
-      }
-
-      const currentNote = prev[index]?.midiNote;
-      if (midiDuplicateIndex < 0 || currentNote === undefined) {
-        return prev.map((p, i) => (i === index ? { ...p, ...safePatch } : p));
-      }
-
-      return prev.map((p, i) => {
-        if (i === index) return { ...p, ...safePatch };
-        if (i === midiDuplicateIndex) return { ...p, midiNote: currentNote };
-        return p;
-      });
+    // 2. Update the ref synchronously so a second UI event in the same frame
+    // diffs against this edit rather than the previous render's Pad state.
+    const currentNote = currentPad.midiNote;
+    const nextPads = padsRef.current.map((p, i) => {
+      if (i === index) return { ...p, ...safePatch };
+      if (safePatch.midiNote !== undefined && i === midiDuplicateIndex)
+        return { ...p, midiNote: currentNote };
+      return p;
     });
+    padsRef.current = nextPads;
+    setPads(nextPads);
     if (midiDuplicateIndex >= 0) setToastMessage('MIDI notes swapped');
     setKitDirty(true);
   }, []);
@@ -1124,10 +1124,14 @@ export default function App() {
       const patchByIndex = new Map<number, Partial<PadParams>>();
       for (const { index, patch } of changes) patchByIndex.set(index, patch);
 
-      setPads(prev => prev.map((p, i) => {
+      setPads(prev => {
+        const next = prev.map((p, i) => {
         const patch = patchByIndex.get(i);
         return patch ? { ...p, ...patch } : p;
-      }));
+        });
+        padsRef.current = next;
+        return next;
+      });
       setKitDirty(true);
     },
     [],
@@ -1431,17 +1435,8 @@ export default function App() {
     const patch = patchAddLayer(pad);
     if (!patch) return;
 
-    if (isJuceAvailable()) {
-      const copyFromIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
-      sendToJuce('addLayer', { index: selectedIndex, copyFromIndex, clearSample: true });
-      if (patch.selectedLayerIndex !== undefined) {
-        sendToJuce('selectLayer', { index: selectedIndex, layerIndex: patch.selectedLayerIndex });
-      }
-    }
-
-    setPads(prev => prev.map((p, i) => (i === selectedIndex ? { ...p, ...patch } : p)));
-    setKitDirty(true);
-  }, [selectedIndex]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleRemoveSelectedLayer = useCallback((layerIndex: number) => {
     const pad = padsRef.current[selectedIndex];
@@ -1449,16 +1444,8 @@ export default function App() {
     const patch = patchRemoveLayer(pad, layerIndex);
     if (!patch) return;
 
-    if (isJuceAvailable()) {
-      sendToJuce('removeLayer', { index: selectedIndex, layerIndex });
-      if (patch.selectedLayerIndex !== undefined) {
-        sendToJuce('selectLayer', { index: selectedIndex, layerIndex: patch.selectedLayerIndex });
-      }
-    }
-
-    setPads(prev => prev.map((p, i) => (i === selectedIndex ? { ...p, ...patch } : p)));
-    setKitDirty(true);
-  }, [selectedIndex]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleReanalyzeSelected = useCallback(() => {
     const pad = padsRef.current[selectedIndex];
@@ -1520,7 +1507,6 @@ export default function App() {
 
   const resetPadSettings = useCallback((index: number) => {
     const patch = resettablePadSettings(index);
-    sendPadPatchToJuce(index, patch, padsRef.current[index]);
     updatePad(index, patch);
   }, [updatePad]);
 
@@ -1539,6 +1525,7 @@ export default function App() {
     fadeOutMs: 0,
     reverse: false,
     keepLength: true,
+    smartTrim: true,
     mute: false,
     solo: false,
     velocityMin: 0,
@@ -1561,7 +1548,6 @@ export default function App() {
     const patch: Partial<PadParams> = { layers: newLayers };
     // Layer 0 を変更したら flat fields にもミラー (既存 routing と整合)
     if (layerIndex === 0) Object.assign(patch, defaults);
-    sendPadPatchToJuce(padIndex, patch, pad);
     updatePad(padIndex, patch);
   }, [defaultLayerAudioParams, updatePad]);
 
@@ -1574,7 +1560,7 @@ export default function App() {
 
     // C++ 側: 該当 Layer のバッファを破棄
     if (isJuceAvailable()) {
-      sendToJuce('clearPadSample', { index: padIndex, layerIndex });
+      sendToJuce('clearPadSample', { index: padIndex, layerIndex, broadcast: false });
     }
 
     const defaults = defaultLayerAudioParams();
@@ -1611,15 +1597,9 @@ export default function App() {
     if (!pad) return;
     const initialPad = INITIAL_PADS[padIndex];
 
-    // C++ 側: 全 Layer のバッファ破棄 (後ろから消して index 安定)
+    // C++ 側: 全 Layer のバッファを一度に破棄。途中状態は UI へ返さない。
     if (isJuceAvailable()) {
-      const layers = pad.layers ?? [];
-      for (let i = Math.max(0, layers.length - 1); i >= 0; i--) {
-        sendToJuce('clearPadSample', { index: padIndex, layerIndex: i });
-      }
-      if (layers.length === 0) {
-        sendToJuce('clearPadSample', { index: padIndex, layerIndex: 0 });
-      }
+      sendToJuce('clearPadSample', { index: padIndex, broadcast: false });
     }
 
     const defaults = defaultLayerAudioParams();
@@ -2095,28 +2075,54 @@ export default function App() {
           onAddLayer={() => {
             // 同じ Pad に新規 Layer を追加 (Sample 参照は MAIN を継承)
             if (ctxLayerCount >= 8) return;
-            sendToJuce('addLayer', { index: contextMenu.index, copyFromIndex: ctxLayerIndex });
-            // UI 側 state も足す (C++ から broadcast されるが、楽観更新で即反映)
-            setPads(prev => prev.map((p, i) => {
-              if (i !== contextMenu.index) return p;
-              const layers = p.layers ?? [];
-              const src = layers[ctxLayerIndex] ?? layers[0];
-              if (!src) return p;
-              const nextLayer = { ...src, layerName: undefined, mute: false, solo: false };
-              return { ...p, layers: [...layers, nextLayer], selectedLayerIndex: layers.length };
-            }));
+            sendToJuce('addLayer', {
+              index: contextMenu.index,
+              copyFromIndex: ctxLayerIndex,
+              broadcast: false,
+            });
+            sendToJuce('selectLayer', {
+              index: contextMenu.index,
+              layerIndex: ctxLayerCount,
+            });
+            // UI state を即時更新。C++ 側の全状態 echo は行わない。
+            setPads(prev => {
+              const next = prev.map((p, i) => {
+                if (i !== contextMenu.index) return p;
+                const layers = p.layers ?? [];
+                const src = layers[ctxLayerIndex] ?? layers[0];
+                if (!src) return p;
+                const nextLayer = { ...src, layerName: undefined, mute: false, solo: false };
+                return { ...p, layers: [...layers, nextLayer], selectedLayerIndex: layers.length };
+              });
+              padsRef.current = next;
+              return next;
+            });
+            setKitDirty(true);
           }}
           onDuplicateLayer={() => {
             // 現在 Layer をそのままコピーした新 Layer を末尾に追加
             if (ctxLayerCount >= 8) return;
-            sendToJuce('addLayer', { index: contextMenu.index, copyFromIndex: ctxLayerIndex });
-            setPads(prev => prev.map((p, i) => {
-              if (i !== contextMenu.index) return p;
-              const layers = p.layers ?? [];
-              const src = layers[ctxLayerIndex] ?? layers[0];
-              if (!src) return p;
-              return { ...p, layers: [...layers, { ...src }], selectedLayerIndex: layers.length };
-            }));
+            sendToJuce('addLayer', {
+              index: contextMenu.index,
+              copyFromIndex: ctxLayerIndex,
+              broadcast: false,
+            });
+            sendToJuce('selectLayer', {
+              index: contextMenu.index,
+              layerIndex: ctxLayerCount,
+            });
+            setPads(prev => {
+              const next = prev.map((p, i) => {
+                if (i !== contextMenu.index) return p;
+                const layers = p.layers ?? [];
+                const src = layers[ctxLayerIndex] ?? layers[0];
+                if (!src) return p;
+                return { ...p, layers: [...layers, { ...src }], selectedLayerIndex: layers.length };
+              });
+              padsRef.current = next;
+              return next;
+            });
+            setKitDirty(true);
           }}
           onCopyPad={() => {
             setPadClipboard(pads[contextMenu.index]);

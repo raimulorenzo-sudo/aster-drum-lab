@@ -177,6 +177,11 @@ public:
                                       LayerParameterSpecs::Param param,
                                       float value,
                                       bool notifyHost = true);
+    void setLayerVelocityRange(int padIndex,
+                               int layerIndex,
+                               int velocityMin,
+                               int velocityMax,
+                               bool notifyHost = true);
     void setPadSampleTrim(int padIndex,
                           float startPosition,
                           float endPosition,

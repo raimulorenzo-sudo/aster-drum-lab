@@ -108,6 +108,7 @@ namespace PadDataJson
             lo->setProperty("reverse",   L.reverse);
             lo->setProperty("keepLength", L.keepLength);
             lo->setProperty("smartTrim", L.smartTrim);
+            lo->setProperty("polarityInvert", L.polarityInvert);
             lo->setProperty("mute",      L.mute);
             lo->setProperty("solo",      L.solo);
             lo->setProperty("velocityMin", L.velocityMin);

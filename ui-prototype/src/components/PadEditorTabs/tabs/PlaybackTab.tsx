@@ -24,8 +24,8 @@ interface Props {
 }
 
 export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
-  const ownerKey = padIndex;
   const layerIdx = selectedLayerIndexOf(pad);
+  const ownerKey = `${padIndex}:${layerIdx}`;
   const layers   = ensureLayers(pad);
   const polarityOn   = !!layers[layerIdx]?.polarityInvert;
   const [velOpen, setVelOpen] = useState(false);

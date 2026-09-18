@@ -152,6 +152,7 @@ export interface JuceLayerData {
   reverse: boolean;
   keepLength?: boolean;
   smartTrim: boolean;
+  polarityInvert?: boolean;
   mute: boolean;
   solo: boolean;
   velocityMin: number;
@@ -269,6 +270,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     reverse:        jl.reverse,
     keepLength:     jl.keepLength ?? true,
     smartTrim:      jl.smartTrim,
+    polarityInvert: jl.polarityInvert ?? false,
     mute:           jl.mute,
     solo:           jl.solo,
     velocityMin:    jl.velocityMin,
@@ -563,7 +565,9 @@ export function sendPadPatchToJuce(
   // まとめて落とす専用メッセージへ変換する。
   // UI 側だけ消えてエンジンには残るバグ（クリア後も MIDI で鳴ってしまう）
   // を防ぐため、ここでひとつにまとめる。
-  if (patch.sampleFileName === '' && (currentPad.sampleFileName || currentPad.sampleFilePath)) {
+  if (patch.layers === undefined
+      && patch.sampleFileName === ''
+      && (currentPad.sampleFileName || currentPad.sampleFilePath)) {
     sendToJuce('clearPadSample', { index });
   }
 
@@ -658,7 +662,12 @@ function sendLayerPatches(
   if (nextCount > prevCount) {
     const added = nextCount - prevCount;
     for (let i = 0; i < added; i++) {
-      sendToJuce('addLayer', { index, copyFromIndex: Math.max(0, prevCount - 1 + i), clearSample: true });
+      sendToJuce('addLayer', {
+        index,
+        copyFromIndex: Math.max(0, prevCount - 1 + i),
+        clearSample: true,
+        broadcast: false,
+      });
     }
   } else if (nextCount < prevCount) {
     // 削除 — patchRemoveLayer は配列から指定 index を抜くので、残った object 参照を
@@ -669,7 +678,7 @@ function sendLayerPatches(
     for (let i = 0; i < removed; i++) {
       let removeIndex = searchPrev.findIndex((layer, layerIndex) => layer !== searchNext[layerIndex]);
       if (removeIndex < 0) removeIndex = searchPrev.length - 1;
-      sendToJuce('removeLayer', { index, layerIndex: removeIndex });
+      sendToJuce('removeLayer', { index, layerIndex: removeIndex, broadcast: false });
       searchPrev = searchPrev.filter((_, layerIndex) => layerIndex !== removeIndex);
       searchNext = searchNext.slice();
     }
@@ -693,6 +702,14 @@ function sendLayerPatches(
     }
     if (a.solo !== b.solo) {
       sendToJuce('setLayerSolo', { index, layerIndex: li, value: b.solo });
+    }
+    if (a.smartTrim !== b.smartTrim) {
+      sendToJuce('setLayerSmartTrim', { index, layerIndex: li, value: b.smartTrim });
+    }
+    if ((a.polarityInvert ?? false) !== (b.polarityInvert ?? false)) {
+      sendToJuce('setLayerPolarityInvert', {
+        index, layerIndex: li, value: b.polarityInvert ?? false,
+      });
     }
     if (!eqEqual(a.eq, b.eq)) {
       sendToJuce('setLayerEq', {

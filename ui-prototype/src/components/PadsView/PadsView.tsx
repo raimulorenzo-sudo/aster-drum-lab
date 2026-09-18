@@ -82,12 +82,17 @@ function PadsViewComponent({
   // 既存の WaveformEditor / PadControlSections に渡す。編集側 patch は
   // routeLayerPatch で Layer-level キーだけ layers[idx] に振り分けてから親へ。
   const viewPad = useMemo(() => composePadView(selectedPad), [selectedPad]);
+  const selectedPadRef = useRef(selectedPad);
+  selectedPadRef.current = selectedPad;
 
+  // Knob deliberately keeps a stable callback while sibling controls update.
+  // Read the current pad through a ref so a Pitch/Pan gesture cannot rebuild
+  // layers[] from the snapshot captured before the previous Volume edit.
   const onChangeLayerAware = useCallback(
     (patch: Partial<PadParams>) => {
-      onChangeSelected(routeLayerPatch(selectedPad, patch));
+      onChangeSelected(routeLayerPatch(selectedPadRef.current, patch));
     },
-    [onChangeSelected, selectedPad],
+    [onChangeSelected],
   );
 
   const onSelectLayer = useCallback(
