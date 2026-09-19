@@ -7,9 +7,9 @@
 }
 
 .titleRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   min-height: 0;
   padding: 0 22px;
@@ -18,24 +18,38 @@
     linear-gradient(180deg, rgba(28, 26, 22, 0.22), rgba(10, 10, 10, 0.12));
 }
 
-.selectedBlock,
+.selectedBlock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: 12px 22px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+  min-width: 0;
+}
+
 .sampleBlock {
   display: flex;
   align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
 .selectedLabel {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: end;
   color: var(--text-sub);
-  font-size: var(--fs-13);
+  font-size: var(--fs-10);
   font-weight: 650;
   letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .selectedName {
-  display: inline-block;
-  max-width: 220px;
+  display: block;
+  width: 100%;
+  max-width: 100%;
   color: var(--accent-cyan);
   font-size: var(--fs-14);
   font-weight: 700;
@@ -49,16 +63,25 @@
 }
 
 .selectedNameButton {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
   min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: text;
+  overflow: hidden;
+  text-align: left;
 }
 
 .nameInput {
-  width: 132px;
-  height: 24px;
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
   padding: 0 8px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(82, 200, 232, 0.38);
@@ -78,9 +101,12 @@
 
 /* ── MIDI Note ピル ─────────────────────────────────────────────── */
 .midiWrap {
+  grid-column: 2;
+  grid-row: 2;
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: max-content;
 }
 
 .midiPill {
@@ -205,6 +231,7 @@
 }
 
 .sampleLabel {
+  flex: 0 0 auto;
   color: var(--platinum-gold-soft);
   font-size: var(--fs-11);
   font-weight: 650;
@@ -224,6 +251,8 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .sampleMenuButton:hover,
@@ -232,6 +261,7 @@
 }
 
 .stockCount {
+  flex: 0 0 auto;
   color: var(--text-sub);
   font-family: var(--font-mono);
   font-size: var(--fs-11);
@@ -245,6 +275,8 @@
 }
 
 .filename {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--fs-13);
   font-weight: 500;
   letter-spacing: 0.04em;
