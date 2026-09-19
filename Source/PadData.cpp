@@ -1,5 +1,49 @@
 #include "PadData.h"
 
+juce::ValueTree LayerSampleStockItem::toValueTree() const
+{
+    juce::ValueTree vt { "Sample" };
+    vt.setProperty("sampleFileName", sampleFileName, nullptr);
+    vt.setProperty("sampleFilePath", sampleFilePath, nullptr);
+    vt.setProperty("sampleMissing", sampleMissing, nullptr);
+    vt.setProperty("startPosition", startPosition, nullptr);
+    vt.setProperty("endPosition", endPosition, nullptr);
+    vt.setProperty("fadeIn", fadeIn, nullptr);
+    vt.setProperty("fadeOut", fadeOut, nullptr);
+    return vt;
+}
+
+void LayerSampleStockItem::fromValueTree(const juce::ValueTree& vt)
+{
+    sampleFileName = vt.getProperty("sampleFileName", sampleFileName);
+    sampleFilePath = vt.getProperty("sampleFilePath", sampleFilePath);
+    sampleMissing = vt.getProperty("sampleMissing", sampleMissing);
+    endPosition = juce::jlimit(0.001f, 1.0f,
+        static_cast<float>(vt.getProperty("endPosition", endPosition)));
+    startPosition = juce::jlimit(0.0f, endPosition - 0.001f,
+        static_cast<float>(vt.getProperty("startPosition", startPosition)));
+    fadeIn = juce::jlimit(0.0f, 1.0f,
+        static_cast<float>(vt.getProperty("fadeIn", fadeIn)));
+    fadeOut = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn),
+        static_cast<float>(vt.getProperty("fadeOut", fadeOut)));
+}
+
+namespace
+{
+    LayerSampleStockItem stockItemFromLayer(const LayerData& layer)
+    {
+        LayerSampleStockItem item;
+        item.sampleFileName = layer.sampleFileName;
+        item.sampleFilePath = layer.sampleFilePath;
+        item.sampleMissing = layer.sampleMissing;
+        item.startPosition = layer.startPosition;
+        item.endPosition = layer.endPosition;
+        item.fadeIn = layer.fadeIn;
+        item.fadeOut = layer.fadeOut;
+        return item;
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  LayerData
 // ═════════════════════════════════════════════════════════════════════════════
@@ -12,6 +56,11 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("sampleFilePath",  sampleFilePath,  nullptr);
     vt.setProperty("sampleMissing",   sampleMissing,   nullptr);
     vt.setProperty("layerName",       layerName,       nullptr);
+    const auto stock = normalizedSampleStock();
+    const int serializedStockIndex = stock.empty()
+        ? 0
+        : juce::jlimit(0, (int) stock.size() - 1, activeSampleStockIndex);
+    vt.setProperty("activeSampleStockIndex", serializedStockIndex, nullptr);
 
     vt.setProperty("volume",          volume,          nullptr);
     vt.setProperty("pan",             pan,             nullptr);
@@ -117,6 +166,11 @@ juce::ValueTree LayerData::toValueTree() const
         fxTree.addChild(fx, -1, nullptr);
     }
     vt.addChild(fxTree, -1, nullptr);
+
+    juce::ValueTree stockTree { "SampleStock" };
+    for (const auto& item : stock)
+        stockTree.addChild(item.toValueTree(), -1, nullptr);
+    vt.addChild(stockTree, -1, nullptr);
 
     return vt;
 }
@@ -266,6 +320,80 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
             fxChain.push_back(slot);
         }
     }
+
+    sampleStock.clear();
+    if (auto stockTree = vt.getChildWithName("SampleStock"); stockTree.isValid())
+    {
+        const int count = juce::jmin(stockTree.getNumChildren(), MAX_SAMPLE_STOCK_PER_LAYER);
+        for (int i = 0; i < count; ++i)
+        {
+            const auto child = stockTree.getChild(i);
+            if (! child.hasType("Sample")) continue;
+            LayerSampleStockItem item;
+            item.fromValueTree(child);
+            if (item.hasSampleReference())
+                sampleStock.push_back(item);
+        }
+    }
+
+    if (sampleStock.empty())
+    {
+        if (hasSampleReference())
+            sampleStock.push_back(stockItemFromLayer(*this));
+        activeSampleStockIndex = 0;
+    }
+    else
+    {
+        activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1,
+            (int) vt.getProperty("activeSampleStockIndex", 0));
+        activateSampleStockItem(activeSampleStockIndex);
+    }
+}
+
+std::vector<LayerSampleStockItem> LayerData::normalizedSampleStock() const
+{
+    auto normalized = sampleStock;
+    if (normalized.empty())
+    {
+        if (hasSampleReference())
+            normalized.push_back(stockItemFromLayer(*this));
+        return normalized;
+    }
+
+    const int active = juce::jlimit(0, (int) normalized.size() - 1, activeSampleStockIndex);
+    normalized[(size_t) active] = stockItemFromLayer(*this);
+    if ((int) normalized.size() > MAX_SAMPLE_STOCK_PER_LAYER)
+        normalized.resize(MAX_SAMPLE_STOCK_PER_LAYER);
+    return normalized;
+}
+
+void LayerData::captureActiveSampleToStock()
+{
+    sampleStock = normalizedSampleStock();
+    if (sampleStock.empty())
+        activeSampleStockIndex = 0;
+    else
+        activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1,
+                                              activeSampleStockIndex);
+}
+
+void LayerData::activateSampleStockItem(int index)
+{
+    if (sampleStock.empty())
+    {
+        activeSampleStockIndex = 0;
+        return;
+    }
+
+    activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1, index);
+    const auto& item = sampleStock[(size_t) activeSampleStockIndex];
+    sampleFileName = item.sampleFileName;
+    sampleFilePath = item.sampleFilePath;
+    sampleMissing = item.sampleMissing;
+    startPosition = item.startPosition;
+    endPosition = item.endPosition;
+    fadeIn = item.fadeIn;
+    fadeOut = item.fadeOut;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

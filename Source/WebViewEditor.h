@@ -63,6 +63,7 @@ private:
         int expectedChunks { 0 };
         int receivedChunks { 0 };
         int64 expectedBytes { 0 };
+        bool addToSampleStock { false };
         juce::MemoryBlock data;
         bool active { false };
     };
@@ -85,8 +86,10 @@ private:
     int padIndexForDropPosition(int x, int y) const;
     bool loadDroppedFileForPad(int padIndex, const juce::File& file, const juce::String& displayFileName = {});
     bool loadDroppedFileForLayer(int padIndex, int layerIndex, const juce::File& file, const juce::String& displayFileName = {});
+    bool addSampleStockFileForLayer(int padIndex, int layerIndex, const juce::File& file, const juce::String& displayFileName = {});
     bool loadDroppedBytesForPad(int padIndex, const juce::String& fileName, const void* data, size_t size);
     bool loadDroppedBytesForLayer(int padIndex, int layerIndex, const juce::String& fileName, const void* data, size_t size);
+    bool addSampleStockBytesForLayer(int padIndex, int layerIndex, const juce::String& fileName, const void* data, size_t size);
     juce::File getDroppedSampleCacheDirectory() const;
     static bool isSupportedAudioFile(const juce::File& file);
 

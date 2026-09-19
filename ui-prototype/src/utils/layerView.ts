@@ -23,6 +23,8 @@ const LAYER_LEVEL_KEYS = [
   'sampleFileName',
   'sampleFilePath',
   'sampleMissing',
+  'sampleStock',
+  'activeSampleStockIndex',
   'volume',
   'pan',
   'pitch',
@@ -144,6 +146,8 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     sampleFileName: pad.sampleFileName,
     sampleFilePath: pad.sampleFilePath,
     sampleMissing: pad.sampleMissing,
+    sampleStock: pad.sampleStock,
+    activeSampleStockIndex: pad.activeSampleStockIndex,
     volume: pad.volume,
     pan: pad.pan,
     pitch: pad.pitch,
@@ -231,6 +235,8 @@ export function patchAddLayer(pad: PadParams): Partial<PadParams> | null {
     sampleFileName: '',
     sampleFilePath: '',
     sampleMissing: undefined,
+    sampleStock: undefined,
+    activeSampleStockIndex: 0,
     layerName: undefined,
     waveformPeaks: undefined,
     waveformChannels: undefined,
@@ -275,6 +281,8 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.sampleFileName = newLayer0.sampleFileName;
     patch.sampleFilePath = newLayer0.sampleFilePath;
     patch.sampleMissing = newLayer0.sampleMissing;
+    patch.sampleStock = newLayer0.sampleStock;
+    patch.activeSampleStockIndex = newLayer0.activeSampleStockIndex;
     patch.volume = newLayer0.volume;
     patch.pan = newLayer0.pan;
     patch.pitch = newLayer0.pitch;

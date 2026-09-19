@@ -277,7 +277,8 @@ void WebViewEditor::filesDropped(const juce::StringArray& files, int x, int y)
                              + filesForLog(files));
 
     int targetPad = padIndexForDropPosition(x, y);
-    if ((targetPad < 0 || targetPad >= NUM_PADS) && activeWebTab == ActiveWebTab::Pads)
+    const bool droppedOnEditor = targetPad < 0 || targetPad >= NUM_PADS;
+    if (droppedOnEditor && activeWebTab == ActiveWebTab::Pads)
     {
         // Native macOS file D&D does not go through the browser's HTML5 drop
         // handlers, so waveform/editor drops do not have a pad-cell target.
@@ -307,7 +308,10 @@ void WebViewEditor::filesDropped(const juce::StringArray& files, int x, int y)
         if (! isSupportedAudioFile(file))
             continue;
 
-        loadDroppedFileForLayer(targetPad, targetLayer, file);
+        if (droppedOnEditor)
+            addSampleStockFileForLayer(targetPad, targetLayer, file);
+        else
+            loadDroppedFileForLayer(targetPad, targetLayer, file);
         return;
     }
 
@@ -437,6 +441,33 @@ bool WebViewEditor::loadDroppedFileForLayer(int padIndex, int layerIndex, const 
     return true;
 }
 
+bool WebViewEditor::addSampleStockFileForLayer(int padIndex,
+                                               int layerIndex,
+                                               const juce::File& file,
+                                               const juce::String& displayFileName)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return false;
+    if (! file.existsAsFile() || ! isSupportedAudioFile(file)) return false;
+    auto& pad = audioProcessor.getKit().pads[(size_t) padIndex];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+
+    if (! audioProcessor.addOrReplaceLayerSampleStock(padIndex, layerIndex, file))
+        return false;
+
+    if (displayFileName.isNotEmpty())
+    {
+        auto& layer = pad.layers[(size_t) layerIndex];
+        layer.sampleFileName = displayFileName;
+        layer.captureActiveSampleToStock();
+        if (layerIndex == 0)
+            pad.syncFlatFromLayer0();
+    }
+
+    broadcastPadUpdate(padIndex);
+    broadcastKitState();
+    return true;
+}
+
 juce::File WebViewEditor::getDroppedSampleCacheDirectory() const
 {
     return DrumSamplerAudioProcessor::getUserKitsDirectory()
@@ -532,6 +563,30 @@ bool WebViewEditor::loadDroppedBytesForLayer(int padIndex,
 
     if (! target.replaceWithData(data, size)) return false;
     return loadDroppedFileForLayer(padIndex, layerIndex, target, safeName);
+}
+
+bool WebViewEditor::addSampleStockBytesForLayer(int padIndex,
+                                                int layerIndex,
+                                                const juce::String& fileName,
+                                                const void* data,
+                                                size_t size)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS || data == nullptr || size == 0)
+        return false;
+
+    const auto legalName = juce::File::createLegalFileName(fileName).trim();
+    const auto safeName = legalName.isNotEmpty() ? legalName : juce::String("Dropped Sample.wav");
+    const juce::File probe(safeName);
+    if (! isSupportedAudioFile(probe)) return false;
+
+    auto directory = getDroppedSampleCacheDirectory();
+    if (! directory.createDirectory()) return false;
+    auto target = directory.getChildFile(safeName);
+    if (target.exists())
+        target = directory.getNonexistentChildFile(probe.getFileNameWithoutExtension(),
+                                                   probe.getFileExtension(), false);
+    if (! target.replaceWithData(data, size)) return false;
+    return addSampleStockFileForLayer(padIndex, layerIndex, target, safeName);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1603,6 +1658,65 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     loadDroppedFileForLayer(idx, layerIdx, file);
             });
     }
+    else if (type == "addSampleStockDialog")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        if (idx < 0 || idx >= NUM_PADS) return;
+        const auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+        if (layerIdx < 0 || layerIdx >= pad.layerCount()) return;
+
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Add samples to Layer stock…", juce::File(), "*.wav;*.aif;*.aiff;*.mp3;*.flac");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode
+                            | juce::FileBrowserComponent::canSelectFiles
+                            | juce::FileBrowserComponent::canSelectMultipleItems,
+            [this, idx, layerIdx, chooser](const juce::FileChooser& fc)
+            {
+                bool changed = false;
+                const auto& initialLayer =
+                    audioProcessor.getKit().pads[(size_t) idx].layers[(size_t) layerIdx];
+                const bool replacingSelected =
+                    (int) initialLayer.normalizedSampleStock().size() >= MAX_SAMPLE_STOCK_PER_LAYER;
+                for (const auto& file : fc.getResults())
+                {
+                    if (file.existsAsFile() && isSupportedAudioFile(file))
+                        changed = audioProcessor.addOrReplaceLayerSampleStock(idx, layerIdx, file) || changed;
+                    const auto& layer =
+                        audioProcessor.getKit().pads[(size_t) idx].layers[(size_t) layerIdx];
+                    if (replacingSelected
+                        || (int) layer.normalizedSampleStock().size() >= MAX_SAMPLE_STOCK_PER_LAYER)
+                        break;
+                }
+                if (changed)
+                {
+                    broadcastPadUpdate(idx);
+                    broadcastKitState();
+                }
+            });
+    }
+    else if (type == "selectLayerSampleStock")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const int stockIndex = (int) payload.getProperty("stockIndex", 0);
+        if (audioProcessor.selectLayerSampleStock(idx, layerIdx, stockIndex))
+        {
+            broadcastPadUpdate(idx);
+            broadcastKitState();
+        }
+    }
+    else if (type == "removeLayerSampleStock")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const int stockIndex = (int) payload.getProperty("stockIndex", 0);
+        if (audioProcessor.removeLayerSampleStock(idx, layerIdx, stockIndex))
+        {
+            broadcastPadUpdate(idx);
+            broadcastKitState();
+        }
+    }
     else if (type == "relinkSampleDialog")
     {
         const int idx = getIndex();
@@ -1648,7 +1762,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             return;
         }
 
-        const bool ok = loadDroppedFileForLayer(idx, layerIdx, juce::File(path));
+        const bool addToStock = (bool) payload.getProperty("addToSampleStock", false);
+        const bool ok = addToStock
+            ? addSampleStockFileForLayer(idx, layerIdx, juce::File(path), name)
+            : loadDroppedFileForLayer(idx, layerIdx, juce::File(path), name);
         juce::Logger::writeToLog(ok ? "[ASTER DND] bridge call success"
                                     : "[ASTER DND] bridge call error");
     }
@@ -1659,6 +1776,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         pendingSampleByteDrop.padIndex = getIndex();
         pendingSampleByteDrop.layerIndex = (int) payload.getProperty("layerIndex", 0);
         pendingSampleByteDrop.fileName = payload.getProperty("fileName", juce::var()).toString();
+        pendingSampleByteDrop.addToSampleStock = (bool) payload.getProperty("addToSampleStock", false);
         pendingSampleByteDrop.expectedChunks = (int) payload.getProperty("totalChunks", 0);
         pendingSampleByteDrop.expectedBytes = (int64) payload.getProperty("totalBytes", 0);
         pendingSampleByteDrop.active = pendingSampleByteDrop.transferId.isNotEmpty()
@@ -1719,6 +1837,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const auto receivedChunks = pendingSampleByteDrop.receivedChunks;
         const auto expectedChunks = pendingSampleByteDrop.expectedChunks;
         const auto expectedBytes = pendingSampleByteDrop.expectedBytes;
+        const bool addToSampleStock = pendingSampleByteDrop.addToSampleStock;
         auto data = std::move(pendingSampleByteDrop.data);
         pendingSampleByteDrop = {};
 
@@ -1732,7 +1851,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             return;
         }
 
-        const bool ok = loadDroppedBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize());
+        const bool ok = addToSampleStock
+            ? addSampleStockBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize())
+            : loadDroppedBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize());
         juce::Logger::writeToLog(ok ? "[ASTER DND] bridge bytes finish success"
                                     : "[ASTER DND] bridge bytes finish error");
     }
@@ -2016,6 +2137,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     L.sampleFileName.clear();
                     L.sampleFilePath.clear();
                     L.sampleMissing = false;
+                    L.sampleStock.clear();
+                    L.activeSampleStockIndex = 0;
                     L.eq = {};
                     L.fxChain.clear();
                     L.polarityInvert = false;

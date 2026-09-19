@@ -108,6 +108,30 @@ struct LayerFxSlot
     LayerCompressorFx compressor {};
 };
 
+// A Layer can keep a small shortlist of alternate samples. Only the selected
+// item is decoded into AudioFileManager; the remaining entries are lightweight
+// file references plus sample-specific trim/fade values.
+static constexpr int MAX_SAMPLE_STOCK_PER_LAYER = 5;
+
+struct LayerSampleStockItem
+{
+    juce::String sampleFileName {};
+    juce::String sampleFilePath {};
+    bool sampleMissing { false };
+    float startPosition { 0.0f };
+    float endPosition { 1.0f };
+    float fadeIn { 0.0f };
+    float fadeOut { 0.0f };
+
+    bool hasSampleReference() const noexcept
+    {
+        return sampleFileName.isNotEmpty() || sampleFilePath.isNotEmpty();
+    }
+
+    juce::ValueTree toValueTree() const;
+    void fromValueTree(const juce::ValueTree& vt);
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LayerData  ─  1 つのレイヤーが持つ情報（Pad 内で複数 Layer を重ねる仕組み）
 //
@@ -133,6 +157,11 @@ struct LayerData
     juce::String sampleFileName {};
     juce::String sampleFilePath {};
     bool         sampleMissing { false };
+
+    // Alternative samples for quick A/B comparison. The legacy sample fields
+    // above always mirror sampleStock[activeSampleStockIndex].
+    std::vector<LayerSampleStockItem> sampleStock {};
+    int activeSampleStockIndex { 0 };
 
     // ── 表示名（空ならサンプル名 / "Layer N" を UI 側で派生表示） ───────────
     juce::String layerName {};
@@ -187,6 +216,10 @@ struct LayerData
     {
         return sampleFileName.isNotEmpty() || sampleFilePath.isNotEmpty();
     }
+
+    void captureActiveSampleToStock();
+    void activateSampleStockItem(int index);
+    std::vector<LayerSampleStockItem> normalizedSampleStock() const;
 
     // ── シリアライズ ──────────────────────────────────────────────────────
     juce::ValueTree toValueTree() const;

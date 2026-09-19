@@ -60,6 +60,11 @@ public:
     bool loadSampleForPad(int padIndex, const juce::File& file);
     // 任意 Layer にサンプルを読み込む。layerIndex==0 は loadSampleForPad と等価。
     bool loadSampleForLayer(int padIndex, int layerIndex, const juce::File& file);
+    // Layer 内の Sample Stock（最大 5）を追加/選択/削除する。
+    // add は空きがあれば末尾へ追加し、満杯なら現在選択中の項目を置換する。
+    bool addOrReplaceLayerSampleStock(int padIndex, int layerIndex, const juce::File& file);
+    bool selectLayerSampleStock(int padIndex, int layerIndex, int stockIndex);
+    bool removeLayerSampleStock(int padIndex, int layerIndex, int stockIndex);
     void setKeepLengthOnSampleLoad(bool enabled) noexcept
     {
         keepLengthOnSampleLoad.store(enabled, std::memory_order_relaxed);

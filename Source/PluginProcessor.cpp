@@ -226,6 +226,8 @@ namespace
                         dL.sampleFileName = sL.sampleFileName;
                         dL.sampleFilePath = sL.sampleFilePath;
                         dL.sampleMissing = sL.sampleMissing;
+                        dL.sampleStock = sL.sampleStock;
+                        dL.activeSampleStockIndex = sL.activeSampleStockIndex;
                     }
 
                     if (options.padNamesAndColours)
@@ -802,6 +804,7 @@ bool DrumSamplerAudioProcessor::loadSampleForPad(int padIndex, const juce::File&
 
     // Layer 0 を flat fields からミラー（VoiceManager は layers[] を読む）
     pad.syncLayer0FromFlat();
+    pad.layers[0].captureActiveSampleToStock();
 
     markKitDirty();
     juce::Logger::writeToLog("[ASTER DND] C++ loadSampleForPad success padIndex="
@@ -1063,7 +1066,151 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     L.fadeIn        = 0.0f;
     L.fadeOut       = 0.0f;
     L.keepLength    = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
+    L.captureActiveSampleToStock();
 
+    syncParametersFromKit();
+    markKitDirty();
+    return true;
+}
+
+bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
+                                                             int layerIndex,
+                                                             const juce::File& file)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS || ! file.existsAsFile()) return false;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+
+    if (! fileManager.loadFileForPad(padIndex, layerIndex, file)) return false;
+    voiceManager.clearPadClip(padIndex);
+
+    auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
+    layer.captureActiveSampleToStock();
+
+    LayerSampleStockItem item;
+    item.sampleFileName = file.getFileName();
+    item.sampleFilePath = file.getFullPathName();
+    item.sampleMissing = false;
+
+    if ((int) layer.sampleStock.size() < MAX_SAMPLE_STOCK_PER_LAYER)
+    {
+        layer.sampleStock.push_back(item);
+        layer.activeSampleStockIndex = (int) layer.sampleStock.size() - 1;
+    }
+    else
+    {
+        layer.activeSampleStockIndex = juce::jlimit(
+            0, (int) layer.sampleStock.size() - 1, layer.activeSampleStockIndex);
+        layer.sampleStock[(size_t) layer.activeSampleStockIndex] = item;
+    }
+
+    layer.activateSampleStockItem(layer.activeSampleStockIndex);
+
+    if (layer.smartTrim)
+    {
+        juce::ScopedReadLock rl(fileManager.getReadWriteLock());
+        if (const auto* buffer = fileManager.getBufferNoLock(padIndex, layerIndex))
+        {
+            const auto result = SmartTrim::analyze(
+                *buffer, fileManager.getSampleRate(padIndex, layerIndex));
+            layer.startPosition = result.startPosition;
+            layer.endPosition = result.endPosition;
+        }
+    }
+
+    layer.captureActiveSampleToStock();
+    if (layerIndex == 0)
+        pad.syncFlatFromLayer0();
+
+    syncParametersFromKit();
+    markKitDirty();
+    return true;
+}
+
+bool DrumSamplerAudioProcessor::selectLayerSampleStock(int padIndex,
+                                                       int layerIndex,
+                                                       int stockIndex)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return false;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+    auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
+    layer.captureActiveSampleToStock();
+    if (stockIndex < 0 || stockIndex >= (int) layer.sampleStock.size()) return false;
+
+    layer.activateSampleStockItem(stockIndex);
+    const juce::File file(layer.sampleFilePath);
+    if (! file.existsAsFile()
+        || ! fileManager.loadFileForPad(padIndex, layerIndex, file))
+    {
+        fileManager.clearLayer(padIndex, layerIndex);
+        layer.sampleMissing = true;
+    }
+    else
+    {
+        layer.sampleMissing = false;
+    }
+
+    voiceManager.clearPadClip(padIndex);
+    layer.captureActiveSampleToStock();
+    if (layerIndex == 0)
+        pad.syncFlatFromLayer0();
+    syncParametersFromKit();
+    markKitDirty();
+    return true;
+}
+
+bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
+                                                       int layerIndex,
+                                                       int stockIndex)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return false;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+    auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
+    layer.captureActiveSampleToStock();
+    if (stockIndex < 0 || stockIndex >= (int) layer.sampleStock.size()) return false;
+
+    const int previousActive = layer.activeSampleStockIndex;
+    layer.sampleStock.erase(layer.sampleStock.begin() + stockIndex);
+    voiceManager.clearPadClip(padIndex);
+
+    if (layer.sampleStock.empty())
+    {
+        fileManager.clearLayer(padIndex, layerIndex);
+        layer.activeSampleStockIndex = 0;
+        layer.sampleFileName.clear();
+        layer.sampleFilePath.clear();
+        layer.sampleMissing = false;
+        layer.startPosition = 0.0f;
+        layer.endPosition = 1.0f;
+        layer.fadeIn = 0.0f;
+        layer.fadeOut = 0.0f;
+    }
+    else
+    {
+        int nextActive = previousActive;
+        if (stockIndex < previousActive) --nextActive;
+        if (stockIndex == previousActive)
+            nextActive = juce::jmin(stockIndex, (int) layer.sampleStock.size() - 1);
+        layer.activateSampleStockItem(nextActive);
+
+        const juce::File file(layer.sampleFilePath);
+        if (! file.existsAsFile()
+            || ! fileManager.loadFileForPad(padIndex, layerIndex, file))
+        {
+            fileManager.clearLayer(padIndex, layerIndex);
+            layer.sampleMissing = true;
+        }
+        else
+        {
+            layer.sampleMissing = false;
+        }
+        layer.captureActiveSampleToStock();
+    }
+
+    if (layerIndex == 0)
+        pad.syncFlatFromLayer0();
     syncParametersFromKit();
     markKitDirty();
     return true;
@@ -1088,6 +1235,8 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
         pad.layers[0].sampleFileName.clear();
         pad.layers[0].sampleFilePath.clear();
         pad.layers[0].sampleMissing = false;
+        pad.layers[0].sampleStock.clear();
+        pad.layers[0].activeSampleStockIndex = 0;
         pad.syncLayer0FromFlat();
     }
     else
@@ -1097,6 +1246,8 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
         L.sampleFileName.clear();
         L.sampleFilePath.clear();
         L.sampleMissing = false;
+        L.sampleStock.clear();
+        L.activeSampleStockIndex = 0;
     }
 
     syncParametersFromKit();
@@ -1311,6 +1462,8 @@ bool DrumSamplerAudioProcessor::relinkPadSampleOnly(int padIndex,
 
     pad.sampleFilePath = file.getFullPathName();
     pad.sampleMissing = false;
+    pad.syncLayer0FromFlat();
+    pad.layers[0].captureActiveSampleToStock();
     voiceManager.clearPadClip(padIndex);
     return true;
 }

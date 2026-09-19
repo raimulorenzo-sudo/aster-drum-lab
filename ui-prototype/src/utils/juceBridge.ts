@@ -139,6 +139,12 @@ export interface JuceLayerData {
   sampleFilePath: string;
   sampleMissing?: boolean;
   layerName?: string;
+  sampleStock?: Array<{
+    sampleFileName?: string;
+    sampleFilePath?: string;
+    sampleMissing?: boolean;
+  }>;
+  activeSampleStockIndex?: number;
   volume: number;
   pan: number;
   pitch: number;
@@ -248,12 +254,29 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     ? jl.waveformPeaks.filter(v => Number.isFinite(v)).map(v => Math.max(0, Math.min(1, Number(v))))
     : undefined;
   const waveformChannels = normalizeWaveformChannels(jl.waveformChannels);
+  const sampleStock = Array.isArray(jl.sampleStock)
+    ? jl.sampleStock.slice(0, 5).flatMap(item => {
+        const sampleFileName = String(item?.sampleFileName ?? '');
+        const sampleFilePath = String(item?.sampleFilePath ?? '');
+        if (!sampleFileName && !sampleFilePath) return [];
+        return [{
+          sampleFileName,
+          sampleFilePath,
+          sampleMissing: Boolean(item?.sampleMissing),
+        }];
+      })
+    : undefined;
+  const activeSampleStockIndex = sampleStock && sampleStock.length > 0
+    ? Math.max(0, Math.min(sampleStock.length - 1, Number(jl.activeSampleStockIndex ?? 0)))
+    : 0;
 
   return {
     sampleFileName: jl.sampleFileName,
     sampleFilePath: jl.sampleFilePath,
     sampleMissing:  jl.sampleMissing,
     layerName:      jl.layerName,
+    sampleStock,
+    activeSampleStockIndex,
     volume:         jl.volume,
     pan:            jl.pan,
     pitch:          jl.pitch,

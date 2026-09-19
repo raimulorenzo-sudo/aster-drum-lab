@@ -166,12 +166,42 @@
 
 .sampleBlock {
   justify-content: flex-end;
+  position: relative;
+  gap: 6px;
 }
 
-.sampleNav {
+.sampleNavButton,
+.sampleAddButton {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.28);
+  background: rgba(82, 200, 232, 0.035);
+  color: var(--accent-cyan);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.sampleNavButton {
   color: var(--text-sub);
   font-size: var(--fs-15);
-  letter-spacing: 0.20em;
+}
+
+.sampleNavButton:hover:not(:disabled),
+.sampleAddButton:hover:not(:disabled) {
+  border-color: rgba(82, 200, 232, 0.55);
+  color: var(--accent-cyan-hot);
+  background: rgba(82, 200, 232, 0.08);
+}
+
+.sampleNavButton:disabled,
+.sampleAddButton:disabled {
+  opacity: 0.28;
+  cursor: default;
 }
 
 .sampleLabel {
@@ -181,16 +211,148 @@
   letter-spacing: 0.15em;
 }
 
+.sampleMenuButton {
+  height: 24px;
+  min-width: 0;
+  max-width: 250px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sampleMenuButton:hover,
+.sampleMenuButton[aria-expanded='true'] {
+  border-bottom-color: rgba(82, 200, 232, 0.45);
+}
+
+.stockCount {
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  white-space: nowrap;
+}
+
+.sampleChevron {
+  color: var(--accent-cyan);
+  font-size: var(--fs-13);
+  flex: 0 0 auto;
+}
+
 .filename {
   font-size: var(--fs-13);
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--text-soft);
   font-family: var(--font-sans);
-  max-width: 220px;
+  max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sampleStockMenu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(330px, 70vw);
+  padding: 6px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-md);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(30, 29, 27, 0.99), rgba(14, 14, 13, 0.99));
+  background-size: 200px 200px, auto;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.sampleStockRow {
+  min-height: 32px;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.sampleStockRowActive {
+  background: linear-gradient(90deg, rgba(82, 200, 232, 0.16), rgba(82, 200, 232, 0.04));
+}
+
+.sampleStockSelect {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sampleStockIndex {
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-align: center;
+}
+
+.sampleStockRowActive .sampleStockIndex,
+.sampleStockRowActive .sampleStockName {
+  color: var(--accent-cyan);
+}
+
+.sampleStockName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-12);
+}
+
+.sampleStockRemove {
+  width: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: var(--fs-15);
+  cursor: pointer;
+}
+
+.sampleStockRemove:hover {
+  color: var(--mute-color);
+}
+
+.sampleStockAddRow {
+  width: 100%;
+  height: 32px;
+  margin-top: 5px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sampleStockAddRow:hover:not(:disabled) {
+  background: rgba(201, 173, 120, 0.08);
+  color: var(--platinum-gold);
+}
+
+.sampleStockAddRow:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .filenameMissing {

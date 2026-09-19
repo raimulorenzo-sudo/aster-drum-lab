@@ -72,6 +72,103 @@ bool approximately(float actual, float expected, float tolerance = 0.015f)
     return std::abs(actual - expected) <= tolerance;
 }
 
+bool sampleStockFlowIsStable()
+{
+    std::vector<juce::File> files;
+    files.reserve(6);
+    const auto temp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    for (int i = 0; i < 6; ++i)
+    {
+        auto file = temp.getNonexistentChildFile(
+            "aster-sample-stock-" + juce::String(i + 1), ".wav", false);
+        if (! writeConstantTestSample(file))
+            return false;
+        files.push_back(file);
+    }
+
+    const auto cleanup = [&files]
+    {
+        for (const auto& file : files)
+            file.deleteFile();
+    };
+
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, files[0]))
+    {
+        cleanup();
+        return false;
+    }
+
+    auto& layer = processor.getKit().pads[0].layers[0];
+    layer.smartTrim = false;
+    layer.startPosition = 0.1f;
+    layer.endPosition = 0.9f;
+
+    for (int i = 1; i < 5; ++i)
+    {
+        if (! processor.addOrReplaceLayerSampleStock(0, 0, files[(size_t) i]))
+        {
+            cleanup();
+            return false;
+        }
+        layer.startPosition = 0.05f * static_cast<float>(i);
+        layer.endPosition = 1.0f - layer.startPosition;
+    }
+
+    if (layer.sampleStock.size() != 5 || layer.activeSampleStockIndex != 4
+        || ! processor.selectLayerSampleStock(0, 0, 0)
+        || ! approximately(layer.startPosition, 0.1f, 0.001f)
+        || ! approximately(layer.endPosition, 0.9f, 0.001f))
+    {
+        cleanup();
+        return false;
+    }
+
+    // A sixth add replaces the currently selected slot instead of exceeding
+    // the five-item cap.
+    if (! processor.addOrReplaceLayerSampleStock(0, 0, files[5])
+        || layer.sampleStock.size() != 5
+        || layer.activeSampleStockIndex != 0
+        || layer.sampleFileName != files[5].getFileName())
+    {
+        cleanup();
+        return false;
+    }
+
+    // Trim/fade values belong to each stocked sample and must come back when
+    // switching, then survive project-state serialization.
+    if (! processor.selectLayerSampleStock(0, 0, 4)
+        || ! approximately(layer.startPosition, 0.2f, 0.001f)
+        || ! approximately(layer.endPosition, 0.8f, 0.001f))
+    {
+        cleanup();
+        return false;
+    }
+
+    LayerData restored;
+    restored.fromValueTree(layer.toValueTree());
+    if (restored.sampleStock.size() != 5
+        || restored.activeSampleStockIndex != 4
+        || restored.sampleFileName != files[4].getFileName()
+        || ! approximately(restored.startPosition, 0.2f, 0.001f))
+    {
+        cleanup();
+        return false;
+    }
+
+    if (! processor.removeLayerSampleStock(0, 0, 4)
+        || layer.sampleStock.size() != 4
+        || layer.activeSampleStockIndex != 3)
+    {
+        cleanup();
+        return false;
+    }
+
+    cleanup();
+    return true;
+}
+
 bool compressorGainPersistenceIsCompatible()
 {
     LayerData source;
@@ -503,6 +600,13 @@ int main()
         return 1;
     }
 
+    if (! sampleStockFlowIsStable())
+    {
+        std::cerr << "Layer sample stock add/select/replace/remove persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
@@ -511,5 +615,6 @@ int main()
     std::cout << "24 fixed automation slots and assignment persistence verified\n";
     std::cout << "MAIN Layer volume, pan, pitch, and trim persistence verified\n";
     std::cout << "Layer velocity range and add/remove automation-slot sync verified\n";
+    std::cout << "Layer sample stock five-item flow and persistence verified\n";
     return 0;
 }

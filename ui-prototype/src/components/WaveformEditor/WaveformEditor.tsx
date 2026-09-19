@@ -17,6 +17,9 @@ interface WaveformEditorProps {
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
   onSampleDrop?: (file: File) => void;
+  onAddSampleStock?: () => void;
+  onSelectSampleStock?: (stockIndex: number) => void;
+  onRemoveSampleStock?: (stockIndex: number) => void;
   onReanalyze?: () => void;
   onRelinkSample?: () => void;
   previewPlayback: PreviewPlayback;
@@ -42,6 +45,9 @@ function WaveformEditorComponent({
   padIndex,
   onChange,
   onSampleDrop,
+  onAddSampleStock,
+  onSelectSampleStock,
+  onRemoveSampleStock,
   onReanalyze,
   onRelinkSample,
   previewPlayback,
@@ -53,12 +59,14 @@ function WaveformEditorComponent({
   const [editingMidi, setEditingMidi] = useState(false);
   const [draggingHandle, setDraggingHandle] = useState<WaveHandle | null>(null);
   const [isSampleDragOver, setIsSampleDragOver] = useState(false);
+  const [sampleStockOpen, setSampleStockOpen] = useState(false);
   const [waveformDisplayMode, setWaveformDisplayMode] = useState<'stereo' | 'sum'>('stereo');
 
   // ── View state (一時的 / 表示専用 / 保存対象外) ─────────────────
   const [viewStartPct, setViewStartPct] = useState(0);
   const [viewEndPct,   setViewEndPct]   = useState(1);
   const waveBoxRef = useRef<HTMLDivElement | null>(null);
+  const sampleStockRef = useRef<HTMLDivElement | null>(null);
 
   // Pad/Layer/Sample 切替時にビューをリセット (表示が崩れないように)。
   // sampleFilePath が Layer 切替や Pad 切替で変わる → これをトリガーにする。
@@ -93,13 +101,54 @@ function WaveformEditorComponent({
     && (waveformPeaks.length > 1 || hasChannelWaveform),
   );
   const hasStereoWaveform = waveformChannels.length >= 2;
+  const sampleStock = useMemo(() => {
+    if (pad.sampleStock && pad.sampleStock.length > 0)
+      return pad.sampleStock.slice(0, 5);
+    if (pad.sampleFileName || pad.sampleFilePath) {
+      return [{
+        sampleFileName: pad.sampleFileName,
+        sampleFilePath: pad.sampleFilePath,
+        sampleMissing: pad.sampleMissing,
+      }];
+    }
+    return [];
+  }, [pad.sampleFileName, pad.sampleFilePath, pad.sampleMissing, pad.sampleStock]);
+  const activeSampleStockIndex = sampleStock.length === 0
+    ? 0
+    : Math.max(0, Math.min(sampleStock.length - 1, pad.activeSampleStockIndex ?? 0));
+  const stockCount = sampleStock.length;
   const emptyWaveformText = pad.sampleMissing
     ? 'SAMPLE MISSING'
     : hasWaveform
       ? null
       : 'DROP SAMPLE HERE';
-  const dragOverlayText = hasWaveform ? 'DROP TO REPLACE LAYER SAMPLE' : 'RELEASE TO LOAD';
+  const dragOverlayText = stockCount >= 5
+    ? `REPLACE SAMPLE ${activeSampleStockIndex + 1}/5`
+    : `ADD AS SAMPLE ${stockCount + 1}/5`;
   const isAudioFile = (file: File) => /\.(wav|aiff?|flac|mp3|ogg)$/i.test(file.name);
+
+  useEffect(() => {
+    if (!sampleStockOpen) return;
+    const closeIfOutside = (event: PointerEvent) => {
+      if (!sampleStockRef.current?.contains(event.target as Node))
+        setSampleStockOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSampleStockOpen(false);
+    };
+    document.addEventListener('pointerdown', closeIfOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [sampleStockOpen]);
+
+  const stepSampleStock = useCallback((direction: -1 | 1) => {
+    if (stockCount <= 1 || !onSelectSampleStock) return;
+    const next = (activeSampleStockIndex + direction + stockCount) % stockCount;
+    onSelectSampleStock(next);
+  }, [activeSampleStockIndex, onSelectSampleStock, stockCount]);
 
   // Reverse 時はサンプル配列を反転して波形描画も逆向きに（仕様の "可能であれば反転"）
   const samples = useMemo(
@@ -619,19 +668,103 @@ function WaveformEditorComponent({
           </button>
         </div>
 
-        <div className={styles.sampleBlock}>
-          <span className={styles.sampleNav}>‹ ›</span>
+        <div className={styles.sampleBlock} ref={sampleStockRef}>
+          <button
+            type="button"
+            className={styles.sampleNavButton}
+            disabled={stockCount <= 1}
+            onClick={() => stepSampleStock(-1)}
+            aria-label="Previous stocked sample"
+          >
+            ‹
+          </button>
           <span className={styles.sampleLabel}>SAMPLE</span>
-          <OverflowMarquee
-            className={`${styles.filename} ${pad.sampleMissing ? styles.filenameMissing : ''}`}
-            title={pad.sampleFilePath || pad.originalSampleFilePath || pad.sampleFileName || 'no sample'}
-            text={pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
-            disabled={pad.sampleMissing || !pad.sampleFileName}
-          />
+          <button
+            type="button"
+            className={styles.sampleMenuButton}
+            onClick={() => setSampleStockOpen(open => !open)}
+            aria-expanded={sampleStockOpen}
+            title="Open sample stock"
+          >
+            <span className={styles.stockCount}>
+              {stockCount > 0 ? `${activeSampleStockIndex + 1}/${stockCount}` : '0/5'}
+            </span>
+            <OverflowMarquee
+              className={`${styles.filename} ${pad.sampleMissing ? styles.filenameMissing : ''}`}
+              title={pad.sampleFilePath || pad.originalSampleFilePath || pad.sampleFileName || 'no sample'}
+              text={pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
+              disabled={pad.sampleMissing || !pad.sampleFileName}
+            />
+            <span className={styles.sampleChevron}>⌄</span>
+          </button>
+          <button
+            type="button"
+            className={styles.sampleAddButton}
+            disabled={!onAddSampleStock}
+            onClick={onAddSampleStock}
+            aria-label="Add sample"
+            title={stockCount >= 5 ? 'Replace the selected sample' : 'Add sample'}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={styles.sampleNavButton}
+            disabled={stockCount <= 1}
+            onClick={() => stepSampleStock(1)}
+            aria-label="Next stocked sample"
+          >
+            ›
+          </button>
           {pad.sampleMissing && (
             <button type="button" className={styles.relinkBtn} onClick={onRelinkSample}>
               RELINK
             </button>
+          )}
+          {sampleStockOpen && (
+            <div className={styles.sampleStockMenu} role="menu">
+              {sampleStock.map((item, index) => (
+                <div
+                  key={`${item.sampleFilePath}:${index}`}
+                  className={`${styles.sampleStockRow} ${index === activeSampleStockIndex ? styles.sampleStockRowActive : ''}`}
+                >
+                  <button
+                    type="button"
+                    className={styles.sampleStockSelect}
+                    onClick={() => {
+                      onSelectSampleStock?.(index);
+                      setSampleStockOpen(false);
+                    }}
+                    role="menuitem"
+                  >
+                    <span className={styles.sampleStockIndex}>{index + 1}</span>
+                    <span className={styles.sampleStockName}>
+                      {item.sampleMissing ? `Missing: ${item.sampleFileName}` : item.sampleFileName}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.sampleStockRemove}
+                    onClick={() => onRemoveSampleStock?.(index)}
+                    aria-label={`Remove ${item.sampleFileName}`}
+                    title="Remove from sample stock"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.sampleStockAddRow}
+                disabled={!onAddSampleStock}
+                onClick={() => {
+                  setSampleStockOpen(false);
+                  onAddSampleStock?.();
+                }}
+              >
+                {stockCount >= 5 ? '+ REPLACE SELECTED SAMPLE' : '+ ADD SAMPLE'}
+              </button>
+            </div>
           )}
         </div>
       </header>

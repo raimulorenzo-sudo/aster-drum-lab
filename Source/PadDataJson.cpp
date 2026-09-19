@@ -95,6 +95,18 @@ namespace PadDataJson
             lo->setProperty("sampleFilePath", L.sampleFilePath);
             lo->setProperty("sampleMissing",  L.sampleMissing);
             lo->setProperty("layerName",      L.layerName);
+            lo->setProperty("activeSampleStockIndex", L.activeSampleStockIndex);
+
+            juce::Array<juce::var> sampleStock;
+            for (const auto& item : L.normalizedSampleStock())
+            {
+                auto* stockItem = new juce::DynamicObject();
+                stockItem->setProperty("sampleFileName", item.sampleFileName);
+                stockItem->setProperty("sampleFilePath", item.sampleFilePath);
+                stockItem->setProperty("sampleMissing", item.sampleMissing);
+                sampleStock.add(juce::var(stockItem));
+            }
+            lo->setProperty("sampleStock", sampleStock);
             lo->setProperty("volume",  (double) L.volume);
             lo->setProperty("pan",     (double) L.pan);
             lo->setProperty("pitch",   (double) L.pitch);

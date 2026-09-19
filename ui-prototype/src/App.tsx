@@ -204,7 +204,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function sendSampleBytesToJuce(index: number, file: File, layerIndex: number = 0): Promise<void> {
+async function sendSampleBytesToJuce(
+  index: number,
+  file: File,
+  layerIndex: number = 0,
+  addToSampleStock = false,
+): Promise<void> {
   const transferId = `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
   const rawChunkSize = 192 * 1024;
@@ -214,6 +219,7 @@ async function sendSampleBytesToJuce(index: number, file: File, layerIndex: numb
     transferId,
     index,
     layerIndex,
+    addToSampleStock,
     fileName: file.name,
     totalBytes: bytes.length,
     totalChunks,
@@ -414,7 +420,12 @@ export default function App() {
   const [renameDialog, setRenameDialog] = useState<{ index: number; draft: string } | null>(null);
   const [midiNoteDialog, setMidiNoteDialog] = useState<{ index: number; draftNote: number; learning: boolean; warning: string } | null>(null);
   const [toastMessage, setToastMessage] = useState('');
-  const [fileTarget, setFileTarget] = useState<{ index: number; relink: boolean } | null>(null);
+  const [fileTarget, setFileTarget] = useState<{
+    index: number;
+    relink: boolean;
+    layerIndex?: number;
+    addToSampleStock?: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Refs for bridge callbacks (avoid stale closures) ─────────────────
@@ -1300,7 +1311,13 @@ export default function App() {
     setKitDirty(true);
   }, []);
 
-  const loadSampleForPad = useCallback(async (index: number, file: File, relink: boolean, layerIndex = 0) => {
+  const loadSampleForPad = useCallback(async (
+    index: number,
+    file: File,
+    relink: boolean,
+    layerIndex = 0,
+    addToSampleStock = false,
+  ) => {
     const analysis = await analyzeBrowserAudioFile(file);
 
     setPads(prev => {
@@ -1318,6 +1335,84 @@ export default function App() {
         }
 
         const sampleLengthMs = analysis.sampleLengthMs ?? p.sampleLengthMs ?? 500;
+
+        if (addToSampleStock) {
+          const layers = ensureLayers(p).map(layer => ({ ...layer }));
+          const target = layers[layerIndex];
+          if (!target) return p;
+          const currentStock = target.sampleStock?.length
+            ? [...target.sampleStock]
+            : (target.sampleFileName || target.sampleFilePath)
+              ? [{
+                  sampleFileName: target.sampleFileName,
+                  sampleFilePath: target.sampleFilePath,
+                  sampleMissing: target.sampleMissing,
+                  sampleLengthMs: target.sampleLengthMs,
+                  startMs: target.startMs,
+                  endMs: target.endMs,
+                  fadeInMs: target.fadeInMs,
+                  fadeOutMs: target.fadeOutMs,
+                  waveformPeaks: target.waveformPeaks,
+                  waveformChannels: target.waveformChannels,
+                }]
+              : [];
+          if (currentStock.length > 0) {
+            const currentIndex = Math.max(
+              0,
+              Math.min(currentStock.length - 1, target.activeSampleStockIndex ?? 0),
+            );
+            currentStock[currentIndex] = {
+              ...currentStock[currentIndex],
+              sampleFileName: target.sampleFileName,
+              sampleFilePath: target.sampleFilePath,
+              sampleMissing: target.sampleMissing,
+              sampleLengthMs: target.sampleLengthMs,
+              startMs: target.startMs,
+              endMs: target.endMs,
+              fadeInMs: target.fadeInMs,
+              fadeOutMs: target.fadeOutMs,
+              waveformPeaks: target.waveformPeaks,
+              waveformChannels: target.waveformChannels,
+            };
+          }
+          const item = {
+            sampleFileName: file.name,
+            sampleFilePath: file.name,
+            sampleMissing: false,
+            sampleLengthMs,
+            startMs: 0,
+            endMs: sampleLengthMs,
+            fadeInMs: 0,
+            fadeOutMs: 0,
+            waveformPeaks: analysis.waveformPeaks ?? [],
+            waveformChannels: analysis.waveformChannels ?? [],
+          };
+          let activeSampleStockIndex: number;
+          if (currentStock.length < 5) {
+            currentStock.push(item);
+            activeSampleStockIndex = currentStock.length - 1;
+          } else {
+            activeSampleStockIndex = Math.max(
+              0,
+              Math.min(currentStock.length - 1, target.activeSampleStockIndex ?? 0),
+            );
+            currentStock[activeSampleStockIndex] = item;
+          }
+          const nextLayer = {
+            ...target,
+            ...item,
+            sampleStock: currentStock,
+            activeSampleStockIndex,
+          };
+          layers[layerIndex] = nextLayer;
+          const nextPad = { ...p, layers, selectedLayerIndex: layerIndex };
+          if (layerIndex === 0) Object.assign(nextPad, item, {
+            sampleStock: currentStock,
+            activeSampleStockIndex,
+            originalSampleFilePath: file.name,
+          });
+          return nextPad;
+        }
 
         if (layerIndex > 0) {
           const layers = ensureLayers(p).map(layer => ({ ...layer }));
@@ -1377,7 +1472,11 @@ export default function App() {
     setKitDirty(true);
   }, []);
 
-  const handleSampleDrop = useCallback(async (index: number, file: File) => {
+  const handleSampleDrop = useCallback(async (
+    index: number,
+    file: File,
+    addToSampleStock = false,
+  ) => {
     // Layer-aware drop routing:
     //   - drop on currently-selected pad → active layer (= MAIN or L2+ being edited)
     //   - drop on another pad → that pad's MAIN (layerIndex 0)
@@ -1393,7 +1492,9 @@ export default function App() {
     if (isJuceAvailable()) {
       const filePath = getDroppedFilePath(file);
       if (filePath) {
-        sendToJuce('loadSampleFromPath', { index, layerIndex, filePath, fileName: file.name });
+        sendToJuce('loadSampleFromPath', {
+          index, layerIndex, filePath, fileName: file.name, addToSampleStock,
+        });
         console.info('[ASTER DND] bridge call success', { index, layerIndex, filePath });
         return;
       }
@@ -1406,7 +1507,7 @@ export default function App() {
           type: file.type,
           size: file.size,
         });
-        await sendSampleBytesToJuce(index, file, layerIndex);
+        await sendSampleBytesToJuce(index, file, layerIndex, addToSampleStock);
         console.info('[ASTER DND] bridge call success', { index, layerIndex, fileName: file.name, mode: 'bytes-fallback' });
       } catch (error) {
         console.error('[ASTER DND] bridge call error: bytes fallback failed', error);
@@ -1415,7 +1516,7 @@ export default function App() {
     }
 
     try {
-      await loadSampleForPad(index, file, false, layerIndex);
+      await loadSampleForPad(index, file, false, layerIndex, addToSampleStock);
       console.info('[ASTER DND] bridge call success', { index, fileName: file.name, mode: 'browser-local' });
     } catch (error) {
       console.error('[ASTER DND] bridge call error', error);
@@ -1424,10 +1525,103 @@ export default function App() {
 
   const handleWaveformSampleDrop = useCallback(
     (file: File) => {
-      void handleSampleDrop(selectedIndex, file);
+      void handleSampleDrop(selectedIndex, file, true);
     },
     [handleSampleDrop, selectedIndex],
   );
+
+  const handleAddSelectedSampleStock = useCallback(() => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('addSampleStockDialog', { index: selectedIndex, layerIndex });
+      return;
+    }
+    setFileTarget({ index: selectedIndex, relink: false, layerIndex, addToSampleStock: true });
+    fileInputRef.current?.click();
+  }, [selectedIndex]);
+
+  const handleSelectSelectedSampleStock = useCallback((stockIndex: number) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('selectLayerSampleStock', { index: selectedIndex, layerIndex, stockIndex });
+      return;
+    }
+    const layers = ensureLayers(pad).map(layer => ({ ...layer }));
+    const layer = layers[layerIndex];
+    if (!layer?.sampleStock?.[stockIndex]) return;
+    const stock = [...layer.sampleStock];
+    const currentIndex = Math.max(
+      0,
+      Math.min(stock.length - 1, layer.activeSampleStockIndex ?? 0),
+    );
+    stock[currentIndex] = {
+      ...stock[currentIndex],
+      sampleFileName: layer.sampleFileName,
+      sampleFilePath: layer.sampleFilePath,
+      sampleMissing: layer.sampleMissing,
+      sampleLengthMs: layer.sampleLengthMs,
+      startMs: layer.startMs,
+      endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs,
+      fadeOutMs: layer.fadeOutMs,
+      waveformPeaks: layer.waveformPeaks,
+      waveformChannels: layer.waveformChannels,
+    };
+    const item = stock[stockIndex];
+    layers[layerIndex] = { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: stockIndex };
+    const patch: Partial<PadParams> = { layers };
+    if (layerIndex === 0) Object.assign(patch, item, { activeSampleStockIndex: stockIndex });
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
+
+  const handleRemoveSelectedSampleStock = useCallback((stockIndex: number) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('removeLayerSampleStock', { index: selectedIndex, layerIndex, stockIndex });
+      return;
+    }
+    const layers = ensureLayers(pad).map(layer => ({ ...layer }));
+    const layer = layers[layerIndex];
+    if (!layer?.sampleStock?.[stockIndex]) return;
+    const capturedStock = [...layer.sampleStock];
+    const currentIndex = Math.max(
+      0,
+      Math.min(capturedStock.length - 1, layer.activeSampleStockIndex ?? 0),
+    );
+    capturedStock[currentIndex] = {
+      ...capturedStock[currentIndex],
+      sampleFileName: layer.sampleFileName,
+      sampleFilePath: layer.sampleFilePath,
+      sampleMissing: layer.sampleMissing,
+      sampleLengthMs: layer.sampleLengthMs,
+      startMs: layer.startMs,
+      endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs,
+      fadeOutMs: layer.fadeOutMs,
+      waveformPeaks: layer.waveformPeaks,
+      waveformChannels: layer.waveformChannels,
+    };
+    const stock = capturedStock.filter((_, index) => index !== stockIndex);
+    const active = stock.length === 0
+      ? 0
+      : Math.min(stock.length - 1, stockIndex < (layer.activeSampleStockIndex ?? 0)
+          ? (layer.activeSampleStockIndex ?? 0) - 1
+          : layer.activeSampleStockIndex ?? 0);
+    const item = stock[active];
+    layers[layerIndex] = item
+      ? { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: active }
+      : { ...layer, sampleFileName: '', sampleFilePath: '', sampleMissing: false,
+          sampleStock: [], activeSampleStockIndex: 0, waveformPeaks: [], waveformChannels: [] };
+    const patch: Partial<PadParams> = { layers };
+    if (layerIndex === 0) Object.assign(patch, layers[0]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleAddSelectedLayer = useCallback(() => {
     const pad = padsRef.current[selectedIndex];
@@ -1494,13 +1688,19 @@ export default function App() {
       return;
     }
     // In browser: use HTML file picker
-    setFileTarget({ index, relink });
+    setFileTarget({ index, relink, layerIndex, addToSampleStock: false });
     fileInputRef.current?.click();
   }, [selectedIndex]);
 
   const handleFilePicked = useCallback(async (file: File | undefined) => {
     if (!file || !fileTarget) return;
-    await loadSampleForPad(fileTarget.index, file, fileTarget.relink);
+    await loadSampleForPad(
+      fileTarget.index,
+      file,
+      fileTarget.relink,
+      fileTarget.layerIndex ?? 0,
+      fileTarget.addToSampleStock ?? false,
+    );
     setFileTarget(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [fileTarget, loadSampleForPad]);
@@ -1943,6 +2143,9 @@ export default function App() {
                 onChangePad={updatePad}
                 onSampleDrop={handleSampleDrop}
                 onWaveformSampleDrop={handleWaveformSampleDrop}
+                onAddSampleStock={handleAddSelectedSampleStock}
+                onSelectSampleStock={handleSelectSelectedSampleStock}
+                onRemoveSampleStock={handleRemoveSelectedSampleStock}
                 onReanalyzeSelected={handleReanalyzeSelected}
                 onPadSwap={handlePadSwap}
                 onChangeSelected={updateSelected}

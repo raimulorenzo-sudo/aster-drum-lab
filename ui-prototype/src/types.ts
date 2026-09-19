@@ -12,6 +12,19 @@ export interface WaveformChannel {
   extremeOrder?: number[];
 }
 
+export interface SampleStockItem {
+  sampleFileName: string;
+  sampleFilePath: string;
+  sampleMissing?: boolean;
+  sampleLengthMs?: number;
+  startMs?: number;
+  endMs?: number;
+  fadeInMs?: number;
+  fadeOutMs?: number;
+  waveformPeaks?: number[];
+  waveformChannels?: WaveformChannel[];
+}
+
 /**
  * Layer のすべてのパラメータ（1 Pad は複数 Layer を持てる）。
  * JUCE 側の LayerData と同期する。
@@ -24,6 +37,8 @@ export interface LayerParams {
   sampleFileName: string;
   sampleFilePath: string;
   sampleMissing?: boolean;
+  sampleStock?: SampleStockItem[];
+  activeSampleStockIndex?: number;
   /** 表示名（空ならサンプル名 / "Layer N" を UI 側で派生表示） */
   layerName?: string;
 
@@ -178,6 +193,9 @@ export interface PadParams {
   sampleFileName: string;
   sampleFilePath: string;   // フルパス（UI 補助情報）。空文字 = 未ロード
   sampleMissing?: boolean;  // Kit 読み込み時に見つからないサンプル
+  /** 選択中 Layer の Sample Stock を composePadView がここへミラーする。 */
+  sampleStock?: SampleStockItem[];
+  activeSampleStockIndex?: number;
   originalSampleFilePath?: string;
 
   /**

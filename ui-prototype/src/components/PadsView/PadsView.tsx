@@ -34,6 +34,9 @@ interface PadsViewProps {
   onChangePad: (index: number, patch: Partial<PadParams>) => void;
   onSampleDrop: (index: number, file: File) => void;
   onWaveformSampleDrop?: (file: File) => void;
+  onAddSampleStock?: () => void;
+  onSelectSampleStock?: (stockIndex: number) => void;
+  onRemoveSampleStock?: (stockIndex: number) => void;
   onReanalyzeSelected?: () => void;
   onPadSwap: (sourceIndex: number, targetIndex: number) => void;
   onChangeSelected: (patch: Partial<PadParams>) => void;
@@ -63,6 +66,9 @@ function PadsViewComponent({
   onChangePad,
   onSampleDrop,
   onWaveformSampleDrop,
+  onAddSampleStock,
+  onSelectSampleStock,
+  onRemoveSampleStock,
   onReanalyzeSelected,
   onPadSwap,
   onChangeSelected,
@@ -172,6 +178,9 @@ function PadsViewComponent({
             padIndex={selectedIndex}
             onChange={onChangeLayerAware}
             onSampleDrop={onWaveformSampleDrop}
+            onAddSampleStock={onAddSampleStock}
+            onSelectSampleStock={onSelectSampleStock}
+            onRemoveSampleStock={onRemoveSampleStock}
             onReanalyze={onReanalyzeSelected}
             onRelinkSample={onRelinkSelected}
             previewPlayback={previewPlayback}
