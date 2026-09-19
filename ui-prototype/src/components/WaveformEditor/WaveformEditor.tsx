@@ -674,7 +674,7 @@ function WaveformEditorComponent({
             className={styles.sampleNavButton}
             disabled={stockCount <= 1}
             onClick={() => stepSampleStock(-1)}
-            aria-label="Previous stocked sample"
+            aria-label="Previous sample variation"
           >
             ‹
           </button>
@@ -684,7 +684,7 @@ function WaveformEditorComponent({
             className={styles.sampleMenuButton}
             onClick={() => setSampleStockOpen(open => !open)}
             aria-expanded={sampleStockOpen}
-            title="Open sample stock"
+            title="Open sample variations"
           >
             <span className={styles.stockCount}>
               {stockCount > 0 ? `${activeSampleStockIndex + 1}/${stockCount}` : '0/5'}
@@ -712,7 +712,7 @@ function WaveformEditorComponent({
             className={styles.sampleNavButton}
             disabled={stockCount <= 1}
             onClick={() => stepSampleStock(1)}
-            aria-label="Next stocked sample"
+            aria-label="Next sample variation"
           >
             ›
           </button>
@@ -722,7 +722,11 @@ function WaveformEditorComponent({
             </button>
           )}
           {sampleStockOpen && (
-            <div className={styles.sampleStockMenu} role="menu">
+            <div className={styles.sampleStockMenu} role="menu" aria-label="Sample variations">
+              <div className={styles.sampleVariationsHeader}>
+                <span className={styles.sampleVariationsTitle}>SAMPLE VARIATIONS</span>
+                <span className={styles.sampleVariationsCapacity}>{stockCount}/5</span>
+              </div>
               {sampleStock.map((item, index) => (
                 <div
                   key={`${item.sampleFilePath}:${index}`}
@@ -748,7 +752,7 @@ function WaveformEditorComponent({
                     className={styles.sampleStockRemove}
                     onClick={() => onRemoveSampleStock?.(index)}
                     aria-label={`Remove ${item.sampleFileName}`}
-                    title="Remove from sample stock"
+                    title="Remove sample variation"
                   >
                     ×
                   </button>

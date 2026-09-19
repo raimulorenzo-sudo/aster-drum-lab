@@ -304,6 +304,35 @@
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+.sampleVariationsHeader {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sampleVariationsTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-9);
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.sampleVariationsCapacity {
+  flex: 0 0 auto;
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  letter-spacing: 0.04em;
+}
+
 .sampleStockRow {
   min-height: 32px;
   display: flex;
