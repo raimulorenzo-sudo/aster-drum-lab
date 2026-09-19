@@ -39,6 +39,7 @@ export interface LayerParams {
   sampleMissing?: boolean;
   sampleStock?: SampleStockItem[];
   activeSampleStockIndex?: number;
+  roundRobin?: boolean;
   /** 表示名（空ならサンプル名 / "Layer N" を UI 側で派生表示） */
   layerName?: string;
 
@@ -196,6 +197,8 @@ export interface PadParams {
   /** 選択中 Layer の Sample Stock を composePadView がここへミラーする。 */
   sampleStock?: SampleStockItem[];
   activeSampleStockIndex?: number;
+  /** Sample Variation playback mode for the selected Layer mirror. */
+  roundRobin?: boolean;
   originalSampleFilePath?: string;
 
   /**

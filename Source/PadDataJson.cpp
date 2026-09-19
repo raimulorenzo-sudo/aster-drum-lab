@@ -96,6 +96,7 @@ namespace PadDataJson
             lo->setProperty("sampleMissing",  L.sampleMissing);
             lo->setProperty("layerName",      L.layerName);
             lo->setProperty("activeSampleStockIndex", L.activeSampleStockIndex);
+            lo->setProperty("roundRobin", L.roundRobin);
 
             juce::Array<juce::var> sampleStock;
             for (const auto& item : L.normalizedSampleStock())

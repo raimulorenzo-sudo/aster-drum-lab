@@ -2366,6 +2366,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     L.sampleMissing = false;
                     L.sampleStock.clear();
                     L.activeSampleStockIndex = 0;
+                    L.roundRobin = false;
                     L.eq = {};
                     L.fxChain.clear();
                     L.polarityInvert = false;
@@ -2380,9 +2381,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 }
                 else if (L.sampleFilePath.isNotEmpty())
                 {
-                    juce::File f(L.sampleFilePath);
-                    if (f.existsAsFile())
-                        audioProcessor.getFileManager().loadFileForPad(idx, newLayerIndex, f);
+                    audioProcessor.reloadLayerSampleVariations(idx, newLayerIndex);
                 }
 
                 audioProcessor.syncParametersFromKit();
@@ -2405,15 +2404,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 for (int li = 0; li < MAX_LAYERS_PER_PAD; ++li)
                     audioProcessor.getFileManager().clearLayer(idx, li);
                 for (int li = 0; li < pad.layerCount(); ++li)
-                {
-                    const auto& layer = pad.layers[(size_t) li];
-                    if (layer.sampleFilePath.isNotEmpty())
-                    {
-                        juce::File f(layer.sampleFilePath);
-                        if (f.existsAsFile())
-                            audioProcessor.getFileManager().loadFileForPad(idx, li, f);
-                    }
-                }
+                    audioProcessor.reloadLayerSampleVariations(idx, li);
                 if (layerIdx == 0)
                 {
                     // 新しい Layer 0 を flat fields に反映
@@ -2473,7 +2464,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             }
         }
     }
-    else if (type == "setLayerSmartTrim" || type == "setLayerPolarityInvert")
+    else if (type == "setLayerSmartTrim" || type == "setLayerPolarityInvert"
+          || type == "setLayerRoundRobin")
     {
         const int idx = getIndex();
         const int layerIdx = (int) payload.getProperty("layerIndex", 0);
@@ -2485,6 +2477,11 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 auto& L = pad.layers[(size_t) layerIdx];
                 if (type == "setLayerSmartTrim")
                     L.smartTrim = getBool();
+                else if (type == "setLayerRoundRobin")
+                {
+                    L.roundRobin = getBool() && L.sampleStock.size() >= 2;
+                    audioProcessor.getVoiceManager().resetRoundRobin(idx, layerIdx);
+                }
                 else
                     L.polarityInvert = getBool();
                 audioProcessor.markKitDirty();

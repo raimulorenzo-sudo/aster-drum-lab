@@ -145,6 +145,7 @@ export interface JuceLayerData {
     sampleMissing?: boolean;
   }>;
   activeSampleStockIndex?: number;
+  roundRobin?: boolean;
   volume: number;
   pan: number;
   pitch: number;
@@ -277,6 +278,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     layerName:      jl.layerName,
     sampleStock,
     activeSampleStockIndex,
+    roundRobin:      Boolean(jl.roundRobin),
     volume:         jl.volume,
     pan:            jl.pan,
     pitch:          jl.pitch,
@@ -728,6 +730,11 @@ function sendLayerPatches(
     }
     if (a.smartTrim !== b.smartTrim) {
       sendToJuce('setLayerSmartTrim', { index, layerIndex: li, value: b.smartTrim });
+    }
+    if ((a.roundRobin ?? false) !== (b.roundRobin ?? false)) {
+      sendToJuce('setLayerRoundRobin', {
+        index, layerIndex: li, value: b.roundRobin ?? false,
+      });
     }
     if ((a.polarityInvert ?? false) !== (b.polarityInvert ?? false)) {
       sendToJuce('setLayerPolarityInvert', {

@@ -25,6 +25,7 @@ const LAYER_LEVEL_KEYS = [
   'sampleMissing',
   'sampleStock',
   'activeSampleStockIndex',
+  'roundRobin',
   'volume',
   'pan',
   'pitch',
@@ -148,6 +149,7 @@ function seedLayerFromFlat(pad: PadParams): LayerParams {
     sampleMissing: pad.sampleMissing,
     sampleStock: pad.sampleStock,
     activeSampleStockIndex: pad.activeSampleStockIndex,
+    roundRobin: pad.roundRobin ?? false,
     volume: pad.volume,
     pan: pad.pan,
     pitch: pad.pitch,
@@ -237,6 +239,7 @@ export function patchAddLayer(pad: PadParams): Partial<PadParams> | null {
     sampleMissing: undefined,
     sampleStock: undefined,
     activeSampleStockIndex: 0,
+    roundRobin: false,
     layerName: undefined,
     waveformPeaks: undefined,
     waveformChannels: undefined,
@@ -283,6 +286,7 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.sampleMissing = newLayer0.sampleMissing;
     patch.sampleStock = newLayer0.sampleStock;
     patch.activeSampleStockIndex = newLayer0.activeSampleStockIndex;
+    patch.roundRobin = newLayer0.roundRobin ?? false;
     patch.volume = newLayer0.volume;
     patch.pan = newLayer0.pan;
     patch.pitch = newLayer0.pitch;

@@ -686,6 +686,9 @@ function WaveformEditorComponent({
             aria-expanded={sampleStockOpen}
             title="Open sample variations"
           >
+            {pad.roundRobin && stockCount > 1 && (
+              <span className={styles.roundRobinBadge}>RR</span>
+            )}
             <span className={styles.stockCount}>
               {stockCount > 0 ? `${activeSampleStockIndex + 1}/${stockCount}` : '0/5'}
             </span>
@@ -726,6 +729,29 @@ function WaveformEditorComponent({
               <div className={styles.sampleVariationsHeader}>
                 <span className={styles.sampleVariationsTitle}>SAMPLE VARIATIONS</span>
                 <span className={styles.sampleVariationsCapacity}>{stockCount}/5</span>
+              </div>
+              <div className={styles.samplePlayMode}>
+                <span className={styles.samplePlayModeLabel}>PLAY MODE</span>
+                <div className={styles.samplePlayModeButtons} role="group" aria-label="Sample variation play mode">
+                  <button
+                    type="button"
+                    className={`${styles.samplePlayModeButton} ${!pad.roundRobin || stockCount < 2 ? styles.samplePlayModeButtonActive : ''}`}
+                    onClick={() => onChange({ roundRobin: false })}
+                    aria-pressed={!pad.roundRobin || stockCount < 2}
+                  >
+                    MANUAL
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.samplePlayModeButton} ${pad.roundRobin && stockCount > 1 ? styles.samplePlayModeButtonActive : ''}`}
+                    disabled={stockCount < 2}
+                    onClick={() => onChange({ roundRobin: true })}
+                    aria-pressed={Boolean(pad.roundRobin && stockCount > 1)}
+                    title={stockCount < 2 ? 'Add at least two sample variations' : 'Cycle variations on each MIDI note'}
+                  >
+                    ROUND ROBIN
+                  </button>
+                </div>
               </div>
               {sampleStock.map((item, index) => (
                 <div

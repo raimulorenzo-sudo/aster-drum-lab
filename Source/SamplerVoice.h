@@ -119,6 +119,7 @@ struct DrumVoice
 {
     int   padIndex     { -1    };    // どのパッドか
     int   layerIndex   { 0     };    // どの Layer か（0..MAX_LAYERS_PER_PAD-1）
+    int   sampleVariationIndex { 0 }; // 発音時に確定した Sample Variation
     bool  isActive     { false };    // 発音中かどうか
     bool  isPreview    { false };    // UIクリックによるプレビュー発音かどうか
     uint64_t triggerSerial { 0 };    // 同一 Pad の最新 Voice を選ぶための発音順

@@ -789,14 +789,26 @@ bool DrumSamplerAudioProcessor::loadSampleForPad(int padIndex, const juce::File&
         return false;
     }
 
-    if (!fileManager.loadFileForPad(padIndex, file))
+    if (padIndex < 0 || padIndex >= NUM_PADS)
+        return false;
+
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    auto& layer = pad.layers[0];
+    layer.captureActiveSampleToStock();
+    const int variationIndex = layer.sampleStock.empty()
+        ? 0
+        : juce::jlimit(0, static_cast<int>(layer.sampleStock.size()) - 1,
+                       layer.activeSampleStockIndex);
+
+    if (!fileManager.loadFileForPadVariation(padIndex, 0, variationIndex, file))
     {
         juce::Logger::writeToLog("[ASTER DND] C++ loadSampleForPad error: reader failed");
         return false;
     }
+    fileManager.setActiveVariationIndex(padIndex, 0, variationIndex);
+    voiceManager.resetRoundRobin(padIndex, 0);
     voiceManager.clearPadClip(padIndex);
 
-    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     pad.sampleFileName = file.getFileName();          // 補助表示用
     pad.sampleFilePath = file.getFullPathName();      // 再ロード用
     pad.sampleMissing  = false;
@@ -1021,6 +1033,7 @@ void DrumSamplerAudioProcessor::clearPadSample(int padIndex)
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     fileManager.clearPad(padIndex);
+    voiceManager.resetRoundRobinForPad(padIndex);
     voiceManager.clearPadClip(padIndex);
     auto& padRef = kit.pads[static_cast<size_t>(padIndex)];
     padRef.sampleFileName.clear();
@@ -1051,12 +1064,20 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     // L2+: AudioFileManager の slot に読み込み、Layer メタデータだけ更新する。
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
 
-    if (! fileManager.loadFileForPad(padIndex, layerIndex, file))
+    auto& L = pad.layers[static_cast<size_t>(layerIndex)];
+    L.captureActiveSampleToStock();
+    const int variationIndex = L.sampleStock.empty()
+        ? 0
+        : juce::jlimit(0, static_cast<int>(L.sampleStock.size()) - 1,
+                       L.activeSampleStockIndex);
+
+    if (! fileManager.loadFileForPadVariation(padIndex, layerIndex, variationIndex, file))
         return false;
+    fileManager.setActiveVariationIndex(padIndex, layerIndex, variationIndex);
+    voiceManager.resetRoundRobin(padIndex, layerIndex);
 
     voiceManager.clearPadClip(padIndex);
 
-    auto& L = pad.layers[static_cast<size_t>(layerIndex)];
     L.sampleFileName = file.getFileName();
     L.sampleFilePath = file.getFullPathName();
     L.sampleMissing  = false;
@@ -1081,11 +1102,18 @@ bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
 
-    if (! fileManager.loadFileForPad(padIndex, layerIndex, file)) return false;
-    voiceManager.clearPadClip(padIndex);
-
     auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
     layer.captureActiveSampleToStock();
+    const int targetIndex = (int) layer.sampleStock.size() < MAX_SAMPLE_STOCK_PER_LAYER
+        ? (int) layer.sampleStock.size()
+        : juce::jlimit(0, (int) layer.sampleStock.size() - 1,
+                       layer.activeSampleStockIndex);
+
+    if (! fileManager.loadFileForPadVariation(padIndex, layerIndex, targetIndex, file))
+        return false;
+    fileManager.setActiveVariationIndex(padIndex, layerIndex, targetIndex);
+    voiceManager.resetRoundRobin(padIndex, layerIndex);
+    voiceManager.clearPadClip(padIndex);
 
     LayerSampleStockItem item;
     item.sampleFileName = file.getFileName();
@@ -1095,12 +1123,11 @@ bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
     if ((int) layer.sampleStock.size() < MAX_SAMPLE_STOCK_PER_LAYER)
     {
         layer.sampleStock.push_back(item);
-        layer.activeSampleStockIndex = (int) layer.sampleStock.size() - 1;
+        layer.activeSampleStockIndex = targetIndex;
     }
     else
     {
-        layer.activeSampleStockIndex = juce::jlimit(
-            0, (int) layer.sampleStock.size() - 1, layer.activeSampleStockIndex);
+        layer.activeSampleStockIndex = targetIndex;
         layer.sampleStock[(size_t) layer.activeSampleStockIndex] = item;
     }
 
@@ -1139,17 +1166,8 @@ bool DrumSamplerAudioProcessor::selectLayerSampleStock(int padIndex,
     if (stockIndex < 0 || stockIndex >= (int) layer.sampleStock.size()) return false;
 
     layer.activateSampleStockItem(stockIndex);
-    const juce::File file(layer.sampleFilePath);
-    if (! file.existsAsFile()
-        || ! fileManager.loadFileForPad(padIndex, layerIndex, file))
-    {
-        fileManager.clearLayer(padIndex, layerIndex);
-        layer.sampleMissing = true;
-    }
-    else
-    {
-        layer.sampleMissing = false;
-    }
+    fileManager.setActiveVariationIndex(padIndex, layerIndex, stockIndex);
+    layer.sampleMissing = ! fileManager.hasSample(padIndex, layerIndex, stockIndex);
 
     voiceManager.clearPadClip(padIndex);
     layer.captureActiveSampleToStock();
@@ -1173,6 +1191,10 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
 
     const int previousActive = layer.activeSampleStockIndex;
     layer.sampleStock.erase(layer.sampleStock.begin() + stockIndex);
+    if (layer.sampleStock.size() < 2)
+        layer.roundRobin = false;
+    fileManager.removeSampleVariation(padIndex, layerIndex, stockIndex);
+    voiceManager.resetRoundRobin(padIndex, layerIndex);
     voiceManager.clearPadClip(padIndex);
 
     if (layer.sampleStock.empty())
@@ -1194,18 +1216,8 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
         if (stockIndex == previousActive)
             nextActive = juce::jmin(stockIndex, (int) layer.sampleStock.size() - 1);
         layer.activateSampleStockItem(nextActive);
-
-        const juce::File file(layer.sampleFilePath);
-        if (! file.existsAsFile()
-            || ! fileManager.loadFileForPad(padIndex, layerIndex, file))
-        {
-            fileManager.clearLayer(padIndex, layerIndex);
-            layer.sampleMissing = true;
-        }
-        else
-        {
-            layer.sampleMissing = false;
-        }
+        fileManager.setActiveVariationIndex(padIndex, layerIndex, nextActive);
+        layer.sampleMissing = ! fileManager.hasSample(padIndex, layerIndex, nextActive);
         layer.captureActiveSampleToStock();
     }
 
@@ -1214,6 +1226,41 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
     syncParametersFromKit();
     markKitDirty();
     return true;
+}
+
+void DrumSamplerAudioProcessor::reloadLayerSampleVariations(int padIndex, int layerIndex)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+    auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
+
+    auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
+    layer.captureActiveSampleToStock();
+    fileManager.clearLayer(padIndex, layerIndex);
+
+    const int count = juce::jmin(static_cast<int>(layer.sampleStock.size()),
+                                 MAX_SAMPLE_STOCK_PER_LAYER);
+    for (int variationIndex = 0; variationIndex < count; ++variationIndex)
+    {
+        auto& item = layer.sampleStock[static_cast<size_t>(variationIndex)];
+        const juce::File file(item.sampleFilePath);
+        item.sampleMissing = ! (file.existsAsFile()
+            && fileManager.loadFileForPadVariation(padIndex, layerIndex,
+                                                    variationIndex, file));
+    }
+
+    const int activeIndex = count > 0
+        ? juce::jlimit(0, count - 1, layer.activeSampleStockIndex)
+        : 0;
+    fileManager.setActiveVariationIndex(padIndex, layerIndex, activeIndex);
+    if (count > 0)
+        layer.activateSampleStockItem(activeIndex);
+    else
+        layer.sampleMissing = false;
+    voiceManager.resetRoundRobin(padIndex, layerIndex);
+
+    if (layerIndex == 0)
+        pad.syncFlatFromLayer0();
 }
 
 // 任意 Layer のサンプルだけ消去 (Layer 構造は維持し、空 Layer として残す)。
@@ -1228,6 +1275,7 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
     {
         // Layer 0 は flat fields と AudioFileManager の slot 0 をクリア
         fileManager.clearLayer(padIndex, 0);
+        voiceManager.resetRoundRobin(padIndex, 0);
         voiceManager.clearPadClip(padIndex);
         pad.sampleFileName.clear();
         pad.sampleFilePath.clear();
@@ -1237,17 +1285,20 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
         pad.layers[0].sampleMissing = false;
         pad.layers[0].sampleStock.clear();
         pad.layers[0].activeSampleStockIndex = 0;
+        pad.layers[0].roundRobin = false;
         pad.syncLayer0FromFlat();
     }
     else
     {
         fileManager.clearLayer(padIndex, layerIndex);
+        voiceManager.resetRoundRobin(padIndex, layerIndex);
         auto& L = pad.layers[static_cast<size_t>(layerIndex)];
         L.sampleFileName.clear();
         L.sampleFilePath.clear();
         L.sampleMissing = false;
         L.sampleStock.clear();
         L.activeSampleStockIndex = 0;
+        L.roundRobin = false;
     }
 
     syncParametersFromKit();
@@ -1299,26 +1350,9 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
     // サンプルもコピー: Layer ごとのパスを再ロードする。Layer 0 だけを見ると
     // multi-layer pad の Paste 後に L2+ が無音になるため、全 Layer を同期する。
     fileManager.clearPad(padIndex);
+    voiceManager.resetRoundRobinForPad(padIndex);
     for (int li = 0; li < dst.layerCount(); ++li)
-    {
-        auto& L = dst.layers[static_cast<size_t>(li)];
-        if (L.sampleFilePath.isNotEmpty())
-        {
-            const juce::File f(L.sampleFilePath);
-            if (f.existsAsFile() && fileManager.loadFileForPad(padIndex, li, f))
-            {
-                L.sampleMissing = false;
-            }
-            else
-            {
-                L.sampleMissing = true;
-            }
-        }
-        else
-        {
-            L.sampleMissing = false;
-        }
-    }
+        reloadLayerSampleVariations(padIndex, li);
     dst.syncFlatFromLayer0();
 
     voiceManager.clearPadClip(padIndex);
@@ -1343,6 +1377,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
 
     // バッファとサンプル情報を消去
     fileManager.clearPad(padIndex);
+    voiceManager.resetRoundRobinForPad(padIndex);
     voiceManager.clearPadClip(padIndex);
 
     // 全フィールドをデフォルトに戻す
@@ -1432,6 +1467,8 @@ void DrumSamplerAudioProcessor::swapPads(int a, int b)
 
     // サンプルバッファも交換
     fileManager.swapPads(a, b);
+    voiceManager.resetRoundRobinForPad(a);
+    voiceManager.resetRoundRobinForPad(b);
     syncParametersFromKit();
     markKitDirty();
 }
@@ -1451,9 +1488,16 @@ bool DrumSamplerAudioProcessor::relinkPadSampleOnly(int padIndex,
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return false;
     if (! file.existsAsFile()) return false;
-    if (! fileManager.loadFileForPad(padIndex, file)) return false;
-
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
+    auto& layer = pad.layers[0];
+    layer.captureActiveSampleToStock();
+    const int variationIndex = layer.sampleStock.empty()
+        ? 0
+        : juce::jlimit(0, static_cast<int>(layer.sampleStock.size()) - 1,
+                       layer.activeSampleStockIndex);
+    if (! fileManager.loadFileForPadVariation(padIndex, 0, variationIndex, file)) return false;
+    fileManager.setActiveVariationIndex(padIndex, 0, variationIndex);
+    voiceManager.resetRoundRobin(padIndex, 0);
 
     // Relink は「参照先の復旧」だけを行う。padName / trim / fade / routing /
     // choke などの編集済み設定は変えない。
@@ -1866,29 +1910,10 @@ void DrumSamplerAudioProcessor::reloadSamplesFromCurrentKit()
     {
         auto& pad = kit.pads[static_cast<size_t>(i)];
         fileManager.clearPad(i);
+        voiceManager.resetRoundRobinForPad(i);
 
         for (int li = 0; li < pad.layerCount(); ++li)
-        {
-            auto& L = pad.layers[static_cast<size_t>(li)];
-            const juce::String& path = L.sampleFilePath;
-
-            if (path.isNotEmpty())
-            {
-                const juce::File f(path);
-                if (f.existsAsFile() && fileManager.loadFileForPad(i, li, f))
-                {
-                    L.sampleMissing = false;
-                }
-                else
-                {
-                    L.sampleMissing = true;
-                }
-            }
-            else
-            {
-                L.sampleMissing = false;
-            }
-        }
+            reloadLayerSampleVariations(i, li);
 
         pad.syncFlatFromLayer0();
     }

@@ -89,6 +89,10 @@ public:
     // process() 中に全 Voice の max を集計、broadcastLevelData が読む。
     float getCompReductionDb(int padIndex, int layerIndex, int slotIndex) const noexcept;
 
+    // Sample Variation を変更・再読込したときに次の RR 発音を 1 へ戻す。
+    void resetRoundRobin(int padIndex, int layerIndex) noexcept;
+    void resetRoundRobinForPad(int padIndex) noexcept;
+
 private:
     std::array<DrumVoice, MAX_VOICES> voices;
     mutable std::array<std::atomic<float>, NUM_PADS> padPeakLevels {};
@@ -101,6 +105,7 @@ private:
     std::array<std::array<float, MAX_LAYERS_PER_PAD>, NUM_PADS> layerPeakLevels {};
     // Per (Pad, Layer, FxSlot) compressor gain-reduction (dB)。process() で集計。
     std::array<std::array<std::array<float, MAX_LAYER_FX_SLOTS>, MAX_LAYERS_PER_PAD>, NUM_PADS> compReductionDb {};
+    std::array<std::array<std::atomic<int>, MAX_LAYERS_PER_PAD>, NUM_PADS> roundRobinCursors {};
     uint64_t                          triggerSerialCounter { 0 };
     juce::Random                      random;
 
@@ -147,7 +152,7 @@ private:
 
     // 1 つの Layer を起動する。Pad/Layer mute/solo/velocity range などの
     // フィルタは呼び出し側で済ませてから呼ぶ。
-    void startLayerVoice(int                  padIndex,
+    bool startLayerVoice(int                  padIndex,
                          int                  layerIndex,
                          float                velocity,
                          const KitData&       kit,

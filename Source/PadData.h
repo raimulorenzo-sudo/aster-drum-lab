@@ -108,9 +108,9 @@ struct LayerFxSlot
     LayerCompressorFx compressor {};
 };
 
-// A Layer can keep a small shortlist of alternate samples. Only the selected
-// item is decoded into AudioFileManager; the remaining entries are lightweight
-// file references plus sample-specific trim/fade values.
+// A Layer can keep a small shortlist of alternate samples. AudioFileManager
+// decodes every valid entry so Round Robin playback never touches disk on the
+// audio thread.
 static constexpr int MAX_SAMPLE_STOCK_PER_LAYER = 5;
 
 struct LayerSampleStockItem
@@ -162,6 +162,7 @@ struct LayerData
     // above always mirror sampleStock[activeSampleStockIndex].
     std::vector<LayerSampleStockItem> sampleStock {};
     int activeSampleStockIndex { 0 };
+    bool roundRobin { false };
 
     // ── 表示名（空ならサンプル名 / "Layer N" を UI 側で派生表示） ───────────
     juce::String layerName {};

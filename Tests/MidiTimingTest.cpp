@@ -1,10 +1,11 @@
 #include "../Source/PluginProcessor.h"
 
+#include <array>
 #include <iostream>
 
 namespace
 {
-bool writeConstantTestSample(const juce::File& file)
+bool writeConstantTestSample(const juce::File& file, float level = 0.75f)
 {
     file.deleteFile();
     auto stream = std::unique_ptr<juce::FileOutputStream>(file.createOutputStream());
@@ -21,7 +22,7 @@ bool writeConstantTestSample(const juce::File& file)
 
     juce::AudioBuffer<float> source(1, 512);
     for (int i = 0; i < source.getNumSamples(); ++i)
-        source.setSample(0, i, 0.75f);
+        source.setSample(0, i, level);
 
     return writer->writeFromAudioSampleBuffer(source, 0, source.getNumSamples());
 }
@@ -81,7 +82,7 @@ bool sampleStockFlowIsStable()
     {
         auto file = temp.getNonexistentChildFile(
             "aster-sample-stock-" + juce::String(i + 1), ".wav", false);
-        if (! writeConstantTestSample(file))
+        if (! writeConstantTestSample(file, 0.1f * static_cast<float>(i + 1)))
             return false;
         files.push_back(file);
     }
@@ -146,12 +147,66 @@ bool sampleStockFlowIsStable()
         return false;
     }
 
+    layer.roundRobin = true;
     LayerData restored;
     restored.fromValueTree(layer.toValueTree());
     if (restored.sampleStock.size() != 5
         || restored.activeSampleStockIndex != 4
         || restored.sampleFileName != files[4].getFileName()
-        || ! approximately(restored.startPosition, 0.2f, 0.001f))
+        || ! approximately(restored.startPosition, 0.2f, 0.001f)
+        || ! restored.roundRobin)
+    {
+        cleanup();
+        return false;
+    }
+
+    // MIDI hits cycle the decoded buffers in order. Slot 1 was replaced by
+    // file 6 above, so the expected level order is 0.6, 0.2, 0.3, 0.4, 0.5.
+    const auto renderMidiHit = [&processor]
+    {
+        processor.getVoiceManager().allNotesOff();
+        juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+        output.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+        processor.processBlock(output, midi);
+        return std::abs(output.getSample(0, 64));
+    };
+
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    std::array<float, 6> roundRobinLevels {};
+    for (size_t hit = 0; hit < roundRobinLevels.size(); ++hit)
+        roundRobinLevels[hit] = renderMidiHit();
+
+    const std::array<float, 6> expectedSourceLevels { 0.6f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f };
+    const float commonGain = roundRobinLevels[0] / expectedSourceLevels[0];
+    for (size_t hit = 0; hit < roundRobinLevels.size(); ++hit)
+    {
+        if (! approximately(roundRobinLevels[hit], expectedSourceLevels[hit] * commonGain, 0.02f))
+        {
+            cleanup();
+            return false;
+        }
+    }
+
+    // UI audition always uses the selected variation and must not consume the
+    // next RR slot. The following MIDI hit still starts from slot 1.
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    processor.auditionLayerOn(0, 0, 1.0f);
+    processor.getVoiceManager().allNotesOff();
+    if (! approximately(renderMidiHit(), 0.6f * commonGain, 0.02f))
+    {
+        cleanup();
+        return false;
+    }
+
+    // A missing/unloaded variation is skipped without touching disk.
+    processor.getFileManager().clearSampleVariation(0, 0, 1);
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    const float afterSlotOne = renderMidiHit();
+    const float skippedSlotTwo = renderMidiHit();
+    if (! approximately(afterSlotOne, 0.6f * commonGain, 0.02f)
+        || ! approximately(skippedSlotTwo, 0.3f * commonGain, 0.02f))
     {
         cleanup();
         return false;

@@ -65,6 +65,7 @@ public:
     bool addOrReplaceLayerSampleStock(int padIndex, int layerIndex, const juce::File& file);
     bool selectLayerSampleStock(int padIndex, int layerIndex, int stockIndex);
     bool removeLayerSampleStock(int padIndex, int layerIndex, int stockIndex);
+    void reloadLayerSampleVariations(int padIndex, int layerIndex);
     void setKeepLengthOnSampleLoad(bool enabled) noexcept
     {
         keepLengthOnSampleLoad.store(enabled, std::memory_order_relaxed);

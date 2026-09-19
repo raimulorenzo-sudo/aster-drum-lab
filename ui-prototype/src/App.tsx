@@ -1632,9 +1632,11 @@ export default function App() {
           : layer.activeSampleStockIndex ?? 0);
     const item = stock[active];
     layers[layerIndex] = item
-      ? { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: active }
+      ? { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: active,
+          roundRobin: stock.length > 1 ? layer.roundRobin : false }
       : { ...layer, sampleFileName: '', sampleFilePath: '', sampleMissing: false,
-          sampleStock: [], activeSampleStockIndex: 0, waveformPeaks: [], waveformChannels: [] };
+          sampleStock: [], activeSampleStockIndex: 0, roundRobin: false,
+          waveformPeaks: [], waveformChannels: [] };
     const patch: Partial<PadParams> = { layers };
     if (layerIndex === 0) Object.assign(patch, layers[0]);
     updatePad(selectedIndex, patch);

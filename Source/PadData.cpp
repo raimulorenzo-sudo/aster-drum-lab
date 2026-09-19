@@ -61,6 +61,7 @@ juce::ValueTree LayerData::toValueTree() const
         ? 0
         : juce::jlimit(0, (int) stock.size() - 1, activeSampleStockIndex);
     vt.setProperty("activeSampleStockIndex", serializedStockIndex, nullptr);
+    vt.setProperty("roundRobin", roundRobin, nullptr);
 
     vt.setProperty("volume",          volume,          nullptr);
     vt.setProperty("pan",             pan,             nullptr);
@@ -181,6 +182,7 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     sampleFilePath = vt.getProperty("sampleFilePath", sampleFilePath);
     sampleMissing  = vt.getProperty("sampleMissing",  sampleMissing);
     layerName      = vt.getProperty("layerName",      layerName);
+    roundRobin     = vt.getProperty("roundRobin",     false);
 
     volume         = vt.getProperty("volume",         volume);
     pan            = vt.getProperty("pan",            pan);
