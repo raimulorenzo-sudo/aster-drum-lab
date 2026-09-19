@@ -5,6 +5,8 @@
 #include "SmartTrim.h"
 #include "WebUIBinaryData.h"
 
+#include <cmath>
+
 #if JUCE_WINDOWS && ! JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING
  #error "Windows builds must statically link WebView2Loader."
 #endif
@@ -20,6 +22,59 @@ namespace
     constexpr int minEditorHeight = 426;
     constexpr int maxEditorWidth = 2800;
     constexpr int maxEditorHeight = 1704;
+    constexpr double defaultUiScale = 1.0;
+    const juce::String uiPreferencesFolderName { "ASTER Drum Lab" };
+    const juce::String uiPreferencesFileName { "ui-preferences.json" };
+    juce::CriticalSection uiPreferencesLock;
+
+    double clampUiScale(double scale)
+    {
+        if (! std::isfinite(scale))
+            return defaultUiScale;
+        return juce::jlimit(0.5, 2.0, scale);
+    }
+
+    juce::File getUiPreferencesFile()
+    {
+        return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile(uiPreferencesFolderName)
+            .getChildFile(uiPreferencesFileName);
+    }
+
+    double loadSavedUiScale()
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        const auto file = getUiPreferencesFile();
+        if (! file.existsAsFile())
+            return defaultUiScale;
+
+        const auto value = juce::JSON::parse(file.loadFileAsString());
+        const auto* object = value.getDynamicObject();
+        if (object == nullptr || ! object->hasProperty("uiScale"))
+            return defaultUiScale;
+
+        const auto scale = static_cast<double>(object->getProperty("uiScale"));
+        if (! std::isfinite(scale) || scale < 0.5 || scale > 2.0)
+            return defaultUiScale;
+        return scale;
+    }
+
+    bool saveUiScale(double scale)
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        const auto file = getUiPreferencesFile();
+        if (! file.getParentDirectory().createDirectory())
+            return false;
+
+        auto* object = new juce::DynamicObject();
+        object->setProperty("version", 1);
+        object->setProperty("uiScale", clampUiScale(scale));
+
+        juce::TemporaryFile temporary(file);
+        if (! temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(object), true)))
+            return false;
+        return temporary.overwriteTargetFileWithTemporary();
+    }
 
     juce::String mimeForPath(const juce::String& path)
     {
@@ -204,7 +259,10 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
     setResizeLimits(minEditorWidth, minEditorHeight, maxEditorWidth, maxEditorHeight);
     if (auto* constrainer = getConstrainer())
         constrainer->setFixedAspectRatio((double) baseEditorWidth / (double) baseEditorHeight);
-    setSize(baseEditorWidth, baseEditorHeight);
+    currentUiScale = loadSavedUiScale();
+    setSize(juce::roundToInt((double) baseEditorWidth * currentUiScale),
+            juce::roundToInt((double) baseEditorHeight * currentUiScale));
+    applyingInitialUiScale = false;
 
     // BinaryData の index.html を WebView に読み込む
     // JUCE 8 の resource provider は固定 origin (juce://juce.backend/ など) を使うので
@@ -218,6 +276,7 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
 WebViewEditor::~WebViewEditor()
 {
     stopTimer();
+    persistUiScaleIfNeeded();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,6 +288,24 @@ void WebViewEditor::paint(juce::Graphics& g)
 void WebViewEditor::resized()
 {
     webView.setBounds(getLocalBounds());
+
+    const auto measuredScale = clampUiScale(juce::jmin((double) getWidth() / (double) baseEditorWidth,
+                                                       (double) getHeight() / (double) baseEditorHeight));
+    if (std::abs(measuredScale - currentUiScale) > 0.001)
+    {
+        currentUiScale = measuredScale;
+        if (! applyingInitialUiScale)
+            uiScaleDirty = true;
+    }
+}
+
+void WebViewEditor::persistUiScaleIfNeeded()
+{
+    if (! uiScaleDirty)
+        return;
+
+    if (saveUiScale(currentUiScale))
+        uiScaleDirty = false;
 }
 
 bool WebViewEditor::isSupportedAudioFile(const juce::File& file)
@@ -1170,9 +1247,23 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "setUiScale")
     {
-        const auto scale = juce::jlimit(0.5, 2.0, (double) payload.getProperty("scale", 1.0));
-        setSize(juce::roundToInt((double) baseEditorWidth * scale),
-                juce::roundToInt((double) baseEditorHeight * scale));
+        const auto scale = clampUiScale((double) payload.getProperty("scale", defaultUiScale));
+        const bool commit = (bool) payload.getProperty("commit", true);
+        const auto previousScale = currentUiScale;
+        const int targetWidth = juce::roundToInt((double) baseEditorWidth * scale);
+        const int targetHeight = juce::roundToInt((double) baseEditorHeight * scale);
+        setSize(targetWidth, targetHeight);
+
+        // Preserve the exact requested value when the host accepted the size.
+        // Deriving it back from rounded pixel dimensions would slowly drift
+        // presets such as 120% across repeated close/open cycles.
+        if (std::abs(getWidth() - targetWidth) <= 1 && std::abs(getHeight() - targetHeight) <= 1)
+            currentUiScale = scale;
+        if (std::abs(currentUiScale - previousScale) > 0.0005)
+            uiScaleDirty = true;
+
+        if (commit)
+            persistUiScaleIfNeeded();
     }
     else if (type == "setOutputMode")
     {

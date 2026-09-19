@@ -370,7 +370,7 @@ export default function App() {
     routing: true,
   });
   const [outputMode, setOutputMode] = useState<OutputMode>('48Outs');
-  const [uiScale, setUiScale] = useState<UiScale>(1);
+  const [uiScale, setUiScale] = useState<number>(1);
   const [viewportScale, setViewportScale] = useState(1);
   const [isWindowResizing, setIsWindowResizing] = useState(false);
   const resizeDragRef = useRef<{
@@ -380,6 +380,7 @@ export default function App() {
     startScale: number;
   } | null>(null);
   const pendingResizeScaleRef = useRef<number | null>(null);
+  const activeResizeScaleRef = useRef<number | null>(null);
   const resizeFrameRef = useRef<number | null>(null);
   const [masterKnob, setMasterKnob] = useState(MASTER_UNITY);
   const [masterClipHit, setMasterClipHit] = useState(false);
@@ -476,7 +477,9 @@ export default function App() {
         window.innerWidth / DESIGN_WIDTH,
         window.innerHeight / DESIGN_HEIGHT,
       );
-      setViewportScale(Math.max(MIN_VIEWPORT_SCALE, Math.min(MAX_VIEWPORT_SCALE, scale)));
+      const nextScale = Math.max(MIN_VIEWPORT_SCALE, Math.min(MAX_VIEWPORT_SCALE, scale));
+      setViewportScale(nextScale);
+      setUiScale(nextScale);
     };
 
     updateViewportScale();
@@ -485,10 +488,12 @@ export default function App() {
   }, []);
 
   const requestEditorScale = useCallback((scale: number) => {
-    pendingResizeScaleRef.current = Math.max(
+    const nextScale = Math.max(
       MIN_VIEWPORT_SCALE,
       Math.min(MAX_VIEWPORT_SCALE, scale),
     );
+    pendingResizeScaleRef.current = nextScale;
+    activeResizeScaleRef.current = nextScale;
 
     if (resizeFrameRef.current !== null) return;
     resizeFrameRef.current = window.requestAnimationFrame(() => {
@@ -496,7 +501,7 @@ export default function App() {
       const pendingScale = pendingResizeScaleRef.current;
       pendingResizeScaleRef.current = null;
       if (pendingScale !== null)
-        sendToJuce('setUiScale', { scale: pendingScale });
+        sendToJuce('setUiScale', { scale: pendingScale, commit: false });
     });
   }, []);
 
@@ -506,10 +511,11 @@ export default function App() {
       resizeFrameRef.current = null;
     }
 
-    const pendingScale = pendingResizeScaleRef.current;
+    const pendingScale = pendingResizeScaleRef.current ?? activeResizeScaleRef.current;
     pendingResizeScaleRef.current = null;
+    activeResizeScaleRef.current = null;
     if (pendingScale !== null)
-      sendToJuce('setUiScale', { scale: pendingScale });
+      sendToJuce('setUiScale', { scale: pendingScale, commit: true });
   }, []);
 
   useEffect(() => () => {
@@ -534,6 +540,7 @@ export default function App() {
         ),
       ),
     };
+    activeResizeScaleRef.current = resizeDragRef.current.startScale;
     setIsWindowResizing(true);
   }, []);
 
@@ -576,8 +583,13 @@ export default function App() {
       window.innerWidth / DESIGN_WIDTH,
       window.innerHeight / DESIGN_HEIGHT,
     );
-    requestEditorScale(currentScale + direction * 0.05);
-  }, [requestEditorScale]);
+    const nextScale = Math.max(
+      MIN_VIEWPORT_SCALE,
+      Math.min(MAX_VIEWPORT_SCALE, currentScale + direction * 0.05),
+    );
+    setUiScale(nextScale);
+    sendToJuce('setUiScale', { scale: nextScale, commit: true });
+  }, []);
 
   /** Index of the pad currently being auditoned (-1 = none) */
   const auditionedPadRef = useRef(-1);
@@ -1268,7 +1280,7 @@ export default function App() {
 
   const handleUiScaleChange = useCallback((scale: UiScale) => {
     setUiScale(scale);
-    sendToJuce('setUiScale', { scale });
+    sendToJuce('setUiScale', { scale, commit: true });
   }, []);
 
   // ── Relink All (MissingSamplesView から) ──────────────────────────────

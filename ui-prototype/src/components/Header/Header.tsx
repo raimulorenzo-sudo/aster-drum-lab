@@ -17,7 +17,7 @@ interface HeaderProps {
   kitName: string;
   kitItems: HeaderKitItem[];
   currentKitPath: string;
-  uiScale: UiScale;
+  uiScale: number;
   onSelectKit: (path: string) => void;
   onRescanKitFolder: () => void;
   onRevealKitFolder: () => void;
@@ -267,7 +267,7 @@ export function Header(props: HeaderProps) {
               {UI_SCALES.map(scale => (
                 <button
                   key={scale}
-                  className={`${styles.scaleItem} ${props.uiScale === scale ? styles.scaleItemActive : ''}`}
+                  className={`${styles.scaleItem} ${Math.abs(props.uiScale - scale) < 0.01 ? styles.scaleItemActive : ''}`}
                   onClick={() => chooseScale(scale)}
                 >
                   {Math.round(scale * 100)}%

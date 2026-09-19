@@ -53,6 +53,9 @@ private:
     int fastTimerTick { 0 };
     double lastStatsBroadcastMs { 0.0 };
     juce::String lastDemoStateJson;
+    double currentUiScale { 1.0 };
+    bool uiScaleDirty { false };
+    bool applyingInitialUiScale { true };
 
     struct PendingSampleByteDrop
     {
@@ -98,6 +101,7 @@ private:
 
     // JS → C++ メッセージハンドラ
     void handleUiMessage(const juce::var& message);
+    void persistUiScaleIfNeeded();
 
     // タイマー:
     //   Phase 1: 120ms 遅延で kitData を初回送信
