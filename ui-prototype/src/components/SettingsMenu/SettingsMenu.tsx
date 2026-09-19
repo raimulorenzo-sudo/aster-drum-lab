@@ -28,6 +28,39 @@ interface SettingsMenuProps {
 }
 
 type Pane = 'main' | 'about' | 'prefs' | 'automation';
+type PreferenceKey =
+  | 'keepLengthOnSampleLoad'
+  | 'smartTrimOnSampleLoad'
+  | 'autoFadeOnTrim'
+  | 'previewOnPadClick'
+  | 'preservePadNameOnSampleLoad';
+type PreferenceValues = Record<PreferenceKey, boolean>;
+
+const DEFAULT_PREFERENCES: PreferenceValues = {
+  keepLengthOnSampleLoad: true,
+  smartTrimOnSampleLoad: true,
+  autoFadeOnTrim: true,
+  previewOnPadClick: true,
+  preservePadNameOnSampleLoad: true,
+};
+
+const readLocalPreferences = (): PreferenceValues => Object.fromEntries(
+  (Object.keys(DEFAULT_PREFERENCES) as PreferenceKey[]).map(key => {
+    try {
+      const raw = localStorage.getItem(`ASTER_PREF_${key}`);
+      return [key, raw === null ? DEFAULT_PREFERENCES[key] : raw === '1'];
+    } catch {
+      return [key, DEFAULT_PREFERENCES[key]];
+    }
+  }),
+) as PreferenceValues;
+
+const cacheLocalPreferences = (preferences: PreferenceValues) => {
+  for (const key of Object.keys(DEFAULT_PREFERENCES) as PreferenceKey[]) {
+    try { localStorage.setItem(`ASTER_PREF_${key}`, preferences[key] ? '1' : '0'); } catch { /* noop */ }
+  }
+};
+
 interface AutomationSlotState {
   index: number;
   parameterId: string;
@@ -56,7 +89,9 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
   const [updateState, setUpdateState] = useState<UpdateState>({ status: 'idle' });
   const [startupNoticeVersion, setStartupNoticeVersion] = useState<string | null>(null);
   const [automationSlots, setAutomationSlots] = useState<AutomationSlotState[]>(EMPTY_AUTOMATION_SLOTS);
+  const [preferences, setPreferences] = useState<PreferenceValues>(readLocalPreferences);
   const panelRef = useRef<HTMLDivElement>(null);
+  const preferenceMigrationSentRef = useRef(false);
 
   // ── ポジショニング ──
   useLayoutEffect(() => {
@@ -108,8 +143,45 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
   }, []);
 
   useEffect(() => {
+    const unsubscribe = onJuceEvent('preferencesState', raw => {
+      const payload = raw as Partial<PreferenceValues> & { initialized?: boolean };
+      if (!payload.initialized) {
+        // v1.0.2 and earlier stored these values only in WebView localStorage.
+        // Migrate that snapshot once, then let the native JSON be authoritative.
+        if (!preferenceMigrationSentRef.current && isJuceAvailable()) {
+          preferenceMigrationSentRef.current = true;
+          sendToJuce('setPreferences', preferences);
+        }
+        return;
+      }
+
+      const next = { ...DEFAULT_PREFERENCES };
+      for (const key of Object.keys(DEFAULT_PREFERENCES) as PreferenceKey[]) {
+        if (typeof payload[key] === 'boolean') next[key] = payload[key];
+      }
+      setPreferences(next);
+      cacheLocalPreferences(next);
+    });
+
+    if (isJuceAvailable()) sendToJuce('requestPreferences', {});
+    return unsubscribe;
+    // `preferences` is intentionally the initial localStorage snapshot used
+    // only for one-time migration when native preferences do not exist yet.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const togglePreference = (key: PreferenceKey) => {
+    const next = { ...preferences, [key]: !preferences[key] };
+    setPreferences(next);
+    cacheLocalPreferences(next);
+    if (isJuceAvailable()) sendToJuce('setPreference', { key, value: next[key] });
+  };
+
+  useEffect(() => {
     if (open && pane === 'automation')
       sendToJuce('requestAutomationSlots', {});
+    if (open && pane === 'prefs')
+      sendToJuce('requestPreferences', {});
   }, [open, pane]);
 
   // ── Esc で閉じる ──
@@ -275,11 +347,11 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
               <span className={styles.chevronBack}>◂</span> SETTINGS
             </button>
             <div className={styles.title}>PREFERENCES</div>
-            <PrefRow label="KEEP LENGTH on Sample Load" prefKey="keepLengthOnSampleLoad" defaultOn={true} syncOnMount />
-            <PrefRow label="Smart Trim on Sample Load"   prefKey="smartTrimOnSampleLoad" defaultOn={true} />
-            <PrefRow label="Auto Fade on Trim Edit"      prefKey="autoFadeOnTrim"        defaultOn={true} />
-            <PrefRow label="Preview on Pad Click"        prefKey="previewOnPadClick"     defaultOn={true} />
-            <PrefRow label="Preserve Pad Name on Load"   prefKey="preservePadNameOnSampleLoad" defaultOn={true} />
+            <PrefRow label="KEEP LENGTH on Sample Load" on={preferences.keepLengthOnSampleLoad} onToggle={() => togglePreference('keepLengthOnSampleLoad')} />
+            <PrefRow label="Smart Trim on Sample Load"   on={preferences.smartTrimOnSampleLoad} onToggle={() => togglePreference('smartTrimOnSampleLoad')} />
+            <PrefRow label="Auto Fade on Trim Edit"      on={preferences.autoFadeOnTrim} onToggle={() => togglePreference('autoFadeOnTrim')} />
+            <PrefRow label="Preview on Pad Click"        on={preferences.previewOnPadClick} onToggle={() => togglePreference('previewOnPadClick')} />
+            <PrefRow label="Preserve Pad Name on Load"   on={preferences.preservePadNameOnSampleLoad} onToggle={() => togglePreference('preservePadNameOnSampleLoad')} />
             <div className={styles.hint}>These settings apply to the entire plug-in.</div>
           </>
         )}
@@ -337,36 +409,13 @@ export function SettingsMenu({ anchorRef, open, onClose, pluginFormat }: Setting
 
 interface PrefRowProps {
   label: string;
-  prefKey: string;
-  defaultOn: boolean;
-  syncOnMount?: boolean;
+  on: boolean;
+  onToggle: () => void;
 }
 
-/** ローカル state + localStorage で保持。Standalone/プラグイン側にも sendToJuce で通知。 */
-function PrefRow({ label, prefKey, defaultOn, syncOnMount = false }: PrefRowProps) {
-  const storageKey = `ASTER_PREF_${prefKey}`;
-  const [on, setOn] = useState<boolean>(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw === null) return defaultOn;
-      return raw === '1';
-    } catch { return defaultOn; }
-  });
-  useEffect(() => {
-    if (syncOnMount && isJuceAvailable())
-      sendToJuce('setPreference', { key: prefKey, value: on });
-    // The stored value is intentionally sent once when this preference mounts.
-    // Subsequent changes are sent by toggle().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prefKey, syncOnMount]);
-  const toggle = () => {
-    const next = !on;
-    setOn(next);
-    try { localStorage.setItem(storageKey, next ? '1' : '0'); } catch { /* noop */ }
-    if (isJuceAvailable()) sendToJuce('setPreference', { key: prefKey, value: next });
-  };
+function PrefRow({ label, on, onToggle }: PrefRowProps) {
   return (
-    <button className={styles.prefRow} onClick={toggle} role="menuitemcheckbox" aria-checked={on}>
+    <button className={styles.prefRow} onClick={onToggle} role="menuitemcheckbox" aria-checked={on}>
       <span>{label}</span>
       <span className={`${styles.toggle} ${on ? styles.toggleOn : ''}`} aria-hidden>
         <span className={styles.toggleDot} />

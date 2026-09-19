@@ -27,6 +27,16 @@ namespace
     const juce::String uiPreferencesFileName { "ui-preferences.json" };
     juce::CriticalSection uiPreferencesLock;
 
+    struct StoredPluginPreferences
+    {
+        bool initialized { false };
+        bool keepLengthOnSampleLoad { true };
+        bool smartTrimOnSampleLoad { true };
+        bool autoFadeOnTrim { true };
+        bool previewOnPadClick { true };
+        bool preservePadNameOnSampleLoad { true };
+    };
+
     double clampUiScale(double scale)
     {
         if (! std::isfinite(scale))
@@ -41,14 +51,35 @@ namespace
             .getChildFile(uiPreferencesFileName);
     }
 
+    juce::var loadPreferencesFileUnlocked()
+    {
+        const auto file = getUiPreferencesFile();
+        if (file.existsAsFile())
+        {
+            auto value = juce::JSON::parse(file.loadFileAsString());
+            if (value.getDynamicObject() != nullptr)
+                return value;
+        }
+
+        return juce::var(new juce::DynamicObject());
+    }
+
+    bool writePreferencesFileUnlocked(const juce::var& value)
+    {
+        const auto file = getUiPreferencesFile();
+        if (! file.getParentDirectory().createDirectory())
+            return false;
+
+        juce::TemporaryFile temporary(file);
+        if (! temporary.getFile().replaceWithText(juce::JSON::toString(value, true)))
+            return false;
+        return temporary.overwriteTargetFileWithTemporary();
+    }
+
     double loadSavedUiScale()
     {
         const juce::ScopedLock lock(uiPreferencesLock);
-        const auto file = getUiPreferencesFile();
-        if (! file.existsAsFile())
-            return defaultUiScale;
-
-        const auto value = juce::JSON::parse(file.loadFileAsString());
+        const auto value = loadPreferencesFileUnlocked();
         const auto* object = value.getDynamicObject();
         if (object == nullptr || ! object->hasProperty("uiScale"))
             return defaultUiScale;
@@ -62,18 +93,61 @@ namespace
     bool saveUiScale(double scale)
     {
         const juce::ScopedLock lock(uiPreferencesLock);
-        const auto file = getUiPreferencesFile();
-        if (! file.getParentDirectory().createDirectory())
+        auto value = loadPreferencesFileUnlocked();
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
             return false;
 
-        auto* object = new juce::DynamicObject();
-        object->setProperty("version", 1);
+        object->setProperty("version", 2);
         object->setProperty("uiScale", clampUiScale(scale));
+        return writePreferencesFileUnlocked(value);
+    }
 
-        juce::TemporaryFile temporary(file);
-        if (! temporary.getFile().replaceWithText(juce::JSON::toString(juce::var(object), true)))
+    StoredPluginPreferences loadStoredPluginPreferences()
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        const auto value = loadPreferencesFileUnlocked();
+        const auto* object = value.getDynamicObject();
+        StoredPluginPreferences preferences;
+        if (object == nullptr)
+            return preferences;
+
+        preferences.initialized = (bool) value.getProperty("preferencesInitialized", false);
+        preferences.keepLengthOnSampleLoad = (bool) value.getProperty("keepLengthOnSampleLoad", true);
+        preferences.smartTrimOnSampleLoad = (bool) value.getProperty("smartTrimOnSampleLoad", true);
+        preferences.autoFadeOnTrim = (bool) value.getProperty("autoFadeOnTrim", true);
+        preferences.previewOnPadClick = (bool) value.getProperty("previewOnPadClick", true);
+        preferences.preservePadNameOnSampleLoad = (bool) value.getProperty("preservePadNameOnSampleLoad", true);
+        return preferences;
+    }
+
+    bool saveStoredPluginPreferences(const StoredPluginPreferences& preferences)
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        auto value = loadPreferencesFileUnlocked();
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
             return false;
-        return temporary.overwriteTargetFileWithTemporary();
+
+        object->setProperty("version", 2);
+        object->setProperty("preferencesInitialized", preferences.initialized);
+        object->setProperty("keepLengthOnSampleLoad", preferences.keepLengthOnSampleLoad);
+        object->setProperty("smartTrimOnSampleLoad", preferences.smartTrimOnSampleLoad);
+        object->setProperty("autoFadeOnTrim", preferences.autoFadeOnTrim);
+        object->setProperty("previewOnPadClick", preferences.previewOnPadClick);
+        object->setProperty("preservePadNameOnSampleLoad", preferences.preservePadNameOnSampleLoad);
+        return writePreferencesFileUnlocked(value);
+    }
+
+    void applyStoredPluginPreferences(DrumSamplerAudioProcessor& processor,
+                                      const StoredPluginPreferences& preferences)
+    {
+        processor.setKeepLengthOnSampleLoad(preferences.keepLengthOnSampleLoad);
+        auto& kit = processor.getKit();
+        kit.smartTrimOnSampleLoad = preferences.smartTrimOnSampleLoad;
+        kit.autoFadeOnTrim = preferences.autoFadeOnTrim;
+        kit.previewOnPadClick = preferences.previewOnPadClick;
+        kit.preservePadNameOnSampleLoad = preferences.preservePadNameOnSampleLoad;
     }
 
     juce::String mimeForPath(const juce::String& path)
@@ -260,6 +334,7 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
     if (auto* constrainer = getConstrainer())
         constrainer->setFixedAspectRatio((double) baseEditorWidth / (double) baseEditorHeight);
     currentUiScale = loadSavedUiScale();
+    applyStoredPluginPreferences(audioProcessor, loadStoredPluginPreferences());
     setSize(juce::roundToInt((double) baseEditorWidth * currentUiScale),
             juce::roundToInt((double) baseEditorHeight * currentUiScale));
     applyingInitialUiScale = false;
@@ -1059,9 +1134,27 @@ juce::var WebViewEditor::kitToWebVar() const
 
 void WebViewEditor::broadcastKitState()
 {
+    // Saved kits and DAW projects still contain these legacy KitData fields.
+    // Reapply the user-level values before each full state broadcast so a kit
+    // change cannot silently replace the global preferences.
+    applyStoredPluginPreferences(audioProcessor, loadStoredPluginPreferences());
     webView.emitEventIfBrowserIsVisible("kitData", kitToWebVar());
     broadcastKitList();
     broadcastAutomationSlots();
+}
+
+void WebViewEditor::broadcastPreferencesState()
+{
+    const auto preferences = loadStoredPluginPreferences();
+    applyStoredPluginPreferences(audioProcessor, preferences);
+    auto* object = new juce::DynamicObject();
+    object->setProperty("initialized", preferences.initialized);
+    object->setProperty("keepLengthOnSampleLoad", preferences.keepLengthOnSampleLoad);
+    object->setProperty("smartTrimOnSampleLoad", preferences.smartTrimOnSampleLoad);
+    object->setProperty("autoFadeOnTrim", preferences.autoFadeOnTrim);
+    object->setProperty("previewOnPadClick", preferences.previewOnPadClick);
+    object->setProperty("preservePadNameOnSampleLoad", preferences.preservePadNameOnSampleLoad);
+    webView.emitEventIfBrowserIsVisible("preferencesState", juce::var(object));
 }
 
 void WebViewEditor::broadcastAutomationSlots()
@@ -1172,13 +1265,50 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     if (type == "ready")
     {
         broadcastKitState();
+        broadcastPreferencesState();
         broadcastDemoState(true);
+    }
+    else if (type == "requestPreferences")
+    {
+        broadcastPreferencesState();
+    }
+    else if (type == "setPreferences")
+    {
+        StoredPluginPreferences preferences;
+        preferences.initialized = true;
+        preferences.keepLengthOnSampleLoad = (bool) payload.getProperty("keepLengthOnSampleLoad", true);
+        preferences.smartTrimOnSampleLoad = (bool) payload.getProperty("smartTrimOnSampleLoad", true);
+        preferences.autoFadeOnTrim = (bool) payload.getProperty("autoFadeOnTrim", true);
+        preferences.previewOnPadClick = (bool) payload.getProperty("previewOnPadClick", true);
+        preferences.preservePadNameOnSampleLoad = (bool) payload.getProperty("preservePadNameOnSampleLoad", true);
+        if (saveStoredPluginPreferences(preferences))
+        {
+            applyStoredPluginPreferences(audioProcessor, preferences);
+            broadcastPreferencesState();
+        }
     }
     else if (type == "setPreference")
     {
         const auto key = payload.getProperty("key", {}).toString();
-        if (key == "keepLengthOnSampleLoad")
-            audioProcessor.setKeepLengthOnSampleLoad(getBool());
+        auto preferences = loadStoredPluginPreferences();
+        const bool value = getBool();
+        bool recognized = true;
+        if (key == "keepLengthOnSampleLoad") preferences.keepLengthOnSampleLoad = value;
+        else if (key == "smartTrimOnSampleLoad") preferences.smartTrimOnSampleLoad = value;
+        else if (key == "autoFadeOnTrim") preferences.autoFadeOnTrim = value;
+        else if (key == "previewOnPadClick") preferences.previewOnPadClick = value;
+        else if (key == "preservePadNameOnSampleLoad") preferences.preservePadNameOnSampleLoad = value;
+        else recognized = false;
+
+        if (recognized)
+        {
+            preferences.initialized = true;
+            if (saveStoredPluginPreferences(preferences))
+            {
+                applyStoredPluginPreferences(audioProcessor, preferences);
+                broadcastPreferencesState();
+            }
+        }
     }
     else if (type == "requestAutomationSlots")
     {
@@ -1291,7 +1421,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     else if (type == "audition")
     {
         const float velocity = (float) (double) payload.getProperty("velocity", 0.9);
-        audioProcessor.auditionPadOn(getIndex(), velocity);
+        if (audioProcessor.getKit().previewOnPadClick)
+            audioProcessor.auditionPadOn(getIndex(), velocity);
     }
     else if (type == "auditionLayer")
     {

@@ -75,6 +75,7 @@ private:
 
     // C++ → JS: 現在の Kit を JSON でブロードキャスト
     void broadcastKitState();
+    void broadcastPreferencesState();
     void broadcastAutomationSlots();
     void broadcastKitList();
     void broadcastPadUpdate(int padIndex);
