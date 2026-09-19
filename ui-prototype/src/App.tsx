@@ -1559,7 +1559,12 @@ export default function App() {
     if (!pad) return;
     const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
     if (isJuceAvailable()) {
-      sendToJuce('selectLayerSampleStock', { index: selectedIndex, layerIndex, stockIndex });
+      sendToJuce('selectLayerSampleStock', {
+        index: selectedIndex,
+        layerIndex,
+        stockIndex,
+        audition: true,
+      });
       return;
     }
     const layers = ensureLayers(pad).map(layer => ({ ...layer }));

@@ -736,6 +736,7 @@ function WaveformEditorComponent({
                       setSampleStockOpen(false);
                     }}
                     role="menuitem"
+                    title="Select and audition sample"
                   >
                     <span className={styles.sampleStockIndex}>{index + 1}</span>
                     <span className={styles.sampleStockName}>

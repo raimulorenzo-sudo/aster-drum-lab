@@ -1791,8 +1791,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const int idx = getIndex();
         const int layerIdx = (int) payload.getProperty("layerIndex", 0);
         const int stockIndex = (int) payload.getProperty("stockIndex", 0);
+        const bool shouldAudition = (bool) payload.getProperty("audition", false);
         if (audioProcessor.selectLayerSampleStock(idx, layerIdx, stockIndex))
         {
+            // Selection and preview stay in the same native message so the
+            // newly loaded stock item is guaranteed to be the sound heard.
+            if (shouldAudition)
+                audioProcessor.auditionLayerOn(idx, layerIdx, 1.0f);
             broadcastPadUpdate(idx);
             broadcastKitState();
         }
