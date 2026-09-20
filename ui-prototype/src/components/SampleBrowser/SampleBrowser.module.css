@@ -1,0 +1,94 @@
+.view { height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 68px; gap: 9px; }
+.view[hidden] { display: none; }
+.columns { display: grid; grid-template-columns: 220px minmax(0, 1fr) 310px; gap: 10px; min-height: 0; }
+.columns > * { min-width: 0; min-height: 0; border: 1px solid var(--border-panel); border-radius: 5px; background: var(--surface-panel-bg); box-shadow: var(--panel-shadow-inset); }
+.view h2 { font-size: 12px; font-weight: 550; letter-spacing: .14em; color: var(--text-sub); margin: 0; }
+.view button { font-family: inherit; cursor: pointer; }
+.view button:disabled { opacity: .35; cursor: default; }
+.view button:focus-visible, .view input:focus-visible, .fileList:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: -2px; }
+.folders { display: flex; flex-direction: column; padding: 18px 12px 12px; gap: 14px; }
+.folders h2 { padding-left: 6px; }
+.selectFolder { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 39px; padding: 8px 12px; color: var(--platinum-gold); border: 1px solid var(--platinum-gold); border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: .07em; background: var(--panel-inset); }
+.recentList { min-height: 0; overflow: auto; }
+.recentList button { display: flex; align-items: center; gap: 13px; padding: 14px 12px; width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border-soft); border-left: 3px solid transparent; border-radius: 0; color: var(--text-main); font-size: 14px; }
+.recentList button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.recentList button svg { flex-shrink: 0; color: var(--text-muted); }
+.recentList .selectedFolder { border-left-color: var(--accent-cyan); background: rgba(0, 160, 188, .13); }
+.folderHint { margin-top: auto; font-size: 10px; color: var(--text-muted); padding: 0 6px; }
+.library { display: flex; flex-direction: column; padding: 17px 14px 12px; }
+.folderHeading { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.folderHeading > div { min-width: 0; flex: 1; }
+.folderHeading h1 { font-size: 18px; font-weight: 650; letter-spacing: .07em; margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folderHeading p { font-size: 12px; color: var(--text-muted); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folderHeading button { width: 29px; height: 29px; flex-shrink: 0; display: grid; place-items: center; color: var(--text-sub); }
+.search { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border-strong); background: var(--panel-inset); border-radius: 4px; padding: 0 11px; min-height: 37px; color: var(--text-sub); margin-bottom: 10px; }
+.search input { min-width: 0; width: 100%; height: 35px; border: 0; background: transparent; color: var(--text-main); font: inherit; font-size: 14px; outline: none; }
+.fileList { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.fileList button { display: flex; align-items: center; gap: 21px; width: 100%; min-height: 45px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border-soft); border-left: 3px solid transparent; border-radius: 0; color: var(--text-main); text-align: left; background: transparent; font-size: 14px; }
+.fileList button svg { color: var(--text-muted); flex-shrink: 0; }
+.fileList button span { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.fileList button:hover, .recentList button:hover { background: rgba(255, 255, 255, .04); }
+.fileList .selectedFile { border-left-color: var(--accent-cyan); background: rgba(0, 160, 188, .16); }
+.fileList .selectedFile:hover { background: rgba(0, 160, 188, .2); }
+.fileList .goldIcon { color: var(--platinum-gold); }
+.empty { padding: 45px 20px; display: flex; flex-direction: column; align-items: center; color: var(--text-muted); font-size: 13px; text-align: center; }
+.empty p { font-size: 17px; color: var(--text-sub); }
+.listHint { font-size: 10px; color: var(--text-muted); margin: 12px 0; }
+.audition { border-top: 1px solid rgba(191,163,106,.65); padding: 13px 2px 0; display: flex; align-items: center; gap: 9px; min-width: 0; }
+.audition > span:first-child, .level > span { font-size: 10px; letter-spacing: .07em; color: var(--text-sub); }
+.audition > button { width: 39px; height: 37px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid var(--border-hi); color: var(--text-sub); }
+.audition > .play, .actions .add { background: #6f5526; border: 1px solid #cba650; box-shadow: inset 0 1px 0 rgba(255,232,161,.2); color: #fff0c7; }
+.audition > .play:hover:not(:disabled), .actions .add:hover:not(:disabled) { background: #886a32; }
+.auditionName { flex: 1; min-width: 35px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.level { display: flex; align-items: center; gap: 7px; padding-left: 9px; border-left: 1px solid var(--border-strong); }
+.level > div { filter: hue-rotate(190deg) saturate(.75); }
+.auto { display: flex; align-items: center; gap: 6px; margin-left: 2px; white-space: nowrap; font-size: 9px; color: var(--text-sub); }
+.auto input { accent-color: #d7b46c; width: 16px; height: 16px; margin: 0; }
+.destination { padding: 18px 16px 12px; display: flex; flex-direction: column; overflow-y: auto; }
+.targetControls { border: 0; padding: 0; margin: 10px 0 24px; min-width: 0; }
+.targetControls:disabled { pointer-events: none; opacity: .6; }
+.layerRow { margin-top: 16px; display: flex; align-items: flex-start; gap: 17px; }
+.layerRow > span { margin-top: 8px; color: var(--text-sub); font-size: 11px; letter-spacing: .12em; }
+.layers { display: flex; flex-wrap: wrap; gap: 7px; }
+.layers button { min-width: 38px; height: 31px; font-size: 14px; color: var(--text-main); border: 1px solid var(--border-hi); border-radius: 4px; }
+.layers .activeLayer { border-color: var(--accent-cyan); color: var(--accent-cyan); background: rgba(0,160,188,.12); }
+.variationHeading { display: flex; justify-content: space-between; align-items: center; padding: 15px 0 10px; border-top: 1px solid var(--border-strong); }
+.variationHeading h2 { font-size: 11px; letter-spacing: .08em; }
+.variationHeading > span { font-size: 14px; }
+.variations button { width: 100%; min-height: 34px; display: flex; align-items: center; gap: 12px; padding: 7px 0; border: 0; border-bottom: 1px solid var(--border-soft); border-radius: 0; background: transparent; color: var(--text-main); font-size: 11px; text-align: left; }
+.variations button > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.variations small { color: var(--accent-cyan); font-size: 9px; }
+.variations .activeVariation > span:first-child { color: var(--accent-cyan); }
+.variations button:hover { color: var(--accent-cyan); }
+.rr { font-size: 9px; letter-spacing: .08em; color: var(--text-muted); margin: 8px 0 0; }
+.actions { margin-top: 22px; padding-top: 15px; border-top: 1px solid var(--border-soft); }
+.selectedName { margin: 9px 0 13px; min-height: 20px; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.actions > button { width: 100%; min-height: 43px; padding: 8px; font-size: 11px; font-weight: 600; letter-spacing: .045em; border-radius: 4px; }
+.replace { margin-top: 10px; border: 1px solid var(--border-hi); color: var(--text-main); }
+.hint { font-size: 11px; line-height: 1.55; color: var(--text-muted); margin: 17px 0 0; }
+.status { min-height: 34px; margin-top: 10px; font-size: 11px; line-height: 1.45; color: var(--accent-cyan); overflow-wrap: anywhere; }
+.error { color: #f0b35a; }
+/* Match the approved browser mock while keeping the existing app chrome. */
+.view { --browser-gold: #ddbd78; }
+.columns { grid-template-columns: 248px minmax(0, 1fr) 320px; }
+.columns > * { background: var(--panel-sub); }
+.view h2 { font-size: 13px; }
+.selectFolder { color: var(--browser-gold); border-color: var(--browser-gold); font-size: 12px; }
+.recentList button { font-size: 16px; }
+.folderHeading h1 { font-size: 20px; }
+.folderHeading p { font-size: 14px; }
+.fileList button { min-height: 51px; font-size: 16px; }
+.fileList .selectedFile, .recentList .selectedFolder { background: rgba(0, 164, 191, .16); border-left-color: #35ccdf; }
+.layers .activeLayer { border-color: #35ccdf; color: #90dbe5; }
+.variationHeading h2 { font-size: 12px; }
+.variations button { font-size: 12px; min-height: 37px; }
+.variations small { font-size: 10px; color: #52ccdf; }
+.selectedName { font-size: 16px; }
+.actions > button { font-size: 13px; }
+.auditionName { font-size: 12px; }
+.audition { gap: 8px; }
+.level { gap: 5px; padding-left: 7px; }
+.level > div { filter: sepia(.65) saturate(1.4); }
+.auto { font-size: 9px; }
+.hint { color: #929292; }
+.fileList .empty button { width: auto; border: 1px solid var(--browser-gold); border-radius: 4px; color: var(--browser-gold); font-size: 12px; }

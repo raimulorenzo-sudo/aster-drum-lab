@@ -334,3 +334,6 @@
 .renameInput:focus {
   border-color: rgba(82, 200, 232, 0.66);
 }
+
+.bodyBrowser { grid-template-columns: 1fr; }
+.browser { min-width: 0; min-height: 0; }

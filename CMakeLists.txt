@@ -122,6 +122,8 @@ target_sources(DrumSampler
         Source/PadParameterSpecs.cpp
         Source/LayerParameterSpecs.cpp
         Source/KitData.cpp
+        Source/SampleBrowserAudio.cpp
+        Source/SampleBrowserBridge.cpp
         Source/AudioFileManager.cpp
         Source/KeepLengthEngine.cpp
         Source/SamplerVoice.cpp
@@ -197,6 +199,12 @@ target_link_libraries(DrumSampler
 
 if(ASTER_BUILD_TESTS)
     enable_testing()
+    add_executable(DrumSamplerBrowserTests Tests/SampleBrowserTest.cpp)
+    target_include_directories(DrumSamplerBrowserTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerBrowserTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerBrowser COMMAND DrumSamplerBrowserTests)
+
 
     add_executable(DrumSamplerTimingTests
         Tests/MidiTimingTest.cpp

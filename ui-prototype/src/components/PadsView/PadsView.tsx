@@ -217,7 +217,7 @@ interface FooterBarProps {
   onResetMasterClip: () => void;
 }
 
-function PadFooterBar({
+export function PadFooterBar({
   masterKnob,
   onMasterKnobChange,
   masterClipHit,

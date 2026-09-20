@@ -352,6 +352,8 @@ WebViewEditor::~WebViewEditor()
 {
     stopTimer();
     persistUiScaleIfNeeded();
+    cancelBrowserWork();
+    browserWorkers.removeAllJobs(true, 10000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -424,6 +426,7 @@ void WebViewEditor::fileDragExit(const juce::StringArray& files)
 
 void WebViewEditor::filesDropped(const juce::StringArray& files, int x, int y)
 {
+    if (activeWebTab == ActiveWebTab::Browser) return; // Browser uses explicit destination actions.
     juce::Logger::writeToLog("[ASTER DND] native drop fired files count=" + juce::String(files.size()));
     juce::Logger::writeToLog("[ASTER DND] native dropped file path or available file info "
                              + filesForLog(files));
@@ -746,6 +749,11 @@ bool WebViewEditor::addSampleStockBytesForLayer(int padIndex,
 // ─────────────────────────────────────────────────────────────────────────────
 void WebViewEditor::timerCallback()
 {
+    const bool browserPlaying = audioProcessor.browserPreview.isPlaying();
+    if (browserWasPlaying && ! browserPlaying)
+        emitBrowserResult("ended", browserPreviewRequest);
+    browserWasPlaying = browserPlaying;
+
     if (! initialKitSent)
     {
         broadcastKitState();
@@ -1243,6 +1251,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     const auto type = message.getProperty("type", juce::var()).toString();
     const auto payload = message.getProperty("payload", juce::var());
 
+    if (type.startsWith("browser")) { handleBrowserMessage(type, payload); return; }
+
     const auto getIndex = [&]() -> int
     {
         return (int) payload.getProperty("index", -1);
@@ -1368,7 +1378,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     else if (type == "setTab")
     {
         const auto tab = payload.getProperty("tab", "PADS").toString();
-        if (tab == "MIXER")
+        if (tab != "BROWSER") cancelBrowserWork();
+        if (tab == "BROWSER")
+            activeWebTab = ActiveWebTab::Browser;
+        else if (tab == "MIXER")
             activeWebTab = ActiveWebTab::Mixer;
         else if (tab == "MISSING")
             activeWebTab = ActiveWebTab::Missing;
@@ -2792,4 +2805,29 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     {
         juce::Logger::writeToLog("WebView unknown message: " + type);
     }
+}
+
+void WebViewEditor::loadBrowserPreferences()
+{
+    const juce::ScopedLock guard(uiPreferencesLock);
+    browserPreferences = loadPreferencesFileUnlocked().getProperty("sampleBrowser", {});
+    if (! browserPreferences.isObject()) browserPreferences = juce::var(new juce::DynamicObject());
+    browserRecentPaths.clear();
+    if (const auto* paths = browserPreferences.getProperty("recentPaths", {}).getArray())
+        for (const auto& path : *paths)
+            if (path.isString() && path.toString().isNotEmpty() && browserRecentPaths.size() < 8)
+                browserRecentPaths.addIfNotAlreadyThere(path.toString());
+    auto gain = (double) browserPreferences.getProperty("gain", 0.5);
+    audioProcessor.browserPreview.setGain(std::isfinite(gain) ? (float) gain : 0.5f);
+}
+void WebViewEditor::saveBrowserPreferences()
+{
+    const juce::ScopedLock guard(uiPreferencesLock);
+    if (! browserPreferences.isObject()) browserPreferences = juce::var(new juce::DynamicObject());
+    juce::Array<juce::var> paths;
+    for (const auto& path : browserRecentPaths) paths.add(path);
+    browserPreferences.getDynamicObject()->setProperty("recentPaths", paths);
+    auto value = loadPreferencesFileUnlocked();
+    value.getDynamicObject()->setProperty("sampleBrowser", browserPreferences);
+    writePreferencesFileUnlocked(value);
 }

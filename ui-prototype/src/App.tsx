@@ -15,6 +15,7 @@ import { TabBar } from './components/TabBar/TabBar';
 import type { TabId } from './components/TabBar/TabBar';
 import { MixerView } from './components/MixerView/MixerView';
 import { PadsView } from './components/PadsView/PadsView';
+import { SampleBrowser, sampleVariations } from './components/SampleBrowser/SampleBrowser';
 import { MissingSamplesView } from './components/MissingSamplesView/MissingSamplesView';
 import { PadContextMenu } from './components/PadContextMenu/PadContextMenu';
 import { PadColorPicker } from './components/PadColorPicker/PadColorPicker';
@@ -268,14 +269,14 @@ function swapPadSounds(pads: PadParams[], sourceIndex: number, targetIndex: numb
 }
 
 async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> {
+  let context: AudioContext | undefined;
   try {
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return {};
 
-    const context = new AudioContextClass();
+    context = new AudioContextClass();
     const arrayBuffer = await file.arrayBuffer();
     const audioBuffer = await context.decodeAudioData(arrayBuffer);
-    await context.close();
 
     return {
       sampleLengthMs: audioBuffer.duration * 1000,
@@ -288,6 +289,8 @@ async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> 
     };
   } catch {
     return {};
+  } finally {
+    await context?.close();
   }
 }
 
@@ -1484,6 +1487,36 @@ export default function App() {
     setKitDirty(true);
   }, []);
 
+  // Browser imports replace sample data only, including Layer 1. Never route
+  // through pad-level DnD's reset-settings semantics.
+  const handleBrowserImportFile = useCallback(async (file: File, replace: boolean) => {
+    const index = selectedIndexRef.current;
+    const before = padsRef.current[index];
+    const layerIndex = before.selectedLayerIndex ?? 0;
+    const layer = ensureLayers(before)[layerIndex];
+    const stock = sampleVariations(layer).map(item => ({ ...item }));
+    const active = Math.max(0, Math.min(stock.length - 1, layer.activeSampleStockIndex ?? 0));
+    if (replace ? stock.length === 0 : stock.length >= 5) throw new Error('The variation list changed.');
+    const snapshot = JSON.stringify(before);
+    if (file.size > 128 * 1024 * 1024) throw new Error('File too large for the sample browser.');
+    const analysis = await analyzeBrowserAudioFile(file);
+    if (!analysis.sampleLengthMs) throw new Error('This audio file could not be read.');
+    if (activeTabRef.current !== 'BROWSER' || selectedIndexRef.current !== index || JSON.stringify(padsRef.current[index]) !== snapshot)
+      throw new Error('The destination changed while loading. Please try again.');
+    if (stock.length) stock[active] = { ...stock[active], startMs: layer.startMs, endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs, fadeOutMs: layer.fadeOutMs };
+    const item = { ...analysis, sampleFileName: file.name, sampleFilePath: file.webkitRelativePath || file.name,
+      sampleMissing: false, startMs: 0, endMs: analysis.sampleLengthMs ?? 500, fadeInMs: 0, fadeOutMs: 0 };
+    const target = replace ? active : stock.length;
+    if (replace) stock[target] = item; else stock.push(item);
+    const layers = ensureLayers(before).map((existing, i) => i === layerIndex
+      ? { ...existing, ...item, sampleStock: stock, activeSampleStockIndex: target } : existing);
+    const next = { ...before, layers };
+    if (layerIndex === 0) Object.assign(next, item, { sampleStock: stock, activeSampleStockIndex: target });
+    setPads(previous => previous.map((pad, i) => i === index ? next : pad));
+    setKitDirty(true);
+  }, [setPads]);
+
   const handleSampleDrop = useCallback(async (
     index: number,
     file: File,
@@ -1554,7 +1587,7 @@ export default function App() {
     fileInputRef.current?.click();
   }, [selectedIndex]);
 
-  const handleSelectSelectedSampleStock = useCallback((stockIndex: number) => {
+  const handleSelectSelectedSampleStock = useCallback((stockIndex: number, audition = true) => {
     const pad = padsRef.current[selectedIndex];
     if (!pad) return;
     const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
@@ -1563,7 +1596,7 @@ export default function App() {
         index: selectedIndex,
         layerIndex,
         stockIndex,
-        audition: true,
+        audition,
       });
       return;
     }
@@ -2145,6 +2178,7 @@ export default function App() {
         />
 
         <main className={`${styles.body} ${
+          activeTab === 'BROWSER' ? styles.bodyBrowser :
           activeTab === 'MIXER'   ? styles.bodyMixer   :
           activeTab === 'MISSING' && missingCount > 0 ? styles.bodyMissing :
                                     styles.bodyPads
@@ -2203,6 +2237,16 @@ export default function App() {
               />
             </section>
           )}
+
+          <section className={activeTab === 'BROWSER' ? styles.browser : styles.viewHidden}>
+            <SampleBrowser active={activeTab === 'BROWSER'} pads={pads} selectedIndex={selectedIndex}
+              onSelectPad={selectPadWithoutAudition}
+              onSelectLayer={index => updateSelected({ selectedLayerIndex: index })}
+              onSelectVariation={index => handleSelectSelectedSampleStock(index, false)}
+              onImportFile={handleBrowserImportFile}
+              masterKnob={masterKnob} onMasterKnobChange={handleMasterKnobChange}
+              masterClipHit={masterClipHit} onResetMasterClip={resetMasterClip} />
+          </section>
 
           {activeTab === 'MISSING' && missingCount > 0 && (
             <section className={styles.missing}>

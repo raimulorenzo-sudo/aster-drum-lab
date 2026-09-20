@@ -41,7 +41,8 @@ private:
     {
         Pads,
         Mixer,
-        Missing
+        Missing,
+        Browser
     };
 
     ActiveWebTab activeWebTab { ActiveWebTab::Pads };
@@ -72,6 +73,25 @@ private:
     };
 
     PendingSampleByteDrop pendingSampleByteDrop;
+
+    // Workers own their inputs only. SafePointer callbacks publish on the message thread.
+    juce::ThreadPool browserWorkers { 2 };
+    std::shared_ptr<std::atomic<int>> browserDirectoryGeneration = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> browserPreviewGeneration = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> browserImportGeneration = std::make_shared<std::atomic<int>>(0);
+    juce::File browserDirectory;
+    juce::StringArray browserRecentPaths;
+    juce::var browserPreferences;
+    juce::var browserListing;
+    int browserPreviewRequest = 0;
+    bool browserWasPlaying = false;
+    bool browserImportBusy = false;
+    void handleBrowserMessage(const juce::String&, const juce::var&);
+    void openBrowserDirectory(const juce::File&, int requestId);
+    void cancelBrowserWork();
+    void loadBrowserPreferences();
+    void saveBrowserPreferences();
+    void emitBrowserResult(const juce::String& kind, int requestId, const juce::String& error = {});
 
     // C++ → JS: 現在の Kit を JSON でブロードキャスト
     void broadcastKitState();

@@ -468,6 +468,7 @@ bool DrumSamplerAudioProcessor::consumeLearnedMidiNote(int& padIndex, int& midiN
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    browserPreview.stopImmediately();
     hostSampleRate = sampleRate;
     voiceManager.allNotesOff();
     voiceManager.prepare(sampleRate, samplesPerBlock);
@@ -480,6 +481,7 @@ void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerB
 
 void DrumSamplerAudioProcessor::releaseResources()
 {
+    browserPreview.stopImmediately();
     voiceManager.allNotesOff();
 }
 
@@ -504,6 +506,7 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
    #if ASTER_DEMO_BUILD
     if (isNonRealtime())
     {
+        browserPreview.stopImmediately();
         demoOfflineRenderBlocked.store(true, std::memory_order_release);
         voiceManager.allNotesOff();
         voiceManager.clearPadLevels();
@@ -516,6 +519,7 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     // not leak any audio.
     if (AsterDemoMode::hasExpired() && ! voiceManager.hasActiveVoices())
     {
+        browserPreview.stopImmediately();
         voiceManager.clearPadLevels();
         midiMessages.clear();
         return;
@@ -526,8 +530,10 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         syncKitFromParameters();
     syncFxAutomationSlots();
 
+    if (isNonRealtime()) browserPreview.stopImmediately();
+    const bool hasBrowserPreview = browserPreview.isPlaying() && ! isNonRealtime();
     const bool hasMidi = ! midiMessages.isEmpty();
-    if (! hasMidi && ! voiceManager.hasActiveVoices())
+    if (! hasMidi && ! voiceManager.hasActiveVoices() && ! hasBrowserPreview)
     {
         voiceManager.clearPadLevels();
         return;
@@ -637,6 +643,9 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     renderVoicesUntil(numSamples);
+
+    if (hasBrowserPreview && busBuffers[0] != nullptr)
+        renderedAnySegment |= browserPreview.render(*busBuffers[0], hostSampleRate);
 
     if (! renderedAnySegment && ! voiceManager.hasActiveVoices())
     {
@@ -1921,6 +1930,8 @@ void DrumSamplerAudioProcessor::reloadSamplesFromCurrentKit()
 
 void DrumSamplerAudioProcessor::hydrateRuntimeFromKit(bool restoreFromParametersTree)
 {
+    ++browserKitGeneration;
+    browserPreview.stopImmediately();
     if (! restoreFromParametersTree)
         syncParametersFromKit();
     syncKitFromParameters();
@@ -3034,4 +3045,61 @@ juce::AudioProcessorEditor* DrumSamplerAudioProcessor::createEditor()
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new DrumSamplerAudioProcessor();
+}
+
+// Explicit browser semantics: ADD never silently replaces a full bank. All sound
+// controls remain intact; only sample-dependent trim/fades and active slot change.
+bool DrumSamplerAudioProcessor::commitBrowserSample(int padIndex, int layerIndex,
+                                                     const juce::File& file, bool replace,
+                                                     int expectedCount, int expectedActive,
+                                                     BrowserSample&& sample)
+{
+    const juce::ScopedLock callbackGuard(getCallbackLock());
+    if (padIndex < 0 || padIndex >= NUM_PADS || ! sample.audio) return false;
+    syncKitFromParameters();
+    auto& pad = kit.pads[(size_t) padIndex];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+    auto& layer = pad.layers[(size_t) layerIndex];
+    const int count = layer.sampleStock.empty() ? ((layer.sampleFilePath.isNotEmpty() || layer.sampleFileName.isNotEmpty()) ? 1 : 0)
+                                              : (int) layer.sampleStock.size();
+    const int active = count == 0 ? 0 : juce::jlimit(0, count - 1, layer.activeSampleStockIndex);
+    if (count != expectedCount || active != expectedActive
+        || (replace ? count == 0 : count >= MAX_SAMPLE_STOCK_PER_LAYER)) return false;
+    const int target = replace ? active : count;
+    if (! fileManager.installDecodedVariation(padIndex, layerIndex, target,
+                                              std::move(sample.audio), sample.sampleRate)) return false;
+    layer.captureActiveSampleToStock();
+    LayerSampleStockItem item;
+    item.sampleFileName = file.getFileName();
+    item.sampleFilePath = file.getFullPathName();
+    if (layer.smartTrim) { item.startPosition = sample.trimStart; item.endPosition = sample.trimEnd; }
+    if (replace) layer.sampleStock[(size_t) target] = item;
+    else layer.sampleStock.push_back(item);
+    layer.activateSampleStockItem(target);
+    fileManager.setActiveVariationIndex(padIndex, layerIndex, target);
+    voiceManager.resetRoundRobin(padIndex, layerIndex);
+    if (layerIndex == 0) pad.syncFlatFromLayer0();
+    syncParametersFromKit();
+    markKitDirty();
+    return true;
+}
+
+// Identity excludes continuously automated sound controls, so browsing while a
+// DAW automates volume/pan still works. A kit restore or changed sample bank
+// invalidates pending imports even when the visible pad index stays the same.
+juce::String DrumSamplerAudioProcessor::browserTargetToken(int padIndex, int layerIndex) const
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return {};
+    const auto& pad = kit.pads[(size_t) padIndex];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return {};
+    juce::Array<juce::var> token;
+    token.add((juce::int64) browserKitGeneration.load());
+    token.add(pad.padName); token.add(pad.layerCount()); token.add(layerIndex);
+    for (const auto& layer : pad.layers)
+    {
+        token.add(layer.layerName); token.add(layer.activeSampleStockIndex);
+        for (const auto& item : layer.normalizedSampleStock())
+        { token.add(item.sampleFilePath); token.add(item.sampleFileName); }
+    }
+    return juce::JSON::toString(juce::var(token), true);
 }

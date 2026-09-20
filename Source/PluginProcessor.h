@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include "KitData.h"
 #include "AudioFileManager.h"
+#include "SampleBrowserAudio.h"
 #include "VoiceManager.h"
 #include "PadParameterSpecs.h"
 #include "LayerParameterSpecs.h"
@@ -75,6 +76,12 @@ public:
     void clearPadSample(int padIndex);
     // 任意 Layer のサンプルだけ消去。layerIndex==0 で flat fields もクリア。
     void clearLayerSample(int padIndex, int layerIndex);
+
+    SampleBrowserPreview browserPreview;
+    juce::String browserTargetToken(int padIndex, int layerIndex) const;
+    bool commitBrowserSample(int padIndex, int layerIndex, const juce::File& file,
+                             bool replace, int expectedCount, int expectedActive,
+                             BrowserSample&& sample);
 
     // ── Pad 操作（コンテキストメニューから呼ばれる） ─────────────────────
     // Copy: 全パラメータをクリップボードへ（midiNote は除く）
@@ -262,6 +269,7 @@ private:
                                  float normalizedValue,
                                  bool notifyHost);
 
+    std::atomic<std::uint64_t> browserKitGeneration { 0 };
     KitData          kit;
     juce::AudioProcessorValueTreeState parameters;
     AudioFileManager fileManager;

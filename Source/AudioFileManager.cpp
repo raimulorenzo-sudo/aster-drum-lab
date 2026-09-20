@@ -244,3 +244,17 @@ bool AudioFileManager::hasSample(int padIndex, int layerIndex, int variationInde
     return buffers[static_cast<size_t>(padIndex)][static_cast<size_t>(layerIndex)]
                   [static_cast<size_t>(variationIndex)] != nullptr;
 }
+
+// Worker-decoded browser audio is installed without file I/O under the write lock.
+bool AudioFileManager::installDecodedVariation(int padIndex, int layerIndex, int variationIndex,
+                                               std::unique_ptr<juce::AudioBuffer<float>> audio, double sampleRate)
+{
+    if (! inRange(padIndex, layerIndex) || ! variationInRange(variationIndex)
+        || ! audio || audio->getNumSamples() <= 0 || sampleRate <= 0.0) return false;
+    {
+        juce::ScopedWriteLock guard(rwLock);
+        buffers[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex].swap(audio);
+        sampleRates[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex] = sampleRate;
+    }
+    return true;
+}

@@ -34,6 +34,9 @@ public:
         return loadFileForPad(padIndex, 0, file);
     }
 
+    bool installDecodedVariation(int padIndex, int layerIndex, int variationIndex,
+                                 std::unique_ptr<juce::AudioBuffer<float>> audio, double sampleRate);
+
     // ── レイヤー個別クリア ─────────────────────────────────────────────────
     void clearLayer(int padIndex, int layerIndex);
     void clearSampleVariation(int padIndex, int layerIndex, int variationIndex);
