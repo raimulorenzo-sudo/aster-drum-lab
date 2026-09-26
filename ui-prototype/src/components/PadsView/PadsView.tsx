@@ -84,6 +84,7 @@ function PadsViewComponent({
   masterClipHit,
   onResetMasterClip,
 }: PadsViewProps) {
+  const [showEnvelopePreview, setShowEnvelopePreview] = useState(false);
   // Layer-aware view: 選択中 Layer の値を flat フィールドに上書きした「仮想 Pad」を
   // 既存の WaveformEditor / PadControlSections に渡す。編集側 patch は
   // routeLayerPatch で Layer-level キーだけ layers[idx] に振り分けてから親へ。
@@ -176,6 +177,7 @@ function PadsViewComponent({
           <WaveformEditor
             pad={viewPad}
             padIndex={selectedIndex}
+            showEnvelopePreview={showEnvelopePreview}
             onChange={onChangeLayerAware}
             onSampleDrop={onWaveformSampleDrop}
             onAddSampleStock={onAddSampleStock}
@@ -192,6 +194,7 @@ function PadsViewComponent({
             padIndex={selectedIndex}
             onChange={onChangeLayerAware}
             liveVelocity={liveVelocity}
+            onEnvelopePreviewChange={setShowEnvelopePreview}
           />
         </section>
       </div>

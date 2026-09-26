@@ -18,11 +18,11 @@
 
 .lowerRow {
   display: grid;
-  grid-template-columns: 220px 240px;
+  grid-template-columns: minmax(200px, 260px) minmax(210px, 240px);
   align-items: start;
   justify-content: center;
-  gap: 40px;
-  width: 520px;
+  gap: 30px;
+  width: 550px;
   max-width: 100%;
   margin: 0 auto;
   padding-top: 12px;
@@ -84,12 +84,19 @@
   color: var(--text-sub);
 }
 
+.envelopeMode {
+  margin-left: 7px;
+  color: var(--platinum-gold, #c9ad78);
+  font-size: 8px;
+  letter-spacing: 0.10em;
+}
+
 .envelopeControls {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  padding: 0 10px;
+  gap: 14px;
+  padding: 0 4px;
 }
 
 .velToggle {
@@ -124,8 +131,8 @@
   }
 
   .lowerRow {
-    grid-template-columns: minmax(190px, 220px) minmax(210px, 240px);
-    gap: 24px;
+    grid-template-columns: minmax(200px, 230px) minmax(200px, 230px);
+    gap: 20px;
   }
 }
 

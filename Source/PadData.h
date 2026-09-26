@@ -141,7 +141,7 @@ struct LayerSampleStockItem
 // Layer に置く設定:
 //   - サンプル参照
 //   - Volume / Pan / Pitch（Layer 単位の音量・パン・ピッチ）
-//   - Attack / Release（エンベロープ）
+//   - Attack / Hold / Decay / Release（エンベロープ）
 //   - Start/End/FadeIn/FadeOut（トリム & フェード）
 //   - Reverse / Smart Trim（サンプル依存の挙動）
 //   - Layer Mute / Solo（Pad 内のレイヤー間で有効/無効）
@@ -177,6 +177,8 @@ struct LayerData
 
     // ── エンベロープ ───────────────────────────────────────────────────────
     float attack  { 0.0f };      // 秒（0 = 原音の立ち上がりを維持）
+    float hold    { -1.0f };      // 秒（-1 = FULL、One Shot の終端まで維持）
+    float decay   { 0.05f };      // 秒（One Shot の有限 Hold 後のみ使用）
     float release { 0.05f  };    // 秒
 
     // ── トリム ─────────────────────────────────────────────────────────────
@@ -266,6 +268,8 @@ struct PadData
 
     // ── エンベロープ ──────────────────────────────────────────────────────────
     float attack  { 0.0f };                  // 秒（0 = 即時に最大音量）
+    float hold    { -1.0f };                  // 秒（-1 = FULL、Layer 0 mirror）
+    float decay   { 0.05f };                  // 秒（Layer 0 mirror）
     float release { 0.05f  };               // 秒（フェードアウト時間）
 
     // ── トリム位置（0.0〜1.0） ────────────────────────────────────────────────

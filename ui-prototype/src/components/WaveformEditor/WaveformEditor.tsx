@@ -15,6 +15,7 @@ import { padAutomationTarget } from '../../utils/automationTarget';
 interface WaveformEditorProps {
   pad: PadParams;
   padIndex: number;
+  showEnvelopePreview?: boolean;
   onChange: (patch: Partial<PadParams>) => void;
   onSampleDrop?: (file: File) => void;
   onAddSampleStock?: () => void;
@@ -43,6 +44,7 @@ const ZOOM_STEP = 1.6;              // ボタン / wheel 1 step あたりの倍�
 function WaveformEditorComponent({
   pad,
   padIndex,
+  showEnvelopePreview = false,
   onChange,
   onSampleDrop,
   onAddSampleStock,
@@ -228,6 +230,60 @@ function WaveformEditorComponent({
   // ms / fade を pixel に
   const fadeInX = startX + xFromMs(trim.fadeInMs);
   const fadeOutX = endX - xFromMs(trim.fadeOutMs);
+
+  const envelopePreviewPath = useMemo(() => {
+    if (!hasWaveform || !showEnvelopePreview || endX <= startX) return '';
+
+    const sourceDurationSec = Math.max(0.001, (trim.endMs - trim.startMs) / 1000);
+    const totalPitchSemitones = pad.pitch + pad.fine / 100
+      + (pad.padPitch ?? 0) + (pad.padFine ?? 0) / 100;
+    const playbackDurationSec = pad.keepLength
+      ? sourceDurationSec
+      : sourceDurationSec / Math.pow(2, totalPitchSemitones / 12);
+    const duration = Math.max(0.001, playbackDurationSec);
+    const attack = Math.max(0, pad.attack);
+    const hold = pad.hold;
+    const decay = Math.max(0, pad.decay);
+    const envTop = waveTop + 7;
+    const envBottom = waveBottom - 7;
+    const envHeight = envBottom - envTop;
+    const pointCount = 72;
+
+    const amplitudeAt = (time: number) => {
+      if (attack > 0 && time < attack) return time / attack;
+      if (pad.playMode === 'Gate' || hold < 0) return 1;
+      const afterAttack = Math.max(0, time - attack);
+      if (afterAttack < hold) return 1;
+      if (decay <= 0) return 0;
+      return Math.max(0, 1 - (afterAttack - hold) / decay);
+    };
+
+    return Array.from({ length: pointCount }, (_, index) => {
+      const progress = index / (pointCount - 1);
+      const x = startX + (endX - startX) * progress;
+      const amplitude = Math.max(0, Math.min(1, amplitudeAt(duration * progress)));
+      const y = envBottom - amplitude * envHeight;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+  }, [
+    endX,
+    hasWaveform,
+    pad.attack,
+    pad.decay,
+    pad.fine,
+    pad.hold,
+    pad.keepLength,
+    pad.padFine,
+    pad.padPitch,
+    pad.pitch,
+    pad.playMode,
+    showEnvelopePreview,
+    startX,
+    trim.endMs,
+    trim.startMs,
+    waveBottom,
+    waveTop,
+  ]);
   const fadeInActive = draggingHandle === 'fadeIn';
   const fadeOutActive = draggingHandle === 'fadeOut';
   const fadeInLabelVisible = trim.fadeInMs > 0.05 || draggingHandle === 'fadeIn';
@@ -1018,6 +1074,20 @@ function WaveformEditorComponent({
                 d={`M ${fadeOutX} ${waveTop} L ${endX} ${waveBottom}`}
                 className={styles.fadeCurve}
               />
+            </g>
+          )}
+
+          {envelopePreviewPath && (
+            <g className={styles.envelopePreview} style={{ pointerEvents: 'none' }}>
+              <path d={envelopePreviewPath} className={styles.envelopePreviewShadow} />
+              <path d={envelopePreviewPath} className={styles.envelopePreviewPath} />
+              <text
+                x={Math.max(startX + 2, Math.min(endX - 8, startX + 10))}
+                y={waveTop + 17}
+                className={styles.envelopePreviewLabel}
+              >
+                {pad.playMode === 'OneShot' ? 'ENV · ONE SHOT' : 'ENV · GATE / RELEASE ON NOTE OFF'}
+              </text>
             </g>
           )}
 

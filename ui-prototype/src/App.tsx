@@ -1770,6 +1770,8 @@ export default function App() {
     pitch: 0,
     fine: 0,
     attack: 0,
+    hold: -1,
+    decay: 0.05,
     release: 0.05,
     startMs: 0,
     endMs: sampleLengthMs ?? FALLBACK_SAMPLE_LENGTH_MS,

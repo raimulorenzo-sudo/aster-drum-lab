@@ -51,6 +51,8 @@ export interface LayerParams {
 
   // エンベロープ
   attack: number;       // sec
+  hold: number;         // sec; -1 = FULL (One Shot sample end)
+  decay: number;        // sec; One Shot finite Hold only
   release: number;      // sec
 
   // トリム
@@ -224,6 +226,8 @@ export interface PadParams {
 
   // エンベロープ
   attack: number;          // sec
+  hold: number;            // sec; -1 = FULL
+  decay: number;           // sec
   release: number;         // sec
 
   // トリム

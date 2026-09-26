@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import shared from '../../PadControlSections/PadControlSections.module.css';
 import styles from './PlaybackTab.module.css';
 import { Knob } from '../../Knob/Knob';
@@ -21,9 +21,20 @@ interface Props {
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
   liveVelocity?: number | null;
+  onEnvelopePreviewChange?: (visible: boolean) => void;
 }
 
-export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
+const HOLD_MAX_SECONDS = 4;
+const DECAY_MAX_SECONDS = 4;
+const FULL_HOLD_THRESHOLD = 0.995;
+
+export function PlaybackTab({
+  pad,
+  padIndex,
+  onChange,
+  liveVelocity,
+  onEnvelopePreviewChange,
+}: Props) {
   const layerIdx = selectedLayerIndexOf(pad);
   const ownerKey = `${padIndex}:${layerIdx}`;
   const layers   = ensureLayers(pad);
@@ -53,6 +64,12 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
     () => onChange({ polarityInvert: !polarityOn }),
     [onChange, polarityOn],
   );
+
+  useEffect(() => () => onEnvelopePreviewChange?.(false), [onEnvelopePreviewChange]);
+
+  const holdKnobValue = pad.hold < 0
+    ? 1
+    : Math.min(FULL_HOLD_THRESHOLD - 0.001, pad.hold / HOLD_MAX_SECONDS);
 
   return (
     <div className={styles.root}>
@@ -102,8 +119,24 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
       </div>
 
       <div className={styles.lowerRow}>
-        <div className={styles.envelopeSection}>
-          <span className={styles.sectionLabel}>LAYER ENVELOPE</span>
+        <div
+          className={styles.envelopeSection}
+          onPointerEnter={() => onEnvelopePreviewChange?.(true)}
+          onPointerLeave={event => {
+            if (!event.currentTarget.contains(document.activeElement))
+              onEnvelopePreviewChange?.(false);
+          }}
+          onFocusCapture={() => onEnvelopePreviewChange?.(true)}
+          onBlurCapture={event => {
+            const nextFocus = event.relatedTarget;
+            if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus))
+              onEnvelopePreviewChange?.(false);
+          }}
+        >
+          <span className={styles.sectionLabel}>
+            LAYER ENVELOPE
+            <span className={styles.envelopeMode}>{pad.playMode === 'OneShot' ? 'ONE SHOT' : 'GATE'}</span>
+          </span>
           <div className={styles.envelopeControls}>
             <Knob ownerKey={ownerKey} size={52} label="ATTACK"
               automationTarget={layerIdx === 0 ? padTarget('attack', 'Attack') : undefined}
@@ -115,16 +148,42 @@ export function PlaybackTab({ pad, padIndex, onChange, liveVelocity }: Props) {
                 return parsed === null ? null : (parsed / 1000) / 2.0;
               }}
               onChange={v => onChange({ attack: v * 2.0 })} />
-            <Knob ownerKey={ownerKey} size={52} label="RELEASE"
-              automationTarget={layerIdx === 0 ? padTarget('release', 'Release') : undefined}
-              value={pad.release / 4.0}
-              defaultValue={defaultPadParam('release') / 4.0}
-              valueText={formatMs(pad.release * 1000, 0)}
-              parseInput={text => {
-                const parsed = parseNumericText(text);
-                return parsed === null ? null : (parsed / 1000) / 4.0;
-              }}
-              onChange={v => onChange({ release: v * 4.0 })} />
+            {pad.playMode === 'OneShot' ? (
+              <>
+                <Knob ownerKey={ownerKey} size={52} label="HOLD"
+                  value={holdKnobValue}
+                  defaultValue={1}
+                  valueText={pad.hold < 0 ? 'FULL' : formatMs(pad.hold * 1000, 0)}
+                  parseInput={text => {
+                    if (text.trim().toUpperCase() === 'FULL') return 1;
+                    const parsed = parseNumericText(text);
+                    return parsed === null ? null : (parsed / 1000) / HOLD_MAX_SECONDS;
+                  }}
+                  onChange={v => onChange({
+                    hold: v >= FULL_HOLD_THRESHOLD ? -1 : v * HOLD_MAX_SECONDS,
+                  })} />
+                <Knob ownerKey={ownerKey} size={52} label="DECAY"
+                  value={pad.decay / DECAY_MAX_SECONDS}
+                  defaultValue={defaultPadParam('decay') / DECAY_MAX_SECONDS}
+                  valueText={formatMs(pad.decay * 1000, 0)}
+                  parseInput={text => {
+                    const parsed = parseNumericText(text);
+                    return parsed === null ? null : (parsed / 1000) / DECAY_MAX_SECONDS;
+                  }}
+                  onChange={v => onChange({ decay: v * DECAY_MAX_SECONDS })} />
+              </>
+            ) : (
+              <Knob ownerKey={ownerKey} size={52} label="RELEASE"
+                automationTarget={layerIdx === 0 ? padTarget('release', 'Release') : undefined}
+                value={pad.release / 4.0}
+                defaultValue={defaultPadParam('release') / 4.0}
+                valueText={formatMs(pad.release * 1000, 0)}
+                parseInput={text => {
+                  const parsed = parseNumericText(text);
+                  return parsed === null ? null : (parsed / 1000) / 4.0;
+                }}
+                onChange={v => onChange({ release: v * 4.0 })} />
+            )}
           </div>
         </div>
 

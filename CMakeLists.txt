@@ -234,6 +234,17 @@ if(ASTER_BUILD_TESTS)
     target_link_libraries(DrumSamplerKeepLengthTests PRIVATE DrumSampler)
     add_test(NAME DrumSamplerKeepLength COMMAND DrumSamplerKeepLengthTests)
 
+    add_executable(DrumSamplerEnvelopeTests
+        Tests/EnvelopeTest.cpp
+    )
+    target_include_directories(DrumSamplerEnvelopeTests
+        PRIVATE
+            "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+            "${juce_SOURCE_DIR}/modules"
+    )
+    target_link_libraries(DrumSamplerEnvelopeTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerEnvelope COMMAND DrumSamplerEnvelopeTests)
+
     add_executable(DrumSamplerDemoModeTests
         Tests/DemoModeTest.cpp
     )

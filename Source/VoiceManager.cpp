@@ -476,7 +476,9 @@ bool VoiceManager::startLayerVoice(int                     padIndex,
             L.keepLength,
             sampleRateRatio,
             humanizedPitch,
-            humanize.pitchOffset);
+            humanize.pitchOffset,
+            L.hold,
+            L.decay);
     return true;
 }
 

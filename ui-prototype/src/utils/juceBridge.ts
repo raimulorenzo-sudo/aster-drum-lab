@@ -94,6 +94,8 @@ export interface JucePadData {
   pitch: number;
   fine?: number;
   attack: number;
+  hold?: number;
+  decay?: number;
   release: number;
   startPosition: number;   // normalised 0..1 within sample
   endPosition: number;     // normalised 0..1 within sample
@@ -151,6 +153,8 @@ export interface JuceLayerData {
   pitch: number;
   fine?: number;
   attack: number;
+  hold?: number;
+  decay?: number;
   release: number;
   startPosition: number;
   endPosition: number;
@@ -284,6 +288,8 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     pitch:          jl.pitch,
     fine:           typeof jl.fine === 'number' ? jl.fine : 0,
     attack:         jl.attack,
+    hold:           typeof jl.hold === 'number' ? jl.hold : -1,
+    decay:          typeof jl.decay === 'number' ? jl.decay : 0.05,
     release:        jl.release,
     sampleLengthMs: layerLengthMs,
     waveformPeaks,
@@ -445,6 +451,8 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     pitch:          jp.pitch,
     fine:           typeof jp.fine === 'number' ? jp.fine : 0,
     attack:         jp.attack,
+    hold:           typeof jp.hold === 'number' ? jp.hold : -1,
+    decay:          typeof jp.decay === 'number' ? jp.decay : 0.05,
     release:        jp.release,
     sampleLengthMs,
     startMs,
@@ -500,6 +508,8 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
     pitch:          jp.pitch,
     fine:           typeof jp.fine === 'number' ? jp.fine : 0,
     attack:         jp.attack,
+    hold:           typeof jp.hold === 'number' ? jp.hold : -1,
+    decay:          typeof jp.decay === 'number' ? jp.decay : 0.05,
     release:        jp.release,
     sampleLengthMs,
     waveformPeaks:  Array.isArray(jp.waveformPeaks)
@@ -626,6 +636,10 @@ export function sendPadPatchToJuce(
   if (patch.outputAssign !== undefined) sendToJuce('setOutput',       { index, value: patch.outputAssign });
   if (patch.swapLR       !== undefined) sendToJuce('setPadSwapLR',    { index, value: patch.swapLR });
   if (patch.attack       !== undefined) sendToJuce('setAttack',       { index, value: patch.attack });
+  if (patch.layers === undefined && patch.hold !== undefined)
+    sendToJuce('setLayerHold', { index, layerIndex: 0, value: patch.hold });
+  if (patch.layers === undefined && patch.decay !== undefined)
+    sendToJuce('setLayerDecay', { index, layerIndex: 0, value: patch.decay });
   if (patch.release      !== undefined) sendToJuce('setRelease',      { index, value: patch.release });
   if (patch.velocitySens !== undefined) sendToJuce('setVelocitySens', { index, value: patch.velocitySens });
   if (patch.humanize     !== undefined) sendToJuce('setHumanize',     { index, value: patch.humanize });
@@ -757,6 +771,10 @@ function sendLayerPatches(
     }
     if ((a.fine ?? 0) !== (b.fine ?? 0))
       sendToJuce('setLayerFine', { index, layerIndex: li, value: b.fine ?? 0 });
+    if ((a.hold ?? -1) !== (b.hold ?? -1))
+      sendToJuce('setLayerHold', { index, layerIndex: li, value: b.hold ?? -1 });
+    if ((a.decay ?? 0.05) !== (b.decay ?? 0.05))
+      sendToJuce('setLayerDecay', { index, layerIndex: li, value: b.decay ?? 0.05 });
 
     // L2+ の音作りパラメータは flat 側を通らないので、ここから per-layer message
     // を出す。Layer 0 は flat 経由 (setVolume 等) で既に C++ に届いている。

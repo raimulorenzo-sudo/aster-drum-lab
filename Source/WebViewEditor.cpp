@@ -2506,7 +2506,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     // L2+ 用と考えてよい。ただし layerIdx を明示するため layerIdx==0 も受ける。
     else if (type == "setLayerVolume" || type == "setLayerPan" || type == "setLayerPitch"
           || type == "setLayerFine"
-          || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse"
+          || type == "setLayerAttack" || type == "setLayerHold" || type == "setLayerDecay"
+          || type == "setLayerRelease" || type == "setLayerReverse"
           || type == "setLayerKeepLength")
     {
         const int idx = getIndex();
@@ -2526,10 +2527,17 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 else if (type == "setLayerFine")
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Fine, getFloat(), true);
                 else if (type == "setLayerAttack")  L.attack  = juce::jlimit(0.0f, 10.0f, getFloat());
+                else if (type == "setLayerHold")
+                {
+                    const float requested = getFloat();
+                    L.hold = requested < 0.0f ? -1.0f : juce::jlimit(0.0f, 10.0f, requested);
+                }
+                else if (type == "setLayerDecay")   L.decay   = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerRelease") L.release = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerReverse") L.reverse = getBool();
                 else if (type == "setLayerKeepLength") L.keepLength = getBool();
-                if (type == "setLayerAttack" || type == "setLayerRelease"
+                if (type == "setLayerAttack" || type == "setLayerHold"
+                    || type == "setLayerDecay" || type == "setLayerRelease"
                     || type == "setLayerReverse" || type == "setLayerKeepLength")
                 {
                     if (layerIdx == 0)

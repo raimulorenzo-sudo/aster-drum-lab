@@ -456,7 +456,9 @@ void DrumVoice::start(int    padIdx,
                       bool   keepLength,
                       double sourceRateRatio,
                       float  initialPitchSemitones,
-                      float  perVoicePitchOffset) noexcept
+                      float  perVoicePitchOffset,
+                      float  oneShotHoldSec,
+                      float  oneShotDecaySec) noexcept
 {
     padIndex      = padIdx;
     isActive      = true;
@@ -508,6 +510,19 @@ void DrumVoice::start(int    padIdx,
 
     // エンベロープ初期値
     envelope = (attackRate >= 1.0f) ? 1.0f : 0.0f;
+    attackComplete = envelope >= 1.0f;
+
+    // A finite Hold explicitly opts One Shot into the new AHD envelope.
+    // -1 (FULL) is the legacy state and leaves playback sample-accurate to
+    // previous versions, including the optimized unity path below.
+    oneShotDecayEnabled = oneShot && oneShotHoldSec >= 0.0f;
+    oneShotHoldSamplesRemaining = oneShotDecayEnabled && hostSampleRate > 0.0
+        ? juce::jmax(0, juce::roundToInt(oneShotHoldSec * static_cast<float>(hostSampleRate)))
+        : -1;
+    if (oneShotDecayEnabled && oneShotDecaySec > 0.001f && hostSampleRate > 0.0)
+        oneShotDecayRate = 1.0f / static_cast<float>(oneShotDecaySec * hostSampleRate);
+    else
+        oneShotDecayRate = 1.0f;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,6 +546,47 @@ void DrumVoice::forceRelease(float releaseTimeSec, double hostSampleRate) noexce
         releaseRate = 1.0f / static_cast<float>(releaseTimeSec * hostSampleRate);
     else
         releaseRate = 1.0f;
+}
+
+bool DrumVoice::advanceEnvelope() noexcept
+{
+    if (isReleasing)
+    {
+        envelope -= releaseRate;
+        if (envelope <= 0.0f)
+        {
+            envelope = 0.0f;
+            isActive = false;
+            return false;
+        }
+        return true;
+    }
+
+    if (! attackComplete)
+    {
+        envelope = std::min(1.0f, envelope + attackRate);
+        attackComplete = envelope >= 1.0f;
+        return true;
+    }
+
+    if (oneShotDecayEnabled)
+    {
+        if (oneShotHoldSamplesRemaining > 0)
+        {
+            --oneShotHoldSamplesRemaining;
+            return true;
+        }
+
+        envelope -= oneShotDecayRate;
+        if (envelope <= 0.0f)
+        {
+            envelope = 0.0f;
+            isActive = false;
+            return false;
+        }
+    }
+
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -694,19 +750,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
                 : 1.0f;
             for (int i = 0; i < generated; ++i)
             {
-                if (isReleasing)
-                {
-                    envelope -= releaseRate;
-                    if (envelope <= 0.0f)
-                    {
-                        isActive = false;
-                        break;
-                    }
-                }
-                else if (envelope < 1.0f)
-                {
-                    envelope = std::min(1.0f, envelope + attackRate);
-                }
+                if (! advanceEnvelope())
+                    break;
 
                 float fadeGain = 1.0f;
                 if (fadeInSamples > 0 && samplesRendered < fadeInSamples)
@@ -763,6 +808,7 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
     const bool canUseUnityForwardPath =
         ! reversed &&
         ! isReleasing &&
+        ! oneShotDecayEnabled &&
         startDelaySamples <= 0 &&
         attackRate >= 1.0f &&
         envelope >= 1.0f &&
@@ -819,20 +865,8 @@ bool DrumVoice::render(const juce::AudioBuffer<float>& source,
         }
 
         // ── エンベロープ更新 ───────────────────────────────────────────────
-        if (isReleasing)
-        {
-            envelope -= releaseRate;
-            if (envelope <= 0.0f)
-            {
-                isActive = false;
-                break;
-            }
-        }
-        else
-        {
-            if (envelope < 1.0f)
-                envelope = std::min(1.0f, envelope + attackRate);
-        }
+        if (! advanceEnvelope())
+            break;
 
         // ── 再生位置チェック ───────────────────────────────────────────────
         const int pos = static_cast<int>(samplePos);

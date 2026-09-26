@@ -868,6 +868,44 @@
   pointer-events: none;
 }
 
+.envelopePreview {
+  opacity: 0.98;
+}
+
+.envelopePreviewShadow,
+.envelopePreviewPath {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.envelopePreviewShadow {
+  stroke: rgba(0, 0, 0, 0.82);
+  stroke-width: 4.8px;
+}
+
+.envelopePreviewPath {
+  stroke: #e2bd72;
+  stroke-width: 2.1px;
+  filter:
+    drop-shadow(0 0 2px rgba(226, 189, 114, 0.76))
+    drop-shadow(0 0 7px rgba(191, 163, 106, 0.24));
+}
+
+.envelopePreviewLabel {
+  fill: #e2bd72;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.88);
+  stroke-width: 2.6px;
+  vector-effect: non-scaling-stroke;
+}
+
 .previewPlayhead {
   stroke: var(--accent-cyan-hot);
   stroke-width: 1.15px;

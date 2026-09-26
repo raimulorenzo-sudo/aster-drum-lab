@@ -31,6 +31,8 @@ namespace PadDataJson
 
         // エンベロープ
         obj->setProperty("attack",  (double) pad.attack);
+        obj->setProperty("hold",    (double) pad.hold);
+        obj->setProperty("decay",   (double) pad.decay);
         obj->setProperty("release", (double) pad.release);
 
         // トリム
@@ -113,6 +115,8 @@ namespace PadDataJson
             lo->setProperty("pitch",   (double) L.pitch);
             lo->setProperty("fine",    (double) L.fine);
             lo->setProperty("attack",  (double) L.attack);
+            lo->setProperty("hold",    (double) L.hold);
+            lo->setProperty("decay",   (double) L.decay);
             lo->setProperty("release", (double) L.release);
             lo->setProperty("startPosition", (double) L.startPosition);
             lo->setProperty("endPosition",   (double) L.endPosition);

@@ -101,11 +101,15 @@ int main()
         p.selectLayerSampleStock(4, 1, 1);
         auto& target = p.getKit().pads[4].layers[1];
         target.roundRobin = true; target.mute = true; target.solo = true; target.reverse = true;
+        target.hold = 0.12f; target.decay = 0.34f;
         p.syncParametersFromKit();
         expect(p.commitBrowserSample(4, 1, second, true, 5, 1, decodeBrowserSample(second)), "replace explicitly selected slot");
         expect(target.sampleStock.size() == 5 && target.sampleStock[1].sampleFilePath == second.getFullPathName()
                && target.sampleStock[0].sampleFilePath == first.getFullPathName(), "replace leaves siblings intact");
-        expect(target.roundRobin && target.mute && target.solo && target.reverse && near(target.volume,.32f) && near(target.pitch,7), "replace preserves playback and sound settings");
+        expect(target.roundRobin && target.mute && target.solo && target.reverse
+               && near(target.volume,.32f) && near(target.pitch,7)
+               && near(target.hold,.12f) && near(target.decay,.34f),
+               "replace preserves playback and envelope settings");
         const auto identity = p.browserTargetToken(4, 1);
         p.setAutomatableLayerParameter(4, 1, LayerParameterSpecs::Param::Pan, .5f, false);
         expect(p.browserTargetToken(4, 1) == identity, "automation does not invalidate import identity");
@@ -118,7 +122,9 @@ int main()
         DrumSamplerAudioProcessor restored; restored.setStateInformation(state.getData(), (int)state.getSize());
         const auto& reloaded = restored.getKit().pads[4].layers[1];
         expect(reloaded.sampleStock.size() == 5 && reloaded.activeSampleStockIndex == 1 && reloaded.roundRobin
-               && reloaded.sampleFilePath == second.getFullPathName() && near(reloaded.pitch, 7), "browser imports survive session restore");
+               && reloaded.sampleFilePath == second.getFullPathName() && near(reloaded.pitch, 7)
+               && near(reloaded.hold, .12f) && near(reloaded.decay, .34f),
+               "browser imports and layer envelope survive session restore");
         expect(restored.getFileManager().hasSample(47, 7, 0), "last pad/layer audio restored");
         p.setStateInformation(state.getData(), (int)state.getSize());
         expect(p.browserTargetToken(4, 1) != identity, "even identical session restore invalidates pending imports");

@@ -142,6 +142,10 @@ struct DrumVoice
     float envelope     { 0.0f  };    // 現在のエンベロープ値（0.0〜1.0）
     float attackRate   { 0.0f  };    // 1 サンプルあたりの増加量
     float releaseRate  { 0.0f  };    // 1 サンプルあたりの減少量
+    float oneShotDecayRate { 0.0f }; // 有限 Hold 後の 1 サンプルあたりの減少量
+    int   oneShotHoldSamplesRemaining { -1 }; // -1 = FULL（サンプル終端まで維持）
+    bool  oneShotDecayEnabled { false };
+    bool  attackComplete { false };
     bool  isReleasing  { false };
 
     // ── Phase 2: ピッチ / リバース / フェード ────────────────────────────
@@ -188,12 +192,17 @@ struct DrumVoice
                bool   keepLength = false,
                double sourceRateRatio = 1.0,
                float  initialPitchSemitones = 0.0f,
-               float  perVoicePitchOffset = 0.0f
+               float  perVoicePitchOffset = 0.0f,
+               float  oneShotHoldSec = -1.0f,
+               float  oneShotDecaySec = 0.05f
                ) noexcept;
 
     // ── リリース開始（Gate モード専用） ────────────────────────────────────
     void triggerRelease() noexcept;
     void forceRelease(float releaseTimeSec, double hostSampleRate) noexcept;
+
+    // Returns false once a release/decay reaches silence.
+    bool advanceEnvelope() noexcept;
 
     // ── レンダリング（processBlock から呼ぶ） ──────────────────────────────
     // source: このパッドのオーディオバッファ

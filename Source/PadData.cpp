@@ -69,6 +69,8 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("fine",            fine,            nullptr);
 
     vt.setProperty("attack",          attack,          nullptr);
+    vt.setProperty("hold",            hold,            nullptr);
+    vt.setProperty("decay",           decay,           nullptr);
     vt.setProperty("release",         release,         nullptr);
 
     vt.setProperty("startPosition",   startPosition,   nullptr);
@@ -190,8 +192,15 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     fine           = juce::jlimit(-100.0f, 100.0f,
                                   static_cast<float>(vt.getProperty("fine", 0.0f)));
 
-    attack         = vt.getProperty("attack",         attack);
-    release        = vt.getProperty("release",        release);
+    attack         = vt.getProperty("attack", attack);
+    // Missing Hold is the legacy state: keep One Shot at full level until the
+    // trimmed sample ends. A finite Hold explicitly enables the new Decay.
+    hold           = vt.hasProperty("hold")
+                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
+                   : -1.0f;
+    decay          = juce::jlimit(0.0f, 10.0f,
+                                  static_cast<float>(vt.getProperty("decay", decay)));
+    release        = vt.getProperty("release", release);
 
     startPosition  = vt.getProperty("startPosition",  startPosition);
     endPosition    = vt.getProperty("endPosition",    endPosition);
@@ -423,6 +432,8 @@ void PadData::syncLayer0FromFlat() noexcept
     L.pitch         = pitch;
     L.fine          = fine;
     L.attack        = attack;
+    L.hold          = hold;
+    L.decay         = decay;
     L.release       = release;
     L.startPosition = startPosition;
     L.endPosition   = endPosition;
@@ -450,6 +461,8 @@ void PadData::syncFlatFromLayer0() noexcept
     pitch         = L.pitch;
     fine          = L.fine;
     attack        = L.attack;
+    hold          = L.hold;
+    decay         = L.decay;
     release       = L.release;
     startPosition = L.startPosition;
     endPosition   = L.endPosition;
@@ -515,6 +528,8 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("pitch",           pitch,           nullptr);
     vt.setProperty("fine",            fine,            nullptr);
     vt.setProperty("attack",          attack,          nullptr);
+    vt.setProperty("hold",            hold,            nullptr);
+    vt.setProperty("decay",           decay,           nullptr);
     vt.setProperty("release",         release,         nullptr);
     vt.setProperty("startPosition",   startPosition,   nullptr);
     vt.setProperty("endPosition",     endPosition,     nullptr);
@@ -577,8 +592,13 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     pitch          = vt.getProperty("pitch",          pitch);
     fine           = juce::jlimit(-100.0f, 100.0f,
                                   static_cast<float>(vt.getProperty("fine", 0.0f)));
-    attack         = vt.getProperty("attack",         attack);
-    release        = vt.getProperty("release",        release);
+    attack         = vt.getProperty("attack", attack);
+    hold           = vt.hasProperty("hold")
+                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
+                   : -1.0f;
+    decay          = juce::jlimit(0.0f, 10.0f,
+                                  static_cast<float>(vt.getProperty("decay", decay)));
+    release        = vt.getProperty("release", release);
     startPosition  = vt.getProperty("startPosition",  startPosition);
     endPosition    = vt.getProperty("endPosition",    endPosition);
     fadeIn         = vt.getProperty("fadeIn",         fadeIn);
