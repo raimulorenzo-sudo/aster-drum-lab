@@ -48,6 +48,12 @@
   line-height: 1;
 }
 
+.brandTopLine {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
 .brandMark {
   font-family: 'Archivo', var(--font-brand);
   font-size: 27px;
@@ -55,6 +61,20 @@
   letter-spacing: 0.03em;
   color: #f4f2ec;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.32);
+}
+
+.demoBadge {
+  flex: 0 0 auto;
+  padding: 3px 6px 2px;
+  border: 1px solid rgba(202, 178, 112, 0.42);
+  border-radius: 3px;
+  color: var(--platinum-gold);
+  background: rgba(202, 178, 112, 0.07);
+  font-family: var(--font-brand);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.08em;
 }
 
 .brandSub {
@@ -233,6 +253,14 @@
   background-blend-mode: var(--noise-blend), normal;
 }
 
+.actionBtn:disabled {
+  cursor: default;
+  opacity: 0.38;
+  color: var(--text-sub);
+  border-color: transparent;
+  background: transparent;
+}
+
 .menuBtn {
   width: 40px;
   height: 40px;
@@ -301,12 +329,25 @@
     letter-spacing: 0.03em;
   }
 
+  .brandTopLine {
+    gap: 5px;
+  }
+
+  .demoBadge {
+    padding: 2px 4px 1px;
+    font-size: 7px;
+  }
+
   .brandSub {
-    display: none;
+    margin-top: 4px;
+    font-size: 8px;
+    letter-spacing: 0.24em;
   }
 
   .kitLabel {
-    display: none;
+    margin-right: 2px;
+    font-size: 8px;
+    letter-spacing: 0.12em;
   }
 
   .kitSelect,

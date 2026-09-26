@@ -5,11 +5,14 @@ import { EqCurve } from './EqCurve';
 import type { PointId } from './EqCurve';
 import type { EqParams } from '../../types';
 import { parseNumericText } from '../../utils/numericInput';
+import { layerAutomationTarget, type AutomationTarget } from '../../utils/automationTarget';
 
 interface Props {
   eq: EqParams;
   patchEq: (updater: (eq: EqParams) => EqParams) => void;
   onRemove?: () => void;
+  padIndex?: number;
+  layerIndex?: number;
 }
 
 const BANDS: Array<{ id: PointId; label: string; className: string }> = [
@@ -44,11 +47,19 @@ function normToQ(n: number): number {
   return 0.2 + Math.max(0, Math.min(1, n)) * (8 - 0.2);
 }
 
-export function EqBox({ eq, patchEq, onRemove }: Props) {
+export function EqBox({ eq, patchEq, onRemove, padIndex, layerIndex }: Props) {
   const [activeBand, setActiveBand] = useState<PointId>('lowMid');
   const band = eq[activeBand];
   const edgeModeKey = activeBand === 'low' ? 'lowMode' : activeBand === 'high' ? 'highMode' : null;
   const isCutMode = edgeModeKey ? eq[edgeModeKey] === 'cut' : false;
+  const target = (suffix: string, name: string): AutomationTarget | undefined =>
+    padIndex !== undefined && layerIndex !== undefined
+      ? layerAutomationTarget(padIndex, layerIndex, suffix, name)
+      : undefined;
+  const bandPrefix = activeBand === 'low' ? 'eqLow'
+    : activeBand === 'lowMid' ? 'eqLowMid'
+    : activeBand === 'highMid' ? 'eqHighMid'
+    : 'eqHigh';
 
   const onCurveChange = (patch: Partial<EqParams>) => {
     patchEq(current => ({
@@ -68,6 +79,8 @@ export function EqBox({ eq, patchEq, onRemove }: Props) {
             onClick={() => patchEq(cur => ({ ...cur, bypassed: !cur.bypassed }))}
             aria-pressed={!eq.bypassed}
             title={eq.bypassed ? 'Bypassed - click to activate' : 'Active - click to bypass'}
+            data-automation-target-id={target('eqBypass', 'EQ Bypass')?.id}
+            data-automation-target-name={target('eqBypass', 'EQ Bypass')?.name}
           >
             <PowerIcon />
           </button>
@@ -119,6 +132,7 @@ export function EqBox({ eq, patchEq, onRemove }: Props) {
             return v == null ? null : freqToNorm(v);
           }}
           onChange={v => patchEq(cur => ({ ...cur, [activeBand]: { ...cur[activeBand], freq: normToFreq(v) } }))}
+          automationTarget={target(`${bandPrefix}Freq`, `${BANDS.find(item => item.id === activeBand)?.label} Frequency`)}
         />
         <Knob
           size={32}
@@ -131,6 +145,7 @@ export function EqBox({ eq, patchEq, onRemove }: Props) {
           valueText={`${band.gain >= 0 ? '+' : ''}${band.gain.toFixed(1)}`}
           parseInput={parseNumericText}
           onChange={v => patchEq(cur => ({ ...cur, [activeBand]: { ...cur[activeBand], gain: v } }))}
+          automationTarget={target(`${bandPrefix}Gain`, `${BANDS.find(item => item.id === activeBand)?.label} Gain`)}
         />
         <Knob
           size={32}
@@ -143,11 +158,13 @@ export function EqBox({ eq, patchEq, onRemove }: Props) {
             return v == null ? null : qToNorm(v);
           }}
           onChange={v => patchEq(cur => ({ ...cur, [activeBand]: { ...cur[activeBand], q: normToQ(v) } }))}
+          automationTarget={target(`${bandPrefix}Q`, `${BANDS.find(item => item.id === activeBand)?.label} Q`)}
         />
         {edgeModeKey && (
           <ModeSwitch
             value={eq[edgeModeKey]}
             onChange={mode => patchEq(cur => ({ ...cur, [edgeModeKey]: mode }))}
+            automationTarget={target(activeBand === 'low' ? 'eqLowMode' : 'eqHighMode', activeBand === 'low' ? 'EQ Low Cut' : 'EQ High Cut')}
           />
         )}
       </div>
@@ -160,7 +177,11 @@ export function EqBox({ eq, patchEq, onRemove }: Props) {
   );
 }
 
-function ModeSwitch({ value, onChange }: { value: 'shelf' | 'cut'; onChange: (value: 'shelf' | 'cut') => void }) {
+function ModeSwitch({ value, onChange, automationTarget }: {
+  value: 'shelf' | 'cut';
+  onChange: (value: 'shelf' | 'cut') => void;
+  automationTarget?: AutomationTarget;
+}) {
   return (
     <div className={styles.modeWrap}>
       <span className={styles.miniLabel}>MODE</span>
@@ -169,6 +190,8 @@ function ModeSwitch({ value, onChange }: { value: 'shelf' | 'cut'; onChange: (va
           type="button"
           className={`${styles.modeBtn} ${value === 'shelf' ? styles.modeBtnActive : ''}`}
           onClick={() => onChange('shelf')}
+          data-automation-target-id={automationTarget?.id}
+          data-automation-target-name={automationTarget?.name}
         >
           SHELF
         </button>
@@ -176,6 +199,8 @@ function ModeSwitch({ value, onChange }: { value: 'shelf' | 'cut'; onChange: (va
           type="button"
           className={`${styles.modeBtn} ${value === 'cut' ? styles.modeBtnActive : ''}`}
           onClick={() => onChange('cut')}
+          data-automation-target-id={automationTarget?.id}
+          data-automation-target-name={automationTarget?.name}
         >
           CUT
         </button>

@@ -1,6 +1,7 @@
-import { memo, useCallback, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import styles from './Knob.module.css';
 import { parseNumericText } from '../../utils/numericInput';
+import type { AutomationTarget } from '../../utils/automationTarget';
 
 export type KnobProps = {
   /** 現在値 (min..max の範囲) */
@@ -38,6 +39,8 @@ export type KnobProps = {
    * 値変動だけが起きる単一オブジェクト編集では渡さなくてよい。
    */
   ownerKey?: string | number | null;
+  /** AUTO mode/right-click automation assignment target. */
+  automationTarget?: AutomationTarget;
 };
 
 const MIN_ANGLE = -135;
@@ -80,11 +83,13 @@ function KnobImpl({
   defaultValue,
   onReset,
   parseInput,
+  automationTarget,
 }: KnobProps) {
   const uid = useId().replace(/:/g, '');
   const faceGradientId = `knobFace-${uid}`;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  const knobOuterRef = useRef<HTMLDivElement | null>(null);
 
   // ── 値の正規化 (0..1) ─────────────────────────────────────────────
   const range = max - min;
@@ -95,6 +100,41 @@ function KnobImpl({
 
   // ── ドラッグハンドラ (onChange 提供時のみ有効) ───────────────────
   const draggingRef = useRef(false);
+  const wheelValueRef = useRef(value);
+  wheelValueRef.current = value;
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      if (!onChange || range <= 0 || e.deltaY === 0) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Wheel up increases and wheel down decreases. Use a range-relative
+      // increment so every shared Knob (trim, pan, pitch, FX, etc.) responds
+      // consistently; modifiers retain the existing fine-adjust convention.
+      const fine = e.metaKey || e.ctrlKey || e.shiftKey;
+      const step = range * (fine ? 0.001 : 0.01);
+      const direction = e.deltaY < 0 ? 1 : -1;
+      const next = Math.max(min, Math.min(max, wheelValueRef.current + direction * step));
+
+      if (next === wheelValueRef.current) return;
+      wheelValueRef.current = next;
+      onChange(next);
+    },
+    [max, min, onChange, range],
+  );
+
+  useEffect(() => {
+    const knob = knobOuterRef.current;
+    if (!knob) return;
+
+    // WebView/browser wheel listeners can otherwise be passive, which would
+    // change the knob and scroll its surrounding view at the same time.
+    knob.addEventListener('wheel', handleWheel, { passive: false });
+    return () => knob.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       const debug = knobDebugEnabled();
@@ -247,6 +287,7 @@ function KnobImpl({
       {label && <div className={styles.label}>{label}</div>}
 
       <div
+        ref={knobOuterRef}
         className={styles.knobOuter}
         style={{ width: size, height: size }}
         onPointerDown={handlePointerDown}
@@ -257,6 +298,8 @@ function KnobImpl({
         aria-valuenow={value}
         aria-label={label}
         tabIndex={onChange ? 0 : -1}
+        data-automation-target-id={automationTarget?.id}
+        data-automation-target-name={automationTarget?.name}
       >
         <span className={styles.body} aria-hidden="true">
           <span className={styles.face} />

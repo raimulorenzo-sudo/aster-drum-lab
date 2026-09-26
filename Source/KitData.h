@@ -13,9 +13,10 @@ static constexpr int NUM_PAGES      = 3;    // ページ数（A / B / C）
 static constexpr int NUM_OUTPUTS         = 48;  // 最大ステレオアウト数
 static constexpr int OUTPUTS_PER_PAGE    = 16;  // Outputs Overview のページ単位
 static constexpr int NUM_OUTPUT_PAGES    = 3;   // A / B / C
-// kitVersion 6 ─ Layer 対応。Pad は <Layers> 子ノードを持ち、Layer 1+ の情報を含む。
-// 旧バージョン（v <= 5）からの読み込みは PadData::fromValueTree が自動マイグレーション。
-static constexpr int CURRENT_KIT_VERSION = 6;
+// kitVersion 7 ─ Layer One Shot envelope に Hold / Decay を追加。
+// プロパティが無い旧キットは Hold=FULL として従来の One Shot 音を維持する。
+// v6 以前からの読み込みは PadData::fromValueTree が自動マイグレーション。
+static constexpr int CURRENT_KIT_VERSION = 7;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OutputMode  ─  有効なアウトプット数（UI / 内部ルーティング用）

@@ -16,6 +16,7 @@ import {
   selectedLayerIndexOf,
 } from '../../utils/layerView';
 import type { PadParams, PlayMode } from '../../types';
+import { layerAutomationTarget, padAutomationTarget } from '../../utils/automationTarget';
 
 interface PadControlSectionsProps {
   pad: PadParams;
@@ -48,6 +49,10 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
   const isMultiLayer = layerCount >= 2;
   // バッジは L2 以降のみ表示（MAIN=Layer 0 では何も載せない）
   const layerBadge = isMultiLayer && layerIdx >= 1 ? `L${layerIdx + 1}` : undefined;
+  const padTarget = (suffix: string, name: string) => padAutomationTarget(padIndex, suffix, name);
+  const layerOrPadTarget = (suffix: string, name: string) => layerIdx === 0
+    ? padTarget(suffix, name)
+    : layerAutomationTarget(padIndex, layerIdx, suffix, name);
 
   // 任意 Layer の velocityMin/Max を更新 (Slider の各行から呼ばれる)
   const onChangeRange = useCallback(
@@ -84,6 +89,7 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
         <SectionTitle title="SAMPLE TRIM" layerLabel={layerBadge} />
         <div className={styles.knobGrid4}>
           <Knob ownerKey={ownerKey} size={46} label="START" value={trim.startMs / totalMs} defaultValue={0}
+            automationTarget={layerIdx === 0 ? padTarget('start', 'Start') : undefined}
             valueText={formatTrimPercent(trim.startMs, totalMs)}
             parseInput={text => {
               const parsed = text.includes('%') ? parsePercentInput(text) : parseNumericText(text);
@@ -92,6 +98,7 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
             onChange={v => onChange({ startMs: v * totalMs })}
             onReset={() => onChange({ startMs: defaultPadParam('startMs') })} />
           <Knob ownerKey={ownerKey} size={46} label="END" value={trim.endMs / totalMs} defaultValue={1}
+            automationTarget={layerIdx === 0 ? padTarget('end', 'End') : undefined}
             valueText={formatTrimPercent(trim.endMs, totalMs)}
             parseInput={text => {
               const parsed = text.includes('%') ? parsePercentInput(text) : parseNumericText(text);
@@ -100,6 +107,7 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
             onChange={v => onChange({ endMs: v * totalMs })}
             onReset={() => onChange({ endMs: trim.sampleLengthMs })} />
           <Knob ownerKey={ownerKey} size={46} label="FADE IN" value={playbackRangeMs > 0 ? trim.fadeInMs / playbackRangeMs : 0} defaultValue={0}
+            automationTarget={layerIdx === 0 ? padTarget('fadeIn', 'Fade In') : undefined}
             valueText={formatMs(trim.fadeInMs)}
             parseInput={text => {
               const parsed = parseNumericText(text);
@@ -108,6 +116,7 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
             onChange={v => onChange({ fadeInMs: v * playbackRangeMs })}
             onReset={() => onChange({ fadeInMs: defaultPadParam('fadeInMs') })} />
           <Knob ownerKey={ownerKey} size={46} label="FADE OUT" value={playbackRangeMs > 0 ? trim.fadeOutMs / playbackRangeMs : 0} defaultValue={0}
+            automationTarget={layerIdx === 0 ? padTarget('fadeOut', 'Fade Out') : undefined}
             valueText={formatMs(trim.fadeOutMs)}
             parseInput={text => {
               const parsed = parseNumericText(text);
@@ -122,21 +131,25 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
         <SectionTitle title="DYNAMICS" layerLabel={layerBadge} />
         <div className={styles.knobGrid2x2}>
           <Knob ownerKey={ownerKey} size={40} label="ATTACK" value={pad.attack / 2.0} defaultValue={defaultPadParam('attack') / 2.0} valueText={formatMs(pad.attack * 1000)}
+            automationTarget={layerIdx === 0 ? padTarget('attack', 'Attack') : undefined}
             parseInput={text => {
               const parsed = parseNumericText(text);
               return parsed === null ? null : (parsed / 1000) / 2.0;
             }}
             onChange={v => onChange({ attack: v * 2.0 })} />
           <Knob ownerKey={ownerKey} size={40} label="RELEASE" value={pad.release / 4.0} defaultValue={defaultPadParam('release') / 4.0} valueText={formatMs(pad.release * 1000, 0)}
+            automationTarget={layerIdx === 0 ? padTarget('release', 'Release') : undefined}
             parseInput={text => {
               const parsed = parseNumericText(text);
               return parsed === null ? null : (parsed / 1000) / 4.0;
             }}
             onChange={v => onChange({ release: v * 4.0 })} />
           <Knob ownerKey={ownerKey} size={40} label="VELOCITY" value={pad.velocitySens} defaultValue={defaultPadParam('velocitySens')} valueText={`${Math.round(pad.velocitySens * 100)} %`}
+            automationTarget={padTarget('velocity', 'Velocity')}
             parseInput={parsePercentInput}
             onChange={v => onChange({ velocitySens: v })} />
           <Knob ownerKey={ownerKey} size={40} label="HUMANIZE" value={pad.humanize} defaultValue={defaultPadParam('humanize')} valueText={`${Math.round(pad.humanize * 100)} %`}
+            automationTarget={padTarget('humanize', 'Humanize')}
             parseInput={parsePercentInput}
             onChange={v => onChange({ humanize: v })} />
         </div>
@@ -146,16 +159,19 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
         <SectionTitle title="MIXER" layerLabel={layerBadge} />
         <div className={styles.mixerContent}>
           <Knob ownerKey={ownerKey} size={52} label="VOLUME" value={pad.volume} defaultValue={defaultPadParam('volume')} valueText={formatVolume(pad.volume)}
+            automationTarget={layerOrPadTarget('volume', 'Volume')}
             parseInput={text => {
               const parsed = parseNumericText(text);
               return parsed === null ? null : dbToPosition(parsed);
             }}
             onChange={v => onChange({ volume: v })} />
           <Knob ownerKey={ownerKey} size={46} label="PAN" value={pad.pan} min={-1} max={1} defaultValue={defaultPadParam('pan')} bipolar
+            automationTarget={layerOrPadTarget('pan', 'Pan')}
             valueText={formatPan(pad.pan)}
             parseInput={parsePanInput}
             onChange={v => onChange({ pan: v })} />
           <Knob ownerKey={ownerKey} size={46} label="PITCH" value={pad.pitch} min={-24} max={24} defaultValue={defaultPadParam('pitch')} bipolar
+            automationTarget={layerOrPadTarget('pitch', 'Pitch')}
             valueText={formatPitch(pad.pitch)}
             parseInput={parseNumericText}
             onChange={v => onChange({ pitch: v })} />
@@ -211,6 +227,7 @@ function PadControlSectionsComponent({ pad, padIndex, onChange, liveVelocity }: 
           {isMultiLayer && (
             <div className={styles.velocityRangeBlock}>
               <VelocityRangeSlider
+                padIndex={padIndex}
                 layers={layers}
                 activeLayerIndex={layerIdx}
                 onSelectLayer={onSelectLayer}

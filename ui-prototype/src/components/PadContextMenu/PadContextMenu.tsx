@@ -1,23 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import styles from './PadContextMenu.module.css';
 import type { PadParams } from '../../types';
-import { padDisplayColor } from '../../data/padData';
-import { measurePopup, positionPopupFromPoint, positionSubmenuFromAnchor } from '../../utils/popupPosition';
-
-// Preset color palette for "Change Pad Color..." submenu.
-// "Auto" is the special first entry — picking it clears any user override
-// so the pad reverts to its category color.
-const PRESET_COLORS: Array<{ label: string; value: string }> = [
-  { label: 'Blue',   value: '#5b8edb' },
-  { label: 'Cyan',   value: '#52c8e8' },
-  { label: 'Green',  value: '#7fc46e' },
-  { label: 'Yellow', value: '#e0c95a' },
-  { label: 'Orange', value: '#e09a4a' },
-  { label: 'Red',    value: '#d9605a' },
-  { label: 'Pink',   value: '#e08aa8' },
-  { label: 'Purple', value: '#9b78d4' },
-  { label: 'Gray',   value: '#8c8a82' },
-];
+import { measurePopup, positionPopupFromPoint } from '../../utils/popupPosition';
 
 interface PadContextMenuProps {
   x: number;
@@ -40,7 +24,6 @@ interface PadContextMenuProps {
   onResetSettings: () => void;
   onRenamePad: () => void;
   onSetMidiNote: () => void;
-  onChangePadColor: (color: string | undefined) => void;
   onOpenCustomColorPicker: () => void;
   onRevealSample: () => void;
   onAddLayer: () => void;
@@ -73,7 +56,6 @@ export function PadContextMenu({
   onResetSettings,
   onRenamePad,
   onSetMidiNote,
-  onChangePadColor,
   onOpenCustomColorPicker,
   onRevealSample,
   onAddLayer,
@@ -100,25 +82,14 @@ export function PadContextMenu({
   const inLayerSuffix = isMultiLayer ? ` in ${layerNoun}` : '';
   const ofLayerSuffix = isMultiLayer ? ` ${layerNoun}` : '';
   const canAddLayer = layerCount < maxLayers;
-  const [colorMenuOpen, setColorMenuOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>(() =>
     positionPopupFromPoint(x, y, { width: 220, height: 330 }, { width: 220 }),
   );
-  const [submenuStyle, setSubmenuStyle] = useState<CSSProperties>({});
   const menuRef = useRef<HTMLDivElement>(null);
-  const submenuParentRef = useRef<HTMLDivElement>(null);
-  const submenuRef = useRef<HTMLDivElement>(null);
 
   const updateMenuPosition = () => {
     const size = measurePopup(menuRef.current, { width: 220, height: 330 });
     setMenuStyle(positionPopupFromPoint(x, y, size, { width: 220, minHeight: 120 }));
-  };
-
-  const updateSubmenuPosition = () => {
-    if (!submenuParentRef.current) return;
-    const parentRect = submenuParentRef.current.getBoundingClientRect();
-    const size = measurePopup(submenuRef.current, { width: 200, height: 370 });
-    setSubmenuStyle(positionSubmenuFromAnchor(parentRect, size, { width: 200, minHeight: 120 }));
   };
 
   useLayoutEffect(() => {
@@ -131,18 +102,6 @@ export function PadContextMenu({
       window.removeEventListener('scroll', handleViewportChange, true);
     };
   }, [x, y]);
-
-  useLayoutEffect(() => {
-    if (!colorMenuOpen) return;
-    updateSubmenuPosition();
-    const handleViewportChange = () => updateSubmenuPosition();
-    window.addEventListener('resize', handleViewportChange);
-    window.addEventListener('scroll', handleViewportChange, true);
-    return () => {
-      window.removeEventListener('resize', handleViewportChange);
-      window.removeEventListener('scroll', handleViewportChange, true);
-    };
-  }, [colorMenuOpen, menuStyle]);
 
   const item = (label: string, action: () => void, disabled = false) => (
     <button
@@ -158,16 +117,6 @@ export function PadContextMenu({
       {label}
     </button>
   );
-
-  const pickColor = (color: string | undefined) => {
-    onChangePadColor(color);
-    onClose();
-  };
-
-  const openCustomPicker = () => {
-    onOpenCustomColorPicker();
-    onClose();
-  };
 
   return (
     <>
@@ -192,62 +141,7 @@ export function PadContextMenu({
         {item('Clear Pad', onClearPad, !canClearPad)}
         {item('Rename Pad', onRenamePad)}
         {item('Set MIDI Note...', onSetMidiNote)}
-        <div
-          ref={submenuParentRef}
-          className={styles.submenuParent}
-          onMouseEnter={() => setColorMenuOpen(true)}
-        >
-          <button
-            type="button"
-            className={`${styles.item} ${styles.itemWithChevron}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setColorMenuOpen(v => !v);
-            }}
-          >
-            <span>Change Pad Color...</span>
-            <span className={styles.chevron}>▸</span>
-          </button>
-          {colorMenuOpen && (
-            <div ref={submenuRef} className={styles.submenu} style={submenuStyle} role="menu">
-              <button
-                type="button"
-                className={`${styles.item} ${styles.colorItem}`}
-                onClick={() => pickColor(undefined)}
-              >
-                <span
-                  className={styles.colorSwatch}
-                  style={{ background: padDisplayColor({ ...pad, padColor: undefined }) }}
-                />
-                <span>{pad.padColor ? 'Reset to Auto Color' : 'Auto ✓'}</span>
-              </button>
-              <span className={styles.divider} />
-              {PRESET_COLORS.map(({ label, value }) => (
-                <button
-                  key={value}
-                  type="button"
-                  className={`${styles.item} ${styles.colorItem}`}
-                  onClick={() => pickColor(value)}
-                >
-                  <span className={styles.colorSwatch} style={{ background: value }} />
-                  <span>{label}{pad.padColor?.toLowerCase() === value.toLowerCase() ? ' ✓' : ''}</span>
-                </button>
-              ))}
-              <span className={styles.divider} />
-              <button
-                type="button"
-                className={`${styles.item} ${styles.colorItem}`}
-                onClick={openCustomPicker}
-              >
-                <span
-                  className={styles.colorSwatch}
-                  style={{ background: pad.padColor ?? 'linear-gradient(135deg, #888, #ccc)' }}
-                />
-                <span>Custom Color...</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {item('Change Pad Color...', onOpenCustomColorPicker)}
         <span className={styles.divider} />
         {item(
           isMultiLayer

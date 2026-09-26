@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import styles from './PadEditorTabs.module.css';
 import { TrimTab } from './tabs/TrimTab';
 import { PlaybackTab } from './tabs/PlaybackTab';
@@ -9,18 +9,35 @@ import type { PadParams } from '../../types';
 
 export type PadEditorTabId = 'TRIM' | 'PLAYBACK' | 'PAD' | 'FX';
 
-const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PLAYBACK', 'PAD', 'FX'];
+const TAB_IDS: PadEditorTabId[] = ['TRIM', 'PAD', 'PLAYBACK', 'FX'];
+const TAB_LABELS: Record<PadEditorTabId, string> = {
+  TRIM: 'TRIM',
+  PLAYBACK: 'LAYER',
+  PAD: 'PAD',
+  FX: 'FX',
+};
 
 interface Props {
   pad: PadParams;
   padIndex: number;
   onChange: (patch: Partial<PadParams>) => void;
   liveVelocity?: number | null;
+  onEnvelopePreviewChange?: (visible: boolean) => void;
 }
 
-function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props) {
+function PadEditorTabsComponent({
+  pad,
+  padIndex,
+  onChange,
+  liveVelocity,
+  onEnvelopePreviewChange,
+}: Props) {
   const [active, setActive] = useState<PadEditorTabId>('TRIM');
   const layerIdx = selectedLayerIndexOf(pad);
+
+  useEffect(() => {
+    if (active !== 'PLAYBACK') onEnvelopePreviewChange?.(false);
+  }, [active, onEnvelopePreviewChange]);
 
   return (
     <div className={styles.root}>
@@ -33,7 +50,7 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
             className={`${styles.tab} ${active === id ? styles.tabActive : ''}`}
             onClick={() => setActive(id)}
           >
-            {id}
+            {TAB_LABELS[id]}
           </button>
         ))}
         <div className={styles.spacer} />
@@ -46,9 +63,17 @@ function PadEditorTabsComponent({ pad, padIndex, onChange, liveVelocity }: Props
 
       <div className={styles.body} data-accent={layerIdx >= 1 ? 'gold' : undefined}>
         {active === 'TRIM'     && <TrimTab     pad={pad} padIndex={padIndex} onChange={onChange} />}
-        {active === 'PLAYBACK' && <PlaybackTab pad={pad} padIndex={padIndex} onChange={onChange} liveVelocity={liveVelocity} />}
+        {active === 'PLAYBACK' && (
+          <PlaybackTab
+            pad={pad}
+            padIndex={padIndex}
+            onChange={onChange}
+            liveVelocity={liveVelocity}
+            onEnvelopePreviewChange={onEnvelopePreviewChange}
+          />
+        )}
         {active === 'PAD'      && <PadTab      pad={pad} padIndex={padIndex} onChange={onChange} />}
-        {active === 'FX'       && <FxTab       pad={pad}                     onChange={onChange} />}
+        {active === 'FX'       && <FxTab       pad={pad} padIndex={padIndex} onChange={onChange} />}
       </div>
     </div>
   );

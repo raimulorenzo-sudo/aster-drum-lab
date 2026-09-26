@@ -1,6 +1,6 @@
 import styles from './TabBar.module.css';
 
-export type TabId = 'PADS' | 'MIXER' | 'MISSING';
+export type TabId = 'PADS' | 'MIXER' | 'BROWSER' | 'MISSING';
 
 interface TabBarProps {
   active: TabId;
@@ -8,7 +8,7 @@ interface TabBarProps {
   missingCount?: number;
 }
 
-const TABS: TabId[] = ['PADS', 'MIXER', 'MISSING'];
+const TABS: TabId[] = ['PADS', 'MIXER', 'BROWSER', 'MISSING'];
 
 export function TabBar({ active, onChange, missingCount = 0 }: TabBarProps) {
   const visibleTabs = missingCount > 0 ? TABS : TABS.filter(t => t !== 'MISSING');
@@ -18,7 +18,7 @@ export function TabBar({ active, onChange, missingCount = 0 }: TabBarProps) {
       {visibleTabs.map(t => (
         <button
           key={t}
-          className={`${styles.tab} ${active === t ? styles.tabActive : ''}`}
+          className={`${styles.tab} ${active === t ? styles.tabActive : ''} ${active === 'BROWSER' && t === 'BROWSER' ? styles.browserActive : ''}`}
           onClick={() => onChange(t)}
         >
           {t}

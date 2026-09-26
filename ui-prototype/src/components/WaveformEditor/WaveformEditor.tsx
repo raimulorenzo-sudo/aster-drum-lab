@@ -1,23 +1,31 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './WaveformEditor.module.css';
-import type { PadParams, PreviewPlayback } from '../../types';
-import { waveformToPath } from '../../utils/waveform';
+import { OverflowMarquee } from '../OverflowMarquee/OverflowMarquee';
+import type { PadParams, PreviewPlayback, WaveformChannel } from '../../types';
+import { waveformChannelToStrokePath, waveformToPath } from '../../utils/waveform';
 import { midiNoteName } from '../../data/padData';
 import { formatMs, formatTrimPercent } from '../../utils/parameterFormat';
 import { trimFromPad } from '../../utils/sampleTrim';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
+import { selectedLayerIndexOf } from '../../utils/layerView';
+import { padAutomationTarget } from '../../utils/automationTarget';
 
 interface WaveformEditorProps {
   pad: PadParams;
   padIndex: number;
+  showEnvelopePreview?: boolean;
   onChange: (patch: Partial<PadParams>) => void;
   onSampleDrop?: (file: File) => void;
+  onAddSampleStock?: () => void;
+  onSelectSampleStock?: (stockIndex: number) => void;
+  onRemoveSampleStock?: (stockIndex: number) => void;
   onReanalyze?: () => void;
   onRelinkSample?: () => void;
   previewPlayback: PreviewPlayback;
   onPreviewFinished: (triggerId: number) => void;
+  onWaveformAudition?: () => void;
 }
 
 // 60 Hz throttle: ドラッグハンドルや onChange 経由 JUCE 送信用。
@@ -36,30 +44,40 @@ const ZOOM_STEP = 1.6;              // ボタン / wheel 1 step あたりの倍�
 function WaveformEditorComponent({
   pad,
   padIndex,
+  showEnvelopePreview = false,
   onChange,
   onSampleDrop,
+  onAddSampleStock,
+  onSelectSampleStock,
+  onRemoveSampleStock,
   onReanalyze,
   onRelinkSample,
   previewPlayback,
   onPreviewFinished,
+  onWaveformAudition,
 }: WaveformEditorProps) {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(pad.padName);
   const [editingMidi, setEditingMidi] = useState(false);
   const [draggingHandle, setDraggingHandle] = useState<WaveHandle | null>(null);
   const [isSampleDragOver, setIsSampleDragOver] = useState(false);
+  const [sampleStockOpen, setSampleStockOpen] = useState(false);
+  const [waveformDisplayMode, setWaveformDisplayMode] = useState<'stereo' | 'sum'>('stereo');
 
   // ── View state (一時的 / 表示専用 / 保存対象外) ─────────────────
   const [viewStartPct, setViewStartPct] = useState(0);
   const [viewEndPct,   setViewEndPct]   = useState(1);
   const waveBoxRef = useRef<HTMLDivElement | null>(null);
+  const sampleStockRef = useRef<HTMLDivElement | null>(null);
 
   // Pad/Layer/Sample 切替時にビューをリセット (表示が崩れないように)。
   // sampleFilePath が Layer 切替や Pad 切替で変わる → これをトリガーにする。
   useEffect(() => {
     setViewStartPct(0);
     setViewEndPct(1);
+    setWaveformDisplayMode('stereo');
   }, [padIndex, pad.sampleFilePath]);
+
   // Preview playhead position is updated around 30fps by requestAnimationFrame.
   // Storing it in React state would re-render the entire SVG every frame
   // (>500 path nodes). Instead we keep a ref to the <line> element and
@@ -75,13 +93,81 @@ function WaveformEditorComponent({
   }, [padIndex, pad.padName]);
 
   const waveformPeaks = pad.waveformPeaks ?? [];
-  const hasWaveform = Boolean(pad.sampleFileName && !pad.sampleMissing && waveformPeaks.length > 1);
+  const waveformChannels = pad.waveformChannels ?? [];
+  const hasChannelWaveform = waveformChannels.some(channel =>
+    channel.min.length > 1 && channel.max.length > 1,
+  );
+  const hasWaveform = Boolean(
+    pad.sampleFileName
+    && !pad.sampleMissing
+    && (waveformPeaks.length > 1 || hasChannelWaveform),
+  );
+  const hasStereoWaveform = waveformChannels.length >= 2;
+  const sampleStock = useMemo(() => {
+    if (pad.sampleStock && pad.sampleStock.length > 0)
+      return pad.sampleStock.slice(0, 5);
+    if (pad.sampleFileName || pad.sampleFilePath) {
+      return [{
+        sampleFileName: pad.sampleFileName,
+        sampleFilePath: pad.sampleFilePath,
+        sampleMissing: pad.sampleMissing,
+      }];
+    }
+    return [];
+  }, [pad.sampleFileName, pad.sampleFilePath, pad.sampleMissing, pad.sampleStock]);
+  const activeSampleStockIndex = sampleStock.length === 0
+    ? 0
+    : Math.max(0, Math.min(sampleStock.length - 1, pad.activeSampleStockIndex ?? 0));
+  const stockCount = sampleStock.length;
+  const emptyWaveformText = pad.sampleMissing
+    ? 'SAMPLE MISSING'
+    : hasWaveform
+      ? null
+      : 'DROP SAMPLE HERE';
+  const dragOverlayText = stockCount >= 5
+    ? `REPLACE SAMPLE ${activeSampleStockIndex + 1}/5`
+    : `ADD AS SAMPLE ${stockCount + 1}/5`;
   const isAudioFile = (file: File) => /\.(wav|aiff?|flac|mp3|ogg)$/i.test(file.name);
+
+  useEffect(() => {
+    if (!sampleStockOpen) return;
+    const closeIfOutside = (event: PointerEvent) => {
+      if (!sampleStockRef.current?.contains(event.target as Node))
+        setSampleStockOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSampleStockOpen(false);
+    };
+    document.addEventListener('pointerdown', closeIfOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeIfOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [sampleStockOpen]);
+
+  const stepSampleStock = useCallback((direction: -1 | 1) => {
+    if (stockCount <= 1 || !onSelectSampleStock) return;
+    const next = (activeSampleStockIndex + direction + stockCount) % stockCount;
+    onSelectSampleStock(next);
+  }, [activeSampleStockIndex, onSelectSampleStock, stockCount]);
 
   // Reverse 時はサンプル配列を反転して波形描画も逆向きに（仕様の "可能であれば反転"）
   const samples = useMemo(
     () => (pad.reverse ? [...waveformPeaks].reverse() : waveformPeaks),
     [waveformPeaks, pad.reverse],
+  );
+  const displayChannels = useMemo<WaveformChannel[]>(
+    () => waveformChannels.map(channel => pad.reverse
+      ? {
+          min: [...channel.min].reverse(),
+          max: [...channel.max].reverse(),
+          extremeOrder: channel.extremeOrder
+            ? [...channel.extremeOrder].reverse().map(order => order === 1 ? 0 : 1)
+            : undefined,
+        }
+      : channel),
+    [pad.reverse, waveformChannels],
   );
 
   // 波形 SVG のサイズ (viewBox)
@@ -91,11 +177,48 @@ function WaveformEditorComponent({
   const waveBottom = H - 18;
   const waveHeight = waveBottom - waveTop;
   const waveMid = waveTop + waveHeight / 2;
+  const stereoGap = 24;
+  const stereoLaneHeight = (waveHeight - stereoGap) / 2;
+  const stereoCenters = [
+    waveTop + stereoLaneHeight / 2,
+    waveBottom - stereoLaneHeight / 2,
+  ];
+  const stereoAmplitude = stereoLaneHeight * 0.46;
 
-  const path = useMemo(
+  const sumPath = useMemo(
     () => (hasWaveform ? waveformToPath(samples, W, waveHeight) : null),
     [hasWaveform, samples, waveHeight],
   );
+  const summedDisplayChannel = useMemo<WaveformChannel | null>(() => {
+    if (displayChannels.length === 0) return null;
+    if (displayChannels.length === 1) return displayChannels[0];
+
+    const pointCount = Math.min(
+      displayChannels[0].min.length,
+      displayChannels[0].max.length,
+      displayChannels[1].min.length,
+      displayChannels[1].max.length,
+    );
+    return {
+      min: Array.from({ length: pointCount }, (_, index) =>
+        ((displayChannels[0].min[index] ?? 0) + (displayChannels[1].min[index] ?? 0)) * 0.5),
+      max: Array.from({ length: pointCount }, (_, index) =>
+        ((displayChannels[0].max[index] ?? 0) + (displayChannels[1].max[index] ?? 0)) * 0.5),
+      extremeOrder: displayChannels[0].extremeOrder?.slice(0, pointCount),
+    };
+  }, [displayChannels]);
+  const monoStrokePath = useMemo(
+    () => summedDisplayChannel
+      ? waveformChannelToStrokePath(summedDisplayChannel, W, waveMid, waveHeight * 0.46)
+      : '',
+    [summedDisplayChannel, waveHeight, waveMid],
+  );
+  const stereoStrokePaths = useMemo(
+    () => displayChannels.slice(0, 2).map((channel, index) =>
+      waveformChannelToStrokePath(channel, W, stereoCenters[index], stereoAmplitude)),
+    [displayChannels, stereoAmplitude, stereoCenters[0], stereoCenters[1]],
+  );
+  const showStereoLanes = hasStereoWaveform && waveformDisplayMode === 'stereo';
 
   const trim = trimFromPad(pad);
   const totalMs = trim.sampleLengthMs;
@@ -107,6 +230,60 @@ function WaveformEditorComponent({
   // ms / fade を pixel に
   const fadeInX = startX + xFromMs(trim.fadeInMs);
   const fadeOutX = endX - xFromMs(trim.fadeOutMs);
+
+  const envelopePreviewPath = useMemo(() => {
+    if (!hasWaveform || !showEnvelopePreview || endX <= startX) return '';
+
+    const sourceDurationSec = Math.max(0.001, (trim.endMs - trim.startMs) / 1000);
+    const totalPitchSemitones = pad.pitch + pad.fine / 100
+      + (pad.padPitch ?? 0) + (pad.padFine ?? 0) / 100;
+    const playbackDurationSec = pad.keepLength
+      ? sourceDurationSec
+      : sourceDurationSec / Math.pow(2, totalPitchSemitones / 12);
+    const duration = Math.max(0.001, playbackDurationSec);
+    const attack = Math.max(0, pad.attack);
+    const hold = pad.hold;
+    const decay = Math.max(0, pad.decay);
+    const envTop = waveTop + 7;
+    const envBottom = waveBottom - 7;
+    const envHeight = envBottom - envTop;
+    const pointCount = 72;
+
+    const amplitudeAt = (time: number) => {
+      if (attack > 0 && time < attack) return time / attack;
+      if (pad.playMode === 'Gate' || hold < 0) return 1;
+      const afterAttack = Math.max(0, time - attack);
+      if (afterAttack < hold) return 1;
+      if (decay <= 0) return 0;
+      return Math.max(0, 1 - (afterAttack - hold) / decay);
+    };
+
+    return Array.from({ length: pointCount }, (_, index) => {
+      const progress = index / (pointCount - 1);
+      const x = startX + (endX - startX) * progress;
+      const amplitude = Math.max(0, Math.min(1, amplitudeAt(duration * progress)));
+      const y = envBottom - amplitude * envHeight;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+  }, [
+    endX,
+    hasWaveform,
+    pad.attack,
+    pad.decay,
+    pad.fine,
+    pad.hold,
+    pad.keepLength,
+    pad.padFine,
+    pad.padPitch,
+    pad.pitch,
+    pad.playMode,
+    showEnvelopePreview,
+    startX,
+    trim.endMs,
+    trim.startMs,
+    waveBottom,
+    waveTop,
+  ]);
   const fadeInActive = draggingHandle === 'fadeIn';
   const fadeOutActive = draggingHandle === 'fadeOut';
   const fadeInLabelVisible = trim.fadeInMs > 0.05 || draggingHandle === 'fadeIn';
@@ -130,12 +307,10 @@ function WaveformEditorComponent({
     const tick = (now: number) => {
       const elapsedMs = now - previewPlayback.previewStartedAt;
       const progress = Math.min(1, elapsedMs / Math.max(1, previewPlayback.previewDurationMs));
-      const from = previewPlayback.reverseEnabled
-        ? previewPlayback.previewEndPercent
-        : previewPlayback.previewStartPercent;
-      const to = previewPlayback.reverseEnabled
-        ? previewPlayback.previewStartPercent
-        : previewPlayback.previewEndPercent;
+      // The waveform itself is mirrored in Reverse mode, so its visual
+      // playhead still advances from the displayed start toward the end.
+      const from = previewPlayback.previewStartPercent;
+      const to = previewPlayback.previewEndPercent;
 
       const percent = from + (to - from) * progress;
       const x = xFromMs(percent * totalMs);
@@ -175,7 +350,6 @@ function WaveformEditorComponent({
     previewPlayback.previewEndPercent,
     previewPlayback.previewStartPercent,
     previewPlayback.previewStartedAt,
-    previewPlayback.reverseEnabled,
     previewPlayback.triggerId,
   ]);
 
@@ -383,30 +557,31 @@ function WaveformEditorComponent({
         onChange(patch);
       };
 
-      const apply = (clientX: number, fine: boolean) => {
+      const patchFromPointer = (clientX: number, fine: boolean): Partial<PadParams> => {
         const pointerMs = msFromPointer(clientX, svg);
-        const nextMs = fine ? startValue + (pointerMs - startPointerMs) * 0.2 : pointerMs;
+        // Keep the grab offset instead of snapping the marker to the pointer.
+        // The visible lines/tabs have intentionally wide hit areas, so using
+        // the absolute pointer position made a marker jump as soon as a drag
+        // started and could look as if it bounced back after normalisation.
+        const deltaMs = (pointerMs - startPointerMs) * (fine ? 0.2 : 1.0);
         if (handle === 'start') {
-          emitPatch({ startMs: nextMs });
-        } else if (handle === 'end') {
-          emitPatch({ endMs: nextMs });
-        } else if (handle === 'fadeIn') {
-          emitPatch({ fadeInMs: nextMs - trim.startMs });
-        } else {
-          emitPatch({ fadeOutMs: trim.endMs - nextMs });
+          return { startMs: startValue + deltaMs };
         }
+        if (handle === 'end') {
+          return { endMs: startValue + deltaMs };
+        }
+        if (handle === 'fadeIn') {
+          return { fadeInMs: startValue + deltaMs };
+        }
+        return { fadeOutMs: startValue - deltaMs };
       };
 
-      const applyInitial = (clientX: number, fine: boolean) => {
-        const pointerMs = msFromPointer(clientX, svg);
-        const nextMs = fine ? startValue + (pointerMs - startPointerMs) * 0.2 : pointerMs;
-        if (handle === 'start') emitPatch({ startMs: nextMs }, true);
-        else if (handle === 'end') emitPatch({ endMs: nextMs }, true);
-        else if (handle === 'fadeIn') emitPatch({ fadeInMs: nextMs - trim.startMs }, true);
-        else emitPatch({ fadeOutMs: trim.endMs - nextMs }, true);
-      };
+      const apply = (clientX: number, fine: boolean, force = false) =>
+        emitPatch(patchFromPointer(clientX, fine), force);
 
-      applyInitial(e.clientX, e.metaKey || e.ctrlKey);
+      // Commit the unchanged starting value so grabbing any part of the wide
+      // hit area never moves the line before the pointer itself moves.
+      apply(e.clientX, e.metaKey || e.ctrlKey, true);
 
       const onMove = (ev: PointerEvent) => apply(ev.clientX, ev.metaKey || ev.ctrlKey);
       const onUp = () => {
@@ -432,6 +607,16 @@ function WaveformEditorComponent({
       if (handle === 'fadeOut') onChange({ fadeOutMs: 0 });
     },
     [onChange, totalMs],
+  );
+
+  const triggerWaveformAudition = useCallback(
+    (e: ReactMouseEvent<SVGSVGElement>) => {
+      if (!hasWaveform || !onWaveformAudition || draggingHandle) return;
+      if (e.button !== 0 || e.detail > 1) return;
+
+      onWaveformAudition();
+    },
+    [draggingHandle, hasWaveform, onWaveformAudition],
   );
 
   return (
@@ -497,7 +682,7 @@ function WaveformEditorComponent({
           </span>
         </div>
 
-        {/* ── 編集ツール: REVERSE / SMART TRIM / RE-ANALYZE ─────────── */}
+        {/* ── 編集ツール: REVERSE / KEEP LENGTH / SMART TRIM / RE-ANALYZE ─ */}
         <div className={styles.editTools}>
           <button
             type="button"
@@ -505,8 +690,19 @@ function WaveformEditorComponent({
             onClick={() => onChange({ reverse: !pad.reverse })}
             aria-pressed={pad.reverse}
             title="再生方向を反転"
+            data-automation-target-id={selectedLayerIndexOf(pad) === 0 ? padAutomationTarget(padIndex, 'reverse', 'Reverse').id : undefined}
+            data-automation-target-name={selectedLayerIndexOf(pad) === 0 ? padAutomationTarget(padIndex, 'reverse', 'Reverse').name : undefined}
           >
             REVERSE
+          </button>
+          <button
+            type="button"
+            className={`${styles.toolBtn} ${pad.keepLength ? styles.toolBtnActive : ''}`}
+            onClick={() => onChange({ keepLength: !pad.keepLength })}
+            aria-pressed={pad.keepLength}
+            title="Pitchを変更してもサンプルの長さを維持"
+          >
+            KEEP LENGTH
           </button>
           <button
             type="button"
@@ -528,19 +724,134 @@ function WaveformEditorComponent({
           </button>
         </div>
 
-        <div className={styles.sampleBlock}>
-          <span className={styles.sampleNav}>‹ ›</span>
-          <span className={styles.sampleLabel}>SAMPLE</span>
-          <span
-            className={`${styles.filename} ${pad.sampleMissing ? styles.filenameMissing : ''}`}
-            title={pad.sampleFilePath || pad.originalSampleFilePath || pad.sampleFileName || 'no sample'}
+        <div className={styles.sampleBlock} ref={sampleStockRef}>
+          <button
+            type="button"
+            className={styles.sampleNavButton}
+            disabled={stockCount <= 1}
+            onClick={() => stepSampleStock(-1)}
+            aria-label="Previous sample variation"
           >
-            {pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
-          </span>
+            ‹
+          </button>
+          <span className={styles.sampleLabel}>SAMPLE</span>
+          <button
+            type="button"
+            className={styles.sampleMenuButton}
+            onClick={() => setSampleStockOpen(open => !open)}
+            aria-expanded={sampleStockOpen}
+            title="Open sample variations"
+          >
+            {pad.roundRobin && stockCount > 1 && (
+              <span className={styles.roundRobinBadge}>RR</span>
+            )}
+            <span className={styles.stockCount}>
+              {stockCount > 0 ? `${activeSampleStockIndex + 1}/${stockCount}` : '0/5'}
+            </span>
+            <OverflowMarquee
+              className={`${styles.filename} ${pad.sampleMissing ? styles.filenameMissing : ''}`}
+              title={pad.sampleFilePath || pad.originalSampleFilePath || pad.sampleFileName || 'no sample'}
+              text={pad.sampleMissing ? `Missing: ${pad.sampleFileName || 'sample'}` : pad.sampleFileName || 'no sample'}
+              disabled={pad.sampleMissing || !pad.sampleFileName}
+            />
+            <span className={styles.sampleChevron}>⌄</span>
+          </button>
+          <button
+            type="button"
+            className={styles.sampleAddButton}
+            disabled={!onAddSampleStock}
+            onClick={onAddSampleStock}
+            aria-label="Add sample"
+            title={stockCount >= 5 ? 'Replace the selected sample' : 'Add sample'}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={styles.sampleNavButton}
+            disabled={stockCount <= 1}
+            onClick={() => stepSampleStock(1)}
+            aria-label="Next sample variation"
+          >
+            ›
+          </button>
           {pad.sampleMissing && (
             <button type="button" className={styles.relinkBtn} onClick={onRelinkSample}>
               RELINK
             </button>
+          )}
+          {sampleStockOpen && (
+            <div className={styles.sampleStockMenu} role="menu" aria-label="Sample variations">
+              <div className={styles.sampleVariationsHeader}>
+                <span className={styles.sampleVariationsTitle}>SAMPLE VARIATIONS</span>
+                <span className={styles.sampleVariationsCapacity}>{stockCount}/5</span>
+              </div>
+              <div className={styles.samplePlayMode}>
+                <span className={styles.samplePlayModeLabel}>PLAY MODE</span>
+                <div className={styles.samplePlayModeButtons} role="group" aria-label="Sample variation play mode">
+                  <button
+                    type="button"
+                    className={`${styles.samplePlayModeButton} ${!pad.roundRobin || stockCount < 2 ? styles.samplePlayModeButtonActive : ''}`}
+                    onClick={() => onChange({ roundRobin: false })}
+                    aria-pressed={!pad.roundRobin || stockCount < 2}
+                  >
+                    MANUAL
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.samplePlayModeButton} ${pad.roundRobin && stockCount > 1 ? styles.samplePlayModeButtonActive : ''}`}
+                    disabled={stockCount < 2}
+                    onClick={() => onChange({ roundRobin: true })}
+                    aria-pressed={Boolean(pad.roundRobin && stockCount > 1)}
+                    title={stockCount < 2 ? 'Add at least two sample variations' : 'Cycle variations on each MIDI note'}
+                  >
+                    ROUND ROBIN
+                  </button>
+                </div>
+              </div>
+              {sampleStock.map((item, index) => (
+                <div
+                  key={`${item.sampleFilePath}:${index}`}
+                  className={`${styles.sampleStockRow} ${index === activeSampleStockIndex ? styles.sampleStockRowActive : ''}`}
+                >
+                  <button
+                    type="button"
+                    className={styles.sampleStockSelect}
+                    onClick={() => {
+                      onSelectSampleStock?.(index);
+                      setSampleStockOpen(false);
+                    }}
+                    role="menuitem"
+                    title="Select and audition sample"
+                  >
+                    <span className={styles.sampleStockIndex}>{index + 1}</span>
+                    <span className={styles.sampleStockName}>
+                      {item.sampleMissing ? `Missing: ${item.sampleFileName}` : item.sampleFileName}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.sampleStockRemove}
+                    onClick={() => onRemoveSampleStock?.(index)}
+                    aria-label={`Remove ${item.sampleFileName}`}
+                    title="Remove sample variation"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                className={styles.sampleStockAddRow}
+                disabled={!onAddSampleStock}
+                onClick={() => {
+                  setSampleStockOpen(false);
+                  onAddSampleStock?.();
+                }}
+              >
+                {stockCount >= 5 ? '+ REPLACE SELECTED SAMPLE' : '+ ADD SAMPLE'}
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -558,6 +869,26 @@ function WaveformEditorComponent({
         {/* ── 上部ツールレーン: 編集UIと被らない専用帯 ─────────────── */}
         {hasWaveform && (
           <div className={styles.waveToolLane}>
+            {hasStereoWaveform && (
+              <div className={styles.channelModeControls} role="group" aria-label="Waveform channel display">
+                <button
+                  type="button"
+                  className={`${styles.channelModeBtn} ${waveformDisplayMode === 'stereo' ? styles.channelModeBtnActive : ''}`}
+                  onClick={() => setWaveformDisplayMode('stereo')}
+                  aria-pressed={waveformDisplayMode === 'stereo'}
+                >
+                  STEREO
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.channelModeBtn} ${waveformDisplayMode === 'sum' ? styles.channelModeBtnActive : ''}`}
+                  onClick={() => setWaveformDisplayMode('sum')}
+                  aria-pressed={waveformDisplayMode === 'sum'}
+                >
+                  SUM
+                </button>
+              </div>
+            )}
             <div className={styles.zoomControls}>
               <button
                 type="button"
@@ -599,9 +930,10 @@ function WaveformEditorComponent({
           onDrop={handleSampleDrop}
         >
         <svg
-          className={styles.svg}
+          className={`${styles.svg} ${hasWaveform && onWaveformAudition ? styles.svgAudition : ''}`}
           viewBox={viewBoxAttr}
           preserveAspectRatio="none"
+          onMouseDown={triggerWaveformAudition}
           onDoubleClick={(e) => {
             // ハンドル系の dblclick はそれぞれ stopPropagation していないが、
             // resetHandle 側で preventDefault + stopPropagation しているので
@@ -614,11 +946,6 @@ function WaveformEditorComponent({
           }}
         >
           <defs>
-            <linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(56,189,248,0.35)" />
-              <stop offset="50%" stopColor="rgba(56,189,248,0.18)" />
-              <stop offset="100%" stopColor="rgba(56,189,248,0.04)" />
-            </linearGradient>
             <linearGradient id="fadeInRangeFill" x1="0" y1="0" x2="1" y2="0">
               <stop offset="0%" stopColor="rgba(191,163,106,0.02)" />
               <stop offset="100%" stopColor="rgba(191,163,106,0.18)" />
@@ -629,22 +956,73 @@ function WaveformEditorComponent({
             </linearGradient>
           </defs>
 
-          {/* 背景の細い水平基準線 */}
-          <line
-            x1="0" y1={waveMid} x2={W} y2={waveMid}
-            stroke="rgba(56,189,248,0.06)" strokeWidth="0.5"
-          />
+          {/* 参考デザインの薄い時間/振幅グリッド */}
+          {[0.25, 0.5, 0.75].map(position => (
+            <line
+              key={`time-${position}`}
+              x1={W * position} y1={waveTop} x2={W * position} y2={waveBottom}
+              className={styles.waveGridLine}
+            />
+          ))}
+          {(showStereoLanes
+            ? stereoCenters.flatMap(center => [-0.75, -0.375, 0, 0.375, 0.75]
+                .map(offset => center + stereoAmplitude * offset))
+            : [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75]
+                .map(offset => waveMid + waveHeight * 0.46 * offset)
+          ).map((position, index) => (
+            <line
+              key={`level-${index}`}
+              x1="0" y1={position} x2={W} y2={position}
+              className={showStereoLanes
+                ? (index % 5 === 2 ? styles.waveZeroLine : styles.waveGridLine)
+                : (index === 3 ? styles.waveZeroLine : styles.waveGridLine)}
+            />
+          ))}
 
-          {hasWaveform && path && (
+          {showStereoLanes && (
             <>
-              {/* 波形 (上下対称) */}
-              <g className={styles.waveform} transform={`translate(0 ${waveTop})`}>
-                <path d={`${path.top} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-                <path d={`${path.bottom} L ${W} ${waveHeight / 2} L 0 ${waveHeight / 2} Z`} fill="url(#waveFill)" />
-                <path d={path.top} stroke="var(--wave-editor-wave)" strokeWidth="0.9" fill="none" />
-                <path d={path.bottom} stroke="var(--wave-editor-wave)" strokeWidth="0.9" fill="none" />
+              <line
+                x1="0" y1={waveMid} x2={W} y2={waveMid}
+                className={styles.waveLaneDivider}
+              />
+              <g className={styles.waveform}>
+                {stereoStrokePaths.map((channelPath, index) => channelPath && (
+                  <path
+                    key={index}
+                    d={channelPath}
+                    fill="none"
+                    stroke="var(--wave-editor-wave-edge)"
+                    strokeWidth="0.62"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ))}
               </g>
+            </>
+          )}
 
+          {!showStereoLanes && monoStrokePath && (
+            <g className={styles.waveform}>
+              <path
+                d={monoStrokePath}
+                fill="none"
+                stroke="var(--wave-editor-wave-edge)"
+                strokeWidth="0.62"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </g>
+          )}
+
+          {!showStereoLanes && !monoStrokePath && hasWaveform && sumPath && (
+            <g className={styles.waveform} transform={`translate(0 ${waveTop})`}>
+              <path d={sumPath.top} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.62" fill="none" />
+              <path d={sumPath.bottom} stroke="var(--wave-editor-wave-edge)" strokeWidth="0.62" fill="none" />
+            </g>
+          )}
+
+          {hasWaveform && (
+            <>
               {/* 範囲外 (start より前 / end より後) を暗く */}
               <rect x={0} y={waveTop} width={startX} height={waveHeight} fill="rgba(0,0,0,0.55)" />
               <rect x={endX} y={waveTop} width={W - endX} height={waveHeight} fill="rgba(0,0,0,0.55)" />
@@ -696,6 +1074,20 @@ function WaveformEditorComponent({
                 d={`M ${fadeOutX} ${waveTop} L ${endX} ${waveBottom}`}
                 className={styles.fadeCurve}
               />
+            </g>
+          )}
+
+          {envelopePreviewPath && (
+            <g className={styles.envelopePreview} style={{ pointerEvents: 'none' }}>
+              <path d={envelopePreviewPath} className={styles.envelopePreviewShadow} />
+              <path d={envelopePreviewPath} className={styles.envelopePreviewPath} />
+              <text
+                x={Math.max(startX + 2, Math.min(endX - 8, startX + 10))}
+                y={waveTop + 17}
+                className={styles.envelopePreviewLabel}
+              >
+                {pad.playMode === 'OneShot' ? 'ENV · ONE SHOT' : 'ENV · GATE / RELEASE ON NOTE OFF'}
+              </text>
             </g>
           )}
 
@@ -777,6 +1169,27 @@ function WaveformEditorComponent({
             </>
           )}
         </svg>
+
+        {hasWaveform && (
+          <div className={styles.waveChannelLabels} aria-hidden="true">
+            {showStereoLanes ? (
+              <>
+                <span className={styles.waveChannelLabel} style={{ top: '23%' }}>L</span>
+                <span className={styles.waveChannelLabel} style={{ top: '72%' }}>R</span>
+              </>
+            ) : (
+              <span className={styles.waveChannelLabel} style={{ top: '47%' }}>
+                {hasStereoWaveform ? 'SUM' : 'MONO'}
+              </span>
+            )}
+          </div>
+        )}
+
+        {emptyWaveformText && !isSampleDragOver && (
+          <div className={styles.emptyWaveformPrompt} aria-hidden="true">
+            {emptyWaveformText}
+          </div>
+        )}
 
         {/* ── オーバーレイラベル (ビュー範囲外なら非表示) ──────────────── */}
         {hasWaveform && <div className={styles.handleLabels}>
@@ -873,7 +1286,7 @@ function WaveformEditorComponent({
         )}
         {isSampleDragOver && (
           <div className={styles.dropOverlay} aria-hidden="true">
-            DROP TO REPLACE LAYER SAMPLE
+            {dragOverlayText}
           </div>
         )}
       </div>

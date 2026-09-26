@@ -1,0 +1,35 @@
+.root {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text {
+  display: inline-block;
+  min-width: 100%;
+}
+
+.root:hover[data-overflow='true'],
+.root:focus-visible[data-overflow='true'] {
+  text-align: left;
+  text-overflow: clip;
+}
+
+.root:hover[data-overflow='true'] .text,
+.root:focus-visible[data-overflow='true'] .text {
+  animation: overflowMarquee var(--marquee-duration) ease-in-out forwards;
+}
+
+@keyframes overflowMarquee {
+  0%, 12% { transform: translateX(0); }
+  88%, 100% { transform: translateX(calc(-1 * var(--marquee-distance))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root:hover[data-overflow='true'] .text,
+  .root:focus-visible[data-overflow='true'] .text {
+    animation: none;
+  }
+}

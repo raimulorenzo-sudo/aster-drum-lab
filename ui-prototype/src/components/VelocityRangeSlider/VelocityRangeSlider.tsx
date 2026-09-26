@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import styles from './VelocityRangeSlider.module.css';
+import { layerAutomationTarget } from '../../utils/automationTarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VelocityRangeSlider — Pad 内全 Layer の velocity range を一覧表示する。
@@ -22,6 +23,7 @@ interface LayerRange {
 }
 
 interface VelocityRangeSliderProps {
+  padIndex: number;
   layers: LayerRange[];
   activeLayerIndex: number;
   onSelectLayer: (layerIndex: number) => void;
@@ -58,6 +60,7 @@ type MenuPos =
   | { kind: 'above'; bottom: number; right: number };
 
 function VelocityRangeSliderComponent({
+  padIndex,
   layers,
   activeLayerIndex,
   onSelectLayer,
@@ -159,6 +162,8 @@ function VelocityRangeSliderComponent({
             onSelect={() => onSelectLayer(li)}
             onChange={(next) => onChangeRange(li, next)}
             liveVelPct={liveVelPct}
+            padIndex={padIndex}
+            layerIndex={li}
           />
         ))}
       </div>
@@ -172,6 +177,8 @@ export const VelocityRangeSlider = memo(VelocityRangeSliderComponent);
 // LayerRangeRow
 // ─────────────────────────────────────────────────────────────────────────────
 interface LayerRangeRowProps {
+  padIndex: number;
+  layerIndex: number;
   label: string;
   min: number;
   max: number;
@@ -185,6 +192,8 @@ interface LayerRangeRowProps {
 type Editing = { which: 'min' | 'max'; draft: string } | null;
 
 function LayerRangeRow({
+  padIndex,
+  layerIndex,
   label,
   min,
   max,
@@ -309,6 +318,8 @@ function LayerRangeRow({
           aria-valuemax={RANGE}
           aria-valuenow={min}
           aria-label={`${label} velocity min`}
+          data-automation-target-id={layerAutomationTarget(padIndex, layerIndex, 'velMin', `${label} Velocity Min`).id}
+          data-automation-target-name={layerAutomationTarget(padIndex, layerIndex, 'velMin', `${label} Velocity Min`).name}
         />
         <div
           className={styles.thumb}
@@ -319,6 +330,8 @@ function LayerRangeRow({
           aria-valuemax={RANGE}
           aria-valuenow={max}
           aria-label={`${label} velocity max`}
+          data-automation-target-id={layerAutomationTarget(padIndex, layerIndex, 'velMax', `${label} Velocity Max`).id}
+          data-automation-target-name={layerAutomationTarget(padIndex, layerIndex, 'velMax', `${label} Velocity Max`).name}
         />
         {liveVelPct !== null && (
           <div className={styles.liveMarker} style={{ left: `${liveVelPct}%` }} aria-hidden />

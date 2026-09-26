@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState, useCallback, useMemo, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import styles from './App.module.css';
 import { Header } from './components/Header/Header';
 import type { HeaderKitItem, UiScale } from './components/Header/Header';
@@ -6,6 +15,7 @@ import { TabBar } from './components/TabBar/TabBar';
 import type { TabId } from './components/TabBar/TabBar';
 import { MixerView } from './components/MixerView/MixerView';
 import { PadsView } from './components/PadsView/PadsView';
+import { SampleBrowser, sampleVariations } from './components/SampleBrowser/SampleBrowser';
 import { MissingSamplesView } from './components/MissingSamplesView/MissingSamplesView';
 import { PadContextMenu } from './components/PadContextMenu/PadContextMenu';
 import { PadColorPicker } from './components/PadColorPicker/PadColorPicker';
@@ -37,7 +47,7 @@ import { updatePadClipLatch } from './utils/clipRegistry';
 import { triggerLayerFlash, updateLayerMeter } from './utils/layerLevelRegistry';
 import { updateCompMeter } from './utils/compMeterRegistry';
 import { updateResourceStats } from './utils/resourceRegistry';
-import { audioBufferToPeaks } from './utils/waveform';
+import { audioBufferToPeaks, audioBufferToWaveformChannels } from './utils/waveform';
 import { useUndoRedo } from './utils/useUndoRedo';
 import { countMissingSamples } from './utils/missingSamples';
 import { ensureLayers, patchAddLayer, patchRemoveLayer } from './utils/layerView';
@@ -56,6 +66,8 @@ import { FADER_UNITY_POS, gainToPosition } from './utils/fader';
 export const MASTER_UNITY = FADER_UNITY_POS;
 const DESIGN_WIDTH = 1400;
 const DESIGN_HEIGHT = 852;
+const MIN_VIEWPORT_SCALE = 0.5;
+const MAX_VIEWPORT_SCALE = 2;
 
 interface SavedKitState {
   /** Schema version. Missing or < 2 → pad.volume is in legacy linear-gain
@@ -100,6 +112,17 @@ interface SystemStatsData {
   sampleBytes?: number;
 }
 
+interface DemoState {
+  isDemo: boolean;
+  durationSeconds: number;
+  started: boolean;
+  remainingSeconds: number;
+  expired: boolean;
+  offlineRenderBlocked: boolean;
+  kitSavingEnabled: boolean;
+  contentResetsAfterRestart: boolean;
+}
+
 interface PadTriggerData {
   triggers?: Array<{ index?: number; velocity?: number } | number>;
 }
@@ -107,6 +130,12 @@ interface PadTriggerData {
 interface MidiLearnedData {
   index?: number;
   note?: number;
+}
+
+function formatDemoTime(value: number): string {
+  const seconds = Math.max(0, Math.ceil(value));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 function routingUndoPatch(current: PadParams, restored: PadParams): Partial<PadParams> {
@@ -176,7 +205,12 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-async function sendSampleBytesToJuce(index: number, file: File, layerIndex: number = 0): Promise<void> {
+async function sendSampleBytesToJuce(
+  index: number,
+  file: File,
+  layerIndex: number = 0,
+  addToSampleStock = false,
+): Promise<void> {
   const transferId = `${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`;
   const bytes = new Uint8Array(await file.arrayBuffer());
   const rawChunkSize = 192 * 1024;
@@ -186,6 +220,7 @@ async function sendSampleBytesToJuce(index: number, file: File, layerIndex: numb
     transferId,
     index,
     layerIndex,
+    addToSampleStock,
     fileName: file.name,
     totalBytes: bytes.length,
     totalChunks,
@@ -234,14 +269,14 @@ function swapPadSounds(pads: PadParams[], sourceIndex: number, targetIndex: numb
 }
 
 async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> {
+  let context: AudioContext | undefined;
   try {
     const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return {};
 
-    const context = new AudioContextClass();
+    context = new AudioContextClass();
     const arrayBuffer = await file.arrayBuffer();
     const audioBuffer = await context.decodeAudioData(arrayBuffer);
-    await context.close();
 
     return {
       sampleLengthMs: audioBuffer.duration * 1000,
@@ -250,15 +285,29 @@ async function analyzeBrowserAudioFile(file: File): Promise<Partial<PadParams>> 
       fadeInMs: 0,
       fadeOutMs: 0,
       waveformPeaks: audioBufferToPeaks(audioBuffer, 600),
+      waveformChannels: audioBufferToWaveformChannels(audioBuffer, 2000),
     };
   } catch {
     return {};
+  } finally {
+    await context?.close();
   }
 }
 
 export default function App() {
   // ── State ────────────────────────────────────────────────────────────
   const [pads, setPads] = useState<PadParams[]>(INITIAL_PADS);
+  const [demoState, setDemoState] = useState<DemoState>({
+    isDemo: false,
+    durationSeconds: 1200,
+    started: false,
+    remainingSeconds: 1200,
+    expired: false,
+    offlineRenderBlocked: false,
+    kitSavingEnabled: true,
+    contentResetsAfterRestart: false,
+  });
+  const demoWarningsShownRef = useRef({ fiveMinutes: false, oneMinute: false });
   /** Always points to the latest pads state — safe to read inside callbacks */
   const padsRef = useRef(pads);
   const [selectedIndex, setSelectedIndex] = useState<number>(4); // 初期: OPEN HAT
@@ -324,8 +373,18 @@ export default function App() {
     routing: true,
   });
   const [outputMode, setOutputMode] = useState<OutputMode>('48Outs');
-  const [uiScale, setUiScale] = useState<UiScale>(1);
+  const [uiScale, setUiScale] = useState<number>(1);
   const [viewportScale, setViewportScale] = useState(1);
+  const [isWindowResizing, setIsWindowResizing] = useState(false);
+  const resizeDragRef = useRef<{
+    pointerId: number;
+    startScreenX: number;
+    startScreenY: number;
+    startScale: number;
+  } | null>(null);
+  const pendingResizeScaleRef = useRef<number | null>(null);
+  const activeResizeScaleRef = useRef<number | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
   const [masterKnob, setMasterKnob] = useState(MASTER_UNITY);
   const [masterClipHit, setMasterClipHit] = useState(false);
   const [previewPlayback, setPreviewPlayback] = useState<PreviewPlayback>({
@@ -365,12 +424,51 @@ export default function App() {
   const [renameDialog, setRenameDialog] = useState<{ index: number; draft: string } | null>(null);
   const [midiNoteDialog, setMidiNoteDialog] = useState<{ index: number; draftNote: number; learning: boolean; warning: string } | null>(null);
   const [toastMessage, setToastMessage] = useState('');
-  const [fileTarget, setFileTarget] = useState<{ index: number; relink: boolean } | null>(null);
+  const [fileTarget, setFileTarget] = useState<{
+    index: number;
+    relink: boolean;
+    layerIndex?: number;
+    addToSampleStock?: boolean;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Refs for bridge callbacks (avoid stale closures) ─────────────────
   useEffect(() => { padsRef.current = pads; }, [pads]);
+  useEffect(() => {
+    const unsubscribe = onJuceEvent('demoState', raw => {
+      const next = raw as Partial<DemoState>;
+      if (typeof next.isDemo !== 'boolean') return;
+      setDemoState({
+        isDemo: next.isDemo,
+        durationSeconds: typeof next.durationSeconds === 'number' ? next.durationSeconds : 1200,
+        started: Boolean(next.started),
+        remainingSeconds: typeof next.remainingSeconds === 'number' ? next.remainingSeconds : 1200,
+        expired: Boolean(next.expired),
+        offlineRenderBlocked: Boolean(next.offlineRenderBlocked),
+        kitSavingEnabled: next.kitSavingEnabled !== false,
+        contentResetsAfterRestart: Boolean(next.contentResetsAfterRestart),
+      });
+    });
+    sendToJuce('requestDemoState', {});
+    return unsubscribe;
+  }, []);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+  useEffect(() => {
+    if (!demoState.isDemo || !demoState.started || demoState.expired) return;
+    if (demoState.durationSeconds >= 300
+        && demoState.remainingSeconds <= 60
+        && !demoWarningsShownRef.current.oneMinute) {
+      demoWarningsShownRef.current.oneMinute = true;
+      setToastMessage('Demo: 1 minute of audio time remaining.');
+    } else if (demoState.durationSeconds >= 300
+               && demoState.remainingSeconds <= 300
+               && !demoWarningsShownRef.current.fiveMinutes) {
+      demoWarningsShownRef.current.fiveMinutes = true;
+      setToastMessage('Demo: 5 minutes of audio time remaining.');
+    }
+  }, [demoState]);
+
   useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
   useEffect(() => {
     pageRef.current = page === 'A' ? 0 : page === 'B' ? 1 : 2;
@@ -382,12 +480,118 @@ export default function App() {
         window.innerWidth / DESIGN_WIDTH,
         window.innerHeight / DESIGN_HEIGHT,
       );
-      setViewportScale(Math.max(0.5, Math.min(2, scale)));
+      const nextScale = Math.max(MIN_VIEWPORT_SCALE, Math.min(MAX_VIEWPORT_SCALE, scale));
+      setViewportScale(nextScale);
+      setUiScale(nextScale);
     };
 
     updateViewportScale();
     window.addEventListener('resize', updateViewportScale);
     return () => window.removeEventListener('resize', updateViewportScale);
+  }, []);
+
+  const requestEditorScale = useCallback((scale: number) => {
+    const nextScale = Math.max(
+      MIN_VIEWPORT_SCALE,
+      Math.min(MAX_VIEWPORT_SCALE, scale),
+    );
+    pendingResizeScaleRef.current = nextScale;
+    activeResizeScaleRef.current = nextScale;
+
+    if (resizeFrameRef.current !== null) return;
+    resizeFrameRef.current = window.requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      const pendingScale = pendingResizeScaleRef.current;
+      pendingResizeScaleRef.current = null;
+      if (pendingScale !== null)
+        sendToJuce('setUiScale', { scale: pendingScale, commit: false });
+    });
+  }, []);
+
+  const flushEditorScale = useCallback(() => {
+    if (resizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = null;
+    }
+
+    const pendingScale = pendingResizeScaleRef.current ?? activeResizeScaleRef.current;
+    pendingResizeScaleRef.current = null;
+    activeResizeScaleRef.current = null;
+    if (pendingScale !== null)
+      sendToJuce('setUiScale', { scale: pendingScale, commit: true });
+  }, []);
+
+  useEffect(() => () => {
+    if (resizeFrameRef.current !== null)
+      window.cancelAnimationFrame(resizeFrameRef.current);
+  }, []);
+
+  const handleResizePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    resizeDragRef.current = {
+      pointerId: event.pointerId,
+      startScreenX: event.screenX,
+      startScreenY: event.screenY,
+      startScale: Math.max(
+        MIN_VIEWPORT_SCALE,
+        Math.min(
+          MAX_VIEWPORT_SCALE,
+          Math.min(window.innerWidth / DESIGN_WIDTH, window.innerHeight / DESIGN_HEIGHT),
+        ),
+      ),
+    };
+    activeResizeScaleRef.current = resizeDragRef.current.startScale;
+    setIsWindowResizing(true);
+  }, []);
+
+  const handleResizePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    const deltaX = event.screenX - drag.startScreenX;
+    const deltaY = event.screenY - drag.startScreenY;
+    const projectedScaleDelta = (
+      deltaX * DESIGN_WIDTH + deltaY * DESIGN_HEIGHT
+    ) / (
+      DESIGN_WIDTH * DESIGN_WIDTH + DESIGN_HEIGHT * DESIGN_HEIGHT
+    );
+    requestEditorScale(drag.startScale + projectedScaleDelta);
+  }, [requestEditorScale]);
+
+  const finishResizeDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = resizeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    resizeDragRef.current = null;
+    flushEditorScale();
+    setIsWindowResizing(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+  }, [flushEditorScale]);
+
+  const handleResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const direction = event.key === 'ArrowUp' || event.key === 'ArrowRight'
+      ? 1
+      : event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+        ? -1
+        : 0;
+    if (direction === 0) return;
+
+    event.preventDefault();
+    const currentScale = Math.min(
+      window.innerWidth / DESIGN_WIDTH,
+      window.innerHeight / DESIGN_HEIGHT,
+    );
+    const nextScale = Math.max(
+      MIN_VIEWPORT_SCALE,
+      Math.min(MAX_VIEWPORT_SCALE, currentScale + direction * 0.05),
+    );
+    setUiScale(nextScale);
+    sendToJuce('setUiScale', { scale: nextScale, commit: true });
   }, []);
 
   /** Index of the pad currently being auditoned (-1 = none) */
@@ -418,6 +622,7 @@ export default function App() {
               kitName: newKitName, outputMode: newOutputMode } =
         juceKitToReact(kit, padsRef.current);
 
+      padsRef.current = newPads;
       setPads(newPads);
       setPage(newPage);
       setSelectedIndex(newIdx);
@@ -448,6 +653,7 @@ export default function App() {
       setPads(prev => {
         const next = [...prev];
         next[idx] = jucePadToReact(update.pad, prev[idx]);
+        padsRef.current = next;
         return next;
       });
       setKitDirty(true);
@@ -466,11 +672,11 @@ export default function App() {
     //     - バースト時もフレーム内で最新値だけが反映される (中間値は drop)
     //     - vsync 同期で動くので画面 tearing も発生しない
     //     - Peak hold decay もこのループで同時処理 (旧 setTimeout(60) を排除)
-    const HOLD_MS  = 1500;  // peak hold duration before decay starts
-    const DECAY_PER_FRAME = 0.978;  // 約 9 dB/s 減衰 @ 60fps (0.87^(60/15))
-    const METER_RELEASE_MS = 520;
-    const METER_HOLD_MS = 35;
-    const METER_FLOOR = 0.001;
+    const PEAK_HOLD_MS = 250;
+    const METER_RELEASE_DB_PER_SECOND = 36;
+    const PEAK_RELEASE_DB_PER_SECOND = 32;
+    const METER_FLOOR_DB = -60;
+    const METER_FLOOR = 10 ** (METER_FLOOR_DB / 20);
 
     // 受信した最新値 (1 フレーム内で何度上書きされても良い)
     let pendingMasterLevel = 0;
@@ -479,12 +685,10 @@ export default function App() {
     let pendingPadLevels: number[] | null = null;
     let masterTargetLevel = 0;
     let masterDisplayLevel = 0;
-    let masterLastSignalTime = 0;
     let lastFrameTime = 0;
     let lastLevelDataTime = 0;
     const padTargetLevels = new Array(48).fill(0);
     const padDisplayLevels = new Array(48).fill(0);
-    const padLastSignalTimes = new Array(48).fill(0);
 
     // Compressor GR メーター (選択 Layer の FX スロット最大 16)。
     // ballistics: target へ即座にアタック、フレームごとに decay でリリース。
@@ -500,7 +704,6 @@ export default function App() {
     let layerForPad = -1;
     const layerTargetLevels  = new Array(MAX_LAYER_SLOTS).fill(0);
     const layerDisplayLevels = new Array(MAX_LAYER_SLOTS).fill(0);
-    const layerLastSignalTimes = new Array(MAX_LAYER_SLOTS).fill(0);
 
     let rafId = 0;
     let rafActive = false;
@@ -529,19 +732,19 @@ export default function App() {
       return false;
     };
 
-    const smoothMeterLevel = (
-      current: number,
-      target: number,
-      now: number,
-      dtMs: number,
-      lastSignalTime: number,
-    ) => {
-      if (target >= current) return target;
-      if (now - lastSignalTime < METER_HOLD_MS) return current;
+    const releaseLevelByDb = (current: number, dbPerSecond: number, dtMs: number) => {
+      if (current <= METER_FLOOR) return 0;
+      const nextDb = 20 * Math.log10(current) - dbPerSecond * (dtMs / 1000);
+      return nextDb <= METER_FLOOR_DB ? 0 : 10 ** (nextDb / 20);
+    };
 
-      const release = Math.exp(-dtMs / METER_RELEASE_MS);
-      const next = target + (current - target) * release;
-      return next < METER_FLOOR ? 0 : next;
+    const smoothMeterLevel = (current: number, target: number, dtMs: number) => {
+      if (target >= current) return target;
+
+      // Professional peak meters specify fall-back in dB/second. Applying the
+      // release in display space keeps the visual speed independent of sample
+      // length and signal amplitude while never dropping below the true level.
+      return Math.max(target, releaseLevelByDb(current, METER_RELEASE_DB_PER_SECOND, dtMs));
     };
 
     const flushFrame = () => {
@@ -560,7 +763,6 @@ export default function App() {
         const ml = pendingMasterLevel;
         lastLevelDataTime = now;
         masterTargetLevel = ml;
-        if (ml > METER_FLOOR) masterLastSignalTime = now;
 
         if (ml > 1.0 && !masterClipHitRef.current) {
           masterClipHitRef.current = true;
@@ -575,7 +777,6 @@ export default function App() {
             if (idx < 0 || idx >= 48) continue;
             const level = arr[offset];
             padTargetLevels[idx] = level;
-            if (level > METER_FLOOR) padLastSignalTimes[idx] = now;
             if (level > padPeakHoldRef.current[idx]) {
               padPeakHoldRef.current[idx] = level;
               padPeakTimeRef.current[idx] = now;
@@ -597,7 +798,6 @@ export default function App() {
             // Pad changed — reset layer meters immediately so stale values don't flash
             layerTargetLevels.fill(0);
             layerDisplayLevels.fill(0);
-            layerLastSignalTimes.fill(0);
             compDisplayDb.fill(0);
             layerForPad = pendingLayerPad;
           }
@@ -605,7 +805,6 @@ export default function App() {
           for (let li = 0; li < la.length && li < MAX_LAYER_SLOTS; li++) {
             const lv = la[li];
             layerTargetLevels[li] = lv;
-            if (lv > METER_FLOOR) layerLastSignalTimes[li] = now;
           }
           // Zero out slots beyond what C++ sent (layer count can shrink)
           for (let li = la.length; li < MAX_LAYER_SLOTS; li++) {
@@ -621,9 +820,7 @@ export default function App() {
       masterDisplayLevel = smoothMeterLevel(
         masterDisplayLevel,
         masterTargetLevel,
-        now,
         dtMs,
-        masterLastSignalTime,
       );
       masterLevelRef.current = masterDisplayLevel;
       updateMasterMeter(masterDisplayLevel, masterPeakRef.current);
@@ -639,9 +836,7 @@ export default function App() {
           const next = smoothMeterLevel(
             padDisplayLevels[i],
             padTargetLevels[i],
-            now,
             dtMs,
-            padLastSignalTimes[i],
           );
           if (next !== padDisplayLevels[i]) didMeterMove = true;
           padDisplayLevels[i] = next;
@@ -656,9 +851,7 @@ export default function App() {
           const next = smoothMeterLevel(
             layerDisplayLevels[li],
             layerTargetLevels[li],
-            now,
             dtMs,
-            layerLastSignalTimes[li],
           );
           if (next !== layerDisplayLevels[li]) didMeterMove = true;
           layerDisplayLevels[li] = next;
@@ -677,16 +870,19 @@ export default function App() {
         }
       }
 
-      // 3) Peak hold decay (HOLD_MS 経過後、毎フレーム DECAY_PER_FRAME 倍率で減衰)
+      // 3) Peak hold line: independent hold and dB/second release.
       let didDecay = false;
       if (activeTabRef.current === 'MIXER') {
         const pageStart = pageRef.current * 16;
         const pageEnd   = pageStart + 16;
         for (let i = pageStart; i < pageEnd; i++) {
           if (padPeakHoldRef.current[i] > 0.001 &&
-              now - padPeakTimeRef.current[i] > HOLD_MS) {
-            padPeakHoldRef.current[i] *= DECAY_PER_FRAME;
-            if (padPeakHoldRef.current[i] < 0.001) padPeakHoldRef.current[i] = 0;
+              now - padPeakTimeRef.current[i] > PEAK_HOLD_MS) {
+            padPeakHoldRef.current[i] = releaseLevelByDb(
+              padPeakHoldRef.current[i],
+              PEAK_RELEASE_DB_PER_SECOND,
+              dtMs,
+            );
             updatePadMeter(i, padDisplayLevels[i], padPeakHoldRef.current[i]);
             didDecay = true;
           }
@@ -694,9 +890,12 @@ export default function App() {
       }
 
       if (masterPeakRef.current > 0.001 &&
-          now - masterPeakTime.current > HOLD_MS) {
-        masterPeakRef.current *= DECAY_PER_FRAME;
-        if (masterPeakRef.current < 0.001) masterPeakRef.current = 0;
+          now - masterPeakTime.current > PEAK_HOLD_MS) {
+        masterPeakRef.current = releaseLevelByDb(
+          masterPeakRef.current,
+          PEAK_RELEASE_DB_PER_SECOND,
+          dtMs,
+        );
         updateMasterMeter(masterDisplayLevel, masterPeakRef.current);
         didDecay = true;
       }
@@ -827,16 +1026,20 @@ export default function App() {
       setPads(prev => {
         const currentNote = prev[index]?.midiNote;
         if (duplicateIndex < 0 || currentNote === undefined) {
-          return prev.map((pad, padIndex) =>
+          const next = prev.map((pad, padIndex) =>
             padIndex === index ? { ...pad, midiNote: note } : pad,
           );
+          padsRef.current = next;
+          return next;
         }
 
-        return prev.map((pad, padIndex) => {
+        const next = prev.map((pad, padIndex) => {
           if (padIndex === index) return { ...pad, midiNote: note };
           if (padIndex === duplicateIndex) return { ...pad, midiNote: currentNote };
           return pad;
         });
+        padsRef.current = next;
+        return next;
       });
       if (shouldSwap) setToastMessage('MIDI notes swapped');
       setKitDirty(true);
@@ -909,23 +1112,17 @@ export default function App() {
 
     // 1. Send to C++ before state update so currentPad is still the old value
     sendPadPatchToJuce(index, safePatch, currentPad);
-    // 2. Update React state
-    setPads(prev => {
-      if (safePatch.midiNote === undefined) {
-        return prev.map((p, i) => (i === index ? { ...p, ...safePatch } : p));
-      }
-
-      const currentNote = prev[index]?.midiNote;
-      if (midiDuplicateIndex < 0 || currentNote === undefined) {
-        return prev.map((p, i) => (i === index ? { ...p, ...safePatch } : p));
-      }
-
-      return prev.map((p, i) => {
-        if (i === index) return { ...p, ...safePatch };
-        if (i === midiDuplicateIndex) return { ...p, midiNote: currentNote };
-        return p;
-      });
+    // 2. Update the ref synchronously so a second UI event in the same frame
+    // diffs against this edit rather than the previous render's Pad state.
+    const currentNote = currentPad.midiNote;
+    const nextPads = padsRef.current.map((p, i) => {
+      if (i === index) return { ...p, ...safePatch };
+      if (safePatch.midiNote !== undefined && i === midiDuplicateIndex)
+        return { ...p, midiNote: currentNote };
+      return p;
     });
+    padsRef.current = nextPads;
+    setPads(nextPads);
     if (midiDuplicateIndex >= 0) setToastMessage('MIDI notes swapped');
     setKitDirty(true);
   }, []);
@@ -953,10 +1150,14 @@ export default function App() {
       const patchByIndex = new Map<number, Partial<PadParams>>();
       for (const { index, patch } of changes) patchByIndex.set(index, patch);
 
-      setPads(prev => prev.map((p, i) => {
+      setPads(prev => {
+        const next = prev.map((p, i) => {
         const patch = patchByIndex.get(i);
         return patch ? { ...p, ...patch } : p;
-      }));
+        });
+        padsRef.current = next;
+        return next;
+      });
       setKitDirty(true);
     },
     [],
@@ -1000,6 +1201,43 @@ export default function App() {
         : prev,
     );
   }, []);
+
+  const auditionSelectedLayerFromWaveform = useCallback((layerIndex: number) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layers = ensureLayers(pad);
+    const safeLayerIndex = Math.max(0, Math.min(layers.length - 1, layerIndex));
+    const layer = layers[safeLayerIndex];
+    if (!layer?.sampleFileName || layer.sampleMissing) {
+      setPreviewPlayback(prev => ({ ...prev, isPreviewPlaying: false }));
+      return;
+    }
+
+    const viewPad = {
+      ...pad,
+      ...layer,
+      selectedLayerIndex: safeLayerIndex,
+    };
+    const trim = trimFromPad(viewPad);
+    const normalized = trimToNormalized(trim);
+
+    sendToJuce('auditionLayer', {
+      index: selectedIndex,
+      layerIndex: safeLayerIndex,
+      velocity: 1.0,
+    });
+
+    setPreviewPlayback(prev => ({
+      isPreviewPlaying: true,
+      padIndex: selectedIndex,
+      previewStartedAt: performance.now(),
+      previewDurationMs: Math.max(30, trim.endMs - trim.startMs),
+      previewStartPercent: normalized.startPosition,
+      previewEndPercent: normalized.endPosition,
+      reverseEnabled: Boolean(layer.reverse),
+      triggerId: prev.triggerId + 1,
+    }));
+  }, [selectedIndex]);
 
   // ── Master output knob ───────────────────────────────────────────────
   const handleMasterKnobChange = useCallback((v: number) => {
@@ -1045,7 +1283,7 @@ export default function App() {
 
   const handleUiScaleChange = useCallback((scale: UiScale) => {
     setUiScale(scale);
-    sendToJuce('setUiScale', { scale });
+    sendToJuce('setUiScale', { scale, commit: true });
   }, []);
 
   // ── Relink All (MissingSamplesView から) ──────────────────────────────
@@ -1088,7 +1326,13 @@ export default function App() {
     setKitDirty(true);
   }, []);
 
-  const loadSampleForPad = useCallback(async (index: number, file: File, relink: boolean, layerIndex = 0) => {
+  const loadSampleForPad = useCallback(async (
+    index: number,
+    file: File,
+    relink: boolean,
+    layerIndex = 0,
+    addToSampleStock = false,
+  ) => {
     const analysis = await analyzeBrowserAudioFile(file);
 
     setPads(prev => {
@@ -1107,6 +1351,84 @@ export default function App() {
 
         const sampleLengthMs = analysis.sampleLengthMs ?? p.sampleLengthMs ?? 500;
 
+        if (addToSampleStock) {
+          const layers = ensureLayers(p).map(layer => ({ ...layer }));
+          const target = layers[layerIndex];
+          if (!target) return p;
+          const currentStock = target.sampleStock?.length
+            ? [...target.sampleStock]
+            : (target.sampleFileName || target.sampleFilePath)
+              ? [{
+                  sampleFileName: target.sampleFileName,
+                  sampleFilePath: target.sampleFilePath,
+                  sampleMissing: target.sampleMissing,
+                  sampleLengthMs: target.sampleLengthMs,
+                  startMs: target.startMs,
+                  endMs: target.endMs,
+                  fadeInMs: target.fadeInMs,
+                  fadeOutMs: target.fadeOutMs,
+                  waveformPeaks: target.waveformPeaks,
+                  waveformChannels: target.waveformChannels,
+                }]
+              : [];
+          if (currentStock.length > 0) {
+            const currentIndex = Math.max(
+              0,
+              Math.min(currentStock.length - 1, target.activeSampleStockIndex ?? 0),
+            );
+            currentStock[currentIndex] = {
+              ...currentStock[currentIndex],
+              sampleFileName: target.sampleFileName,
+              sampleFilePath: target.sampleFilePath,
+              sampleMissing: target.sampleMissing,
+              sampleLengthMs: target.sampleLengthMs,
+              startMs: target.startMs,
+              endMs: target.endMs,
+              fadeInMs: target.fadeInMs,
+              fadeOutMs: target.fadeOutMs,
+              waveformPeaks: target.waveformPeaks,
+              waveformChannels: target.waveformChannels,
+            };
+          }
+          const item = {
+            sampleFileName: file.name,
+            sampleFilePath: file.name,
+            sampleMissing: false,
+            sampleLengthMs,
+            startMs: 0,
+            endMs: sampleLengthMs,
+            fadeInMs: 0,
+            fadeOutMs: 0,
+            waveformPeaks: analysis.waveformPeaks ?? [],
+            waveformChannels: analysis.waveformChannels ?? [],
+          };
+          let activeSampleStockIndex: number;
+          if (currentStock.length < 5) {
+            currentStock.push(item);
+            activeSampleStockIndex = currentStock.length - 1;
+          } else {
+            activeSampleStockIndex = Math.max(
+              0,
+              Math.min(currentStock.length - 1, target.activeSampleStockIndex ?? 0),
+            );
+            currentStock[activeSampleStockIndex] = item;
+          }
+          const nextLayer = {
+            ...target,
+            ...item,
+            sampleStock: currentStock,
+            activeSampleStockIndex,
+          };
+          layers[layerIndex] = nextLayer;
+          const nextPad = { ...p, layers, selectedLayerIndex: layerIndex };
+          if (layerIndex === 0) Object.assign(nextPad, item, {
+            sampleStock: currentStock,
+            activeSampleStockIndex,
+            originalSampleFilePath: file.name,
+          });
+          return nextPad;
+        }
+
         if (layerIndex > 0) {
           const layers = ensureLayers(p).map(layer => ({ ...layer }));
           const target = layers[layerIndex];
@@ -1122,6 +1444,7 @@ export default function App() {
               fadeInMs: 0,
               fadeOutMs: 0,
               waveformPeaks: analysis.waveformPeaks ?? [],
+              waveformChannels: analysis.waveformChannels ?? [],
             };
             return { ...p, layers, selectedLayerIndex: layerIndex };
           }
@@ -1146,6 +1469,7 @@ export default function App() {
           fadeInMs: 0,
           fadeOutMs: 0,
           waveformPeaks: analysis.waveformPeaks ?? [],
+          waveformChannels: analysis.waveformChannels ?? [],
         };
       });
       if (!relink) return next;
@@ -1163,7 +1487,41 @@ export default function App() {
     setKitDirty(true);
   }, []);
 
-  const handleSampleDrop = useCallback(async (index: number, file: File) => {
+  // Browser imports replace sample data only, including Layer 1. Never route
+  // through pad-level DnD's reset-settings semantics.
+  const handleBrowserImportFile = useCallback(async (file: File, replace: boolean) => {
+    const index = selectedIndexRef.current;
+    const before = padsRef.current[index];
+    const layerIndex = before.selectedLayerIndex ?? 0;
+    const layer = ensureLayers(before)[layerIndex];
+    const stock = sampleVariations(layer).map(item => ({ ...item }));
+    const active = Math.max(0, Math.min(stock.length - 1, layer.activeSampleStockIndex ?? 0));
+    if (replace ? stock.length === 0 : stock.length >= 5) throw new Error('The variation list changed.');
+    const snapshot = JSON.stringify(before);
+    if (file.size > 128 * 1024 * 1024) throw new Error('File too large for the sample browser.');
+    const analysis = await analyzeBrowserAudioFile(file);
+    if (!analysis.sampleLengthMs) throw new Error('This audio file could not be read.');
+    if (activeTabRef.current !== 'BROWSER' || selectedIndexRef.current !== index || JSON.stringify(padsRef.current[index]) !== snapshot)
+      throw new Error('The destination changed while loading. Please try again.');
+    if (stock.length) stock[active] = { ...stock[active], startMs: layer.startMs, endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs, fadeOutMs: layer.fadeOutMs };
+    const item = { ...analysis, sampleFileName: file.name, sampleFilePath: file.webkitRelativePath || file.name,
+      sampleMissing: false, startMs: 0, endMs: analysis.sampleLengthMs ?? 500, fadeInMs: 0, fadeOutMs: 0 };
+    const target = replace ? active : stock.length;
+    if (replace) stock[target] = item; else stock.push(item);
+    const layers = ensureLayers(before).map((existing, i) => i === layerIndex
+      ? { ...existing, ...item, sampleStock: stock, activeSampleStockIndex: target } : existing);
+    const next = { ...before, layers };
+    if (layerIndex === 0) Object.assign(next, item, { sampleStock: stock, activeSampleStockIndex: target });
+    setPads(previous => previous.map((pad, i) => i === index ? next : pad));
+    setKitDirty(true);
+  }, [setPads]);
+
+  const handleSampleDrop = useCallback(async (
+    index: number,
+    file: File,
+    addToSampleStock = false,
+  ) => {
     // Layer-aware drop routing:
     //   - drop on currently-selected pad → active layer (= MAIN or L2+ being edited)
     //   - drop on another pad → that pad's MAIN (layerIndex 0)
@@ -1179,7 +1537,9 @@ export default function App() {
     if (isJuceAvailable()) {
       const filePath = getDroppedFilePath(file);
       if (filePath) {
-        sendToJuce('loadSampleFromPath', { index, layerIndex, filePath, fileName: file.name });
+        sendToJuce('loadSampleFromPath', {
+          index, layerIndex, filePath, fileName: file.name, addToSampleStock,
+        });
         console.info('[ASTER DND] bridge call success', { index, layerIndex, filePath });
         return;
       }
@@ -1192,7 +1552,7 @@ export default function App() {
           type: file.type,
           size: file.size,
         });
-        await sendSampleBytesToJuce(index, file, layerIndex);
+        await sendSampleBytesToJuce(index, file, layerIndex, addToSampleStock);
         console.info('[ASTER DND] bridge call success', { index, layerIndex, fileName: file.name, mode: 'bytes-fallback' });
       } catch (error) {
         console.error('[ASTER DND] bridge call error: bytes fallback failed', error);
@@ -1201,7 +1561,7 @@ export default function App() {
     }
 
     try {
-      await loadSampleForPad(index, file, false, layerIndex);
+      await loadSampleForPad(index, file, false, layerIndex, addToSampleStock);
       console.info('[ASTER DND] bridge call success', { index, fileName: file.name, mode: 'browser-local' });
     } catch (error) {
       console.error('[ASTER DND] bridge call error', error);
@@ -1210,10 +1570,110 @@ export default function App() {
 
   const handleWaveformSampleDrop = useCallback(
     (file: File) => {
-      void handleSampleDrop(selectedIndex, file);
+      void handleSampleDrop(selectedIndex, file, true);
     },
     [handleSampleDrop, selectedIndex],
   );
+
+  const handleAddSelectedSampleStock = useCallback(() => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('addSampleStockDialog', { index: selectedIndex, layerIndex });
+      return;
+    }
+    setFileTarget({ index: selectedIndex, relink: false, layerIndex, addToSampleStock: true });
+    fileInputRef.current?.click();
+  }, [selectedIndex]);
+
+  const handleSelectSelectedSampleStock = useCallback((stockIndex: number, audition = true) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('selectLayerSampleStock', {
+        index: selectedIndex,
+        layerIndex,
+        stockIndex,
+        audition,
+      });
+      return;
+    }
+    const layers = ensureLayers(pad).map(layer => ({ ...layer }));
+    const layer = layers[layerIndex];
+    if (!layer?.sampleStock?.[stockIndex]) return;
+    const stock = [...layer.sampleStock];
+    const currentIndex = Math.max(
+      0,
+      Math.min(stock.length - 1, layer.activeSampleStockIndex ?? 0),
+    );
+    stock[currentIndex] = {
+      ...stock[currentIndex],
+      sampleFileName: layer.sampleFileName,
+      sampleFilePath: layer.sampleFilePath,
+      sampleMissing: layer.sampleMissing,
+      sampleLengthMs: layer.sampleLengthMs,
+      startMs: layer.startMs,
+      endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs,
+      fadeOutMs: layer.fadeOutMs,
+      waveformPeaks: layer.waveformPeaks,
+      waveformChannels: layer.waveformChannels,
+    };
+    const item = stock[stockIndex];
+    layers[layerIndex] = { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: stockIndex };
+    const patch: Partial<PadParams> = { layers };
+    if (layerIndex === 0) Object.assign(patch, item, { activeSampleStockIndex: stockIndex });
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
+
+  const handleRemoveSelectedSampleStock = useCallback((stockIndex: number) => {
+    const pad = padsRef.current[selectedIndex];
+    if (!pad) return;
+    const layerIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
+    if (isJuceAvailable()) {
+      sendToJuce('removeLayerSampleStock', { index: selectedIndex, layerIndex, stockIndex });
+      return;
+    }
+    const layers = ensureLayers(pad).map(layer => ({ ...layer }));
+    const layer = layers[layerIndex];
+    if (!layer?.sampleStock?.[stockIndex]) return;
+    const capturedStock = [...layer.sampleStock];
+    const currentIndex = Math.max(
+      0,
+      Math.min(capturedStock.length - 1, layer.activeSampleStockIndex ?? 0),
+    );
+    capturedStock[currentIndex] = {
+      ...capturedStock[currentIndex],
+      sampleFileName: layer.sampleFileName,
+      sampleFilePath: layer.sampleFilePath,
+      sampleMissing: layer.sampleMissing,
+      sampleLengthMs: layer.sampleLengthMs,
+      startMs: layer.startMs,
+      endMs: layer.endMs,
+      fadeInMs: layer.fadeInMs,
+      fadeOutMs: layer.fadeOutMs,
+      waveformPeaks: layer.waveformPeaks,
+      waveformChannels: layer.waveformChannels,
+    };
+    const stock = capturedStock.filter((_, index) => index !== stockIndex);
+    const active = stock.length === 0
+      ? 0
+      : Math.min(stock.length - 1, stockIndex < (layer.activeSampleStockIndex ?? 0)
+          ? (layer.activeSampleStockIndex ?? 0) - 1
+          : layer.activeSampleStockIndex ?? 0);
+    const item = stock[active];
+    layers[layerIndex] = item
+      ? { ...layer, ...item, sampleStock: stock, activeSampleStockIndex: active,
+          roundRobin: stock.length > 1 ? layer.roundRobin : false }
+      : { ...layer, sampleFileName: '', sampleFilePath: '', sampleMissing: false,
+          sampleStock: [], activeSampleStockIndex: 0, roundRobin: false,
+          waveformPeaks: [], waveformChannels: [] };
+    const patch: Partial<PadParams> = { layers };
+    if (layerIndex === 0) Object.assign(patch, layers[0]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleAddSelectedLayer = useCallback(() => {
     const pad = padsRef.current[selectedIndex];
@@ -1221,17 +1681,8 @@ export default function App() {
     const patch = patchAddLayer(pad);
     if (!patch) return;
 
-    if (isJuceAvailable()) {
-      const copyFromIndex = Math.max(0, pad.selectedLayerIndex ?? 0);
-      sendToJuce('addLayer', { index: selectedIndex, copyFromIndex, clearSample: true });
-      if (patch.selectedLayerIndex !== undefined) {
-        sendToJuce('selectLayer', { index: selectedIndex, layerIndex: patch.selectedLayerIndex });
-      }
-    }
-
-    setPads(prev => prev.map((p, i) => (i === selectedIndex ? { ...p, ...patch } : p)));
-    setKitDirty(true);
-  }, [selectedIndex]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleRemoveSelectedLayer = useCallback((layerIndex: number) => {
     const pad = padsRef.current[selectedIndex];
@@ -1239,16 +1690,8 @@ export default function App() {
     const patch = patchRemoveLayer(pad, layerIndex);
     if (!patch) return;
 
-    if (isJuceAvailable()) {
-      sendToJuce('removeLayer', { index: selectedIndex, layerIndex });
-      if (patch.selectedLayerIndex !== undefined) {
-        sendToJuce('selectLayer', { index: selectedIndex, layerIndex: patch.selectedLayerIndex });
-      }
-    }
-
-    setPads(prev => prev.map((p, i) => (i === selectedIndex ? { ...p, ...patch } : p)));
-    setKitDirty(true);
-  }, [selectedIndex]);
+    updatePad(selectedIndex, patch);
+  }, [selectedIndex, updatePad]);
 
   const handleReanalyzeSelected = useCallback(() => {
     const pad = padsRef.current[selectedIndex];
@@ -1297,20 +1740,25 @@ export default function App() {
       return;
     }
     // In browser: use HTML file picker
-    setFileTarget({ index, relink });
+    setFileTarget({ index, relink, layerIndex, addToSampleStock: false });
     fileInputRef.current?.click();
   }, [selectedIndex]);
 
   const handleFilePicked = useCallback(async (file: File | undefined) => {
     if (!file || !fileTarget) return;
-    await loadSampleForPad(fileTarget.index, file, fileTarget.relink);
+    await loadSampleForPad(
+      fileTarget.index,
+      file,
+      fileTarget.relink,
+      fileTarget.layerIndex ?? 0,
+      fileTarget.addToSampleStock ?? false,
+    );
     setFileTarget(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [fileTarget, loadSampleForPad]);
 
   const resetPadSettings = useCallback((index: number) => {
     const patch = resettablePadSettings(index);
-    sendPadPatchToJuce(index, patch, padsRef.current[index]);
     updatePad(index, patch);
   }, [updatePad]);
 
@@ -1320,13 +1768,18 @@ export default function App() {
     volume: 0.75,
     pan: 0,
     pitch: 0,
-    attack: 0.002,
+    fine: 0,
+    attack: 0,
+    hold: -1,
+    decay: 0.05,
     release: 0.05,
     startMs: 0,
     endMs: sampleLengthMs ?? FALLBACK_SAMPLE_LENGTH_MS,
     fadeInMs: 0,
     fadeOutMs: 0,
     reverse: false,
+    keepLength: true,
+    smartTrim: true,
     mute: false,
     solo: false,
     velocityMin: 0,
@@ -1349,7 +1802,6 @@ export default function App() {
     const patch: Partial<PadParams> = { layers: newLayers };
     // Layer 0 を変更したら flat fields にもミラー (既存 routing と整合)
     if (layerIndex === 0) Object.assign(patch, defaults);
-    sendPadPatchToJuce(padIndex, patch, pad);
     updatePad(padIndex, patch);
   }, [defaultLayerAudioParams, updatePad]);
 
@@ -1362,7 +1814,7 @@ export default function App() {
 
     // C++ 側: 該当 Layer のバッファを破棄
     if (isJuceAvailable()) {
-      sendToJuce('clearPadSample', { index: padIndex, layerIndex });
+      sendToJuce('clearPadSample', { index: padIndex, layerIndex, broadcast: false });
     }
 
     const defaults = defaultLayerAudioParams();
@@ -1374,6 +1826,7 @@ export default function App() {
       layerName: undefined,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
     } as LayerParams;
     const newLayers = layers.map((l, i) => (i === layerIndex ? newLayer : l));
     const patch: Partial<PadParams> = { layers: newLayers };
@@ -1385,6 +1838,7 @@ export default function App() {
         sampleMissing: false,
         sampleLengthMs: undefined,
         waveformPeaks: undefined,
+        waveformChannels: undefined,
       });
     }
     updatePad(padIndex, patch);
@@ -1397,15 +1851,9 @@ export default function App() {
     if (!pad) return;
     const initialPad = INITIAL_PADS[padIndex];
 
-    // C++ 側: 全 Layer のバッファ破棄 (後ろから消して index 安定)
+    // C++ 側: 全 Layer のバッファを一度に破棄。途中状態は UI へ返さない。
     if (isJuceAvailable()) {
-      const layers = pad.layers ?? [];
-      for (let i = Math.max(0, layers.length - 1); i >= 0; i--) {
-        sendToJuce('clearPadSample', { index: padIndex, layerIndex: i });
-      }
-      if (layers.length === 0) {
-        sendToJuce('clearPadSample', { index: padIndex, layerIndex: 0 });
-      }
+      sendToJuce('clearPadSample', { index: padIndex, broadcast: false });
     }
 
     const defaults = defaultLayerAudioParams();
@@ -1417,6 +1865,7 @@ export default function App() {
       layerName: undefined,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
     } as LayerParams;
 
     const patch: Partial<PadParams> = {
@@ -1427,6 +1876,7 @@ export default function App() {
       sampleMissing: false,
       sampleLengthMs: undefined,
       waveformPeaks: undefined,
+      waveformChannels: undefined,
       padName: initialPad.padName,            // カテゴリ名に戻す
       padColor: undefined,                     // Auto color
       // Pad-level 音作り系
@@ -1697,6 +2147,7 @@ export default function App() {
         style={{ '--fit-scale': viewportScale } as CSSProperties}
       >
         <Header
+          isDemo={demoState.isDemo}
           kitName={`${
             // Derive the header label from the same data the dropdown uses
             // (kitItems + currentKitPath) so the checked entry and the label
@@ -1729,6 +2180,7 @@ export default function App() {
         />
 
         <main className={`${styles.body} ${
+          activeTab === 'BROWSER' ? styles.bodyBrowser :
           activeTab === 'MIXER'   ? styles.bodyMixer   :
           activeTab === 'MISSING' && missingCount > 0 ? styles.bodyMissing :
                                     styles.bodyPads
@@ -1746,6 +2198,9 @@ export default function App() {
                 onChangePad={updatePad}
                 onSampleDrop={handleSampleDrop}
                 onWaveformSampleDrop={handleWaveformSampleDrop}
+                onAddSampleStock={handleAddSelectedSampleStock}
+                onSelectSampleStock={handleSelectSelectedSampleStock}
+                onRemoveSampleStock={handleRemoveSelectedSampleStock}
                 onReanalyzeSelected={handleReanalyzeSelected}
                 onPadSwap={handlePadSwap}
                 onChangeSelected={updateSelected}
@@ -1754,6 +2209,7 @@ export default function App() {
                 onRelinkSelected={handleRelinkSelected}
                 previewPlayback={previewPlayback}
                 onPreviewFinished={handlePreviewFinished}
+                onWaveformAudition={auditionSelectedLayerFromWaveform}
                 liveVelocity={liveVelocities[selectedIndex] ?? null}
                 masterKnob={masterKnob}
                 onMasterKnobChange={handleMasterKnobChange}
@@ -1784,6 +2240,16 @@ export default function App() {
             </section>
           )}
 
+          <section className={activeTab === 'BROWSER' ? styles.browser : styles.viewHidden}>
+            <SampleBrowser active={activeTab === 'BROWSER'} pads={pads} selectedIndex={selectedIndex}
+              onSelectPad={selectPadWithoutAudition}
+              onSelectLayer={index => updateSelected({ selectedLayerIndex: index })}
+              onSelectVariation={index => handleSelectSelectedSampleStock(index, false)}
+              onImportFile={handleBrowserImportFile}
+              masterKnob={masterKnob} onMasterKnobChange={handleMasterKnobChange}
+              masterClipHit={masterClipHit} onResetMasterClip={resetMasterClip} />
+          </section>
+
           {activeTab === 'MISSING' && missingCount > 0 && (
             <section className={styles.missing}>
               <MissingSamplesView
@@ -1797,6 +2263,36 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <div
+        className={`${styles.resizeGrip} ${isWindowResizing ? styles.resizeGripActive : ''}`}
+        role="separator"
+        aria-label="Resize plugin window"
+        aria-orientation="horizontal"
+        tabIndex={0}
+        title="Drag to resize"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={finishResizeDrag}
+        onPointerCancel={finishResizeDrag}
+        onKeyDown={handleResizeKeyDown}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 21L21 4" />
+          <path d="M10 21L21 10" />
+          <path d="M16 21L21 16" />
+        </svg>
+      </div>
+
+      {demoState.isDemo && demoState.started && (
+        <div className={styles.demoNotice} role="status" aria-live="polite">
+          {demoState.offlineRenderBlocked
+            ? 'Demo: offline export is available in the Full version.'
+            : demoState.expired
+              ? 'Demo expired — Restart your DAW to begin a new session. Plugin content will be reset.'
+              : `Demo time remaining: ${formatDemoTime(demoState.remainingSeconds)}. Content resets after restarting your DAW.`}
+        </div>
+      )}
 
       {/* HTML file picker — only used in browser dev mode */}
       <input
@@ -1841,33 +2337,60 @@ export default function App() {
               originalSampleFilePath: '',
               sampleMissing: false,
               waveformPeaks: [],
+              waveformChannels: [],
             });
           }}
           onAddLayer={() => {
             // 同じ Pad に新規 Layer を追加 (Sample 参照は MAIN を継承)
             if (ctxLayerCount >= 8) return;
-            sendToJuce('addLayer', { index: contextMenu.index, copyFromIndex: ctxLayerIndex });
-            // UI 側 state も足す (C++ から broadcast されるが、楽観更新で即反映)
-            setPads(prev => prev.map((p, i) => {
-              if (i !== contextMenu.index) return p;
-              const layers = p.layers ?? [];
-              const src = layers[ctxLayerIndex] ?? layers[0];
-              if (!src) return p;
-              const nextLayer = { ...src, layerName: undefined, mute: false, solo: false };
-              return { ...p, layers: [...layers, nextLayer], selectedLayerIndex: layers.length };
-            }));
+            sendToJuce('addLayer', {
+              index: contextMenu.index,
+              copyFromIndex: ctxLayerIndex,
+              broadcast: false,
+            });
+            sendToJuce('selectLayer', {
+              index: contextMenu.index,
+              layerIndex: ctxLayerCount,
+            });
+            // UI state を即時更新。C++ 側の全状態 echo は行わない。
+            setPads(prev => {
+              const next = prev.map((p, i) => {
+                if (i !== contextMenu.index) return p;
+                const layers = p.layers ?? [];
+                const src = layers[ctxLayerIndex] ?? layers[0];
+                if (!src) return p;
+                const nextLayer = { ...src, layerName: undefined, mute: false, solo: false };
+                return { ...p, layers: [...layers, nextLayer], selectedLayerIndex: layers.length };
+              });
+              padsRef.current = next;
+              return next;
+            });
+            setKitDirty(true);
           }}
           onDuplicateLayer={() => {
             // 現在 Layer をそのままコピーした新 Layer を末尾に追加
             if (ctxLayerCount >= 8) return;
-            sendToJuce('addLayer', { index: contextMenu.index, copyFromIndex: ctxLayerIndex });
-            setPads(prev => prev.map((p, i) => {
-              if (i !== contextMenu.index) return p;
-              const layers = p.layers ?? [];
-              const src = layers[ctxLayerIndex] ?? layers[0];
-              if (!src) return p;
-              return { ...p, layers: [...layers, { ...src }], selectedLayerIndex: layers.length };
-            }));
+            sendToJuce('addLayer', {
+              index: contextMenu.index,
+              copyFromIndex: ctxLayerIndex,
+              broadcast: false,
+            });
+            sendToJuce('selectLayer', {
+              index: contextMenu.index,
+              layerIndex: ctxLayerCount,
+            });
+            setPads(prev => {
+              const next = prev.map((p, i) => {
+                if (i !== contextMenu.index) return p;
+                const layers = p.layers ?? [];
+                const src = layers[ctxLayerIndex] ?? layers[0];
+                if (!src) return p;
+                return { ...p, layers: [...layers, { ...src }], selectedLayerIndex: layers.length };
+              });
+              padsRef.current = next;
+              return next;
+            });
+            setKitDirty(true);
           }}
           onCopyPad={() => {
             setPadClipboard(pads[contextMenu.index]);
@@ -1903,7 +2426,6 @@ export default function App() {
           })()}
           onRenamePad={() => renamePad(contextMenu.index)}
           onSetMidiNote={() => openMidiNoteDialog(contextMenu.index)}
-          onChangePadColor={(color) => updatePad(contextMenu.index, { padColor: color })}
           onOpenCustomColorPicker={() => {
             const p = pads[contextMenu.index];
             setColorPickerTarget({
@@ -2076,12 +2598,16 @@ export default function App() {
           <div className={styles.loadKitDialog} role="dialog" aria-modal="true" aria-label="Unsaved Kit Changes" onMouseDown={(event) => event.stopPropagation()}>
             <div className={styles.dialogTitle}>Unsaved Kit Changes</div>
             <div className={styles.dialogText}>
-              Save changes to {kitName === 'Default' ? 'Empty Kit' : kitName} before switching kits?
+              {demoState.isDemo
+                ? 'Kit saving is unavailable in the Demo. Discard these changes and switch kits?'
+                : `Save changes to ${kitName === 'Default' ? 'Empty Kit' : kitName} before switching kits?`}
             </div>
             <div className={styles.dialogActions}>
               <button type="button" onClick={() => confirmPendingKitSwitch('cancel')}>Cancel</button>
               <button type="button" onClick={() => confirmPendingKitSwitch('discard')}>Don&apos;t Save</button>
-              <button type="button" onClick={() => confirmPendingKitSwitch('save')}>Save</button>
+              {!demoState.isDemo && (
+                <button type="button" onClick={() => confirmPendingKitSwitch('save')}>Save</button>
+              )}
             </div>
           </div>
         </div>
