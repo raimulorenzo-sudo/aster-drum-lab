@@ -83,6 +83,7 @@ struct LayerTransientFx
 {
     float attack { 0.0f };
     float sustain { 0.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerCompressorFx
@@ -91,7 +92,9 @@ struct LayerCompressorFx
     float ratio { 4.0f };
     float attack { 8.0f };
     float release { 80.0f };
+    float makeupDb { 0.0f };
     float mix { 1.0f };
+    float outputDb { 0.0f };
 };
 
 struct LayerFxSlot
@@ -105,6 +108,30 @@ struct LayerFxSlot
     LayerCompressorFx compressor {};
 };
 
+// A Layer can keep a small shortlist of alternate samples. AudioFileManager
+// decodes every valid entry so Round Robin playback never touches disk on the
+// audio thread.
+static constexpr int MAX_SAMPLE_STOCK_PER_LAYER = 5;
+
+struct LayerSampleStockItem
+{
+    juce::String sampleFileName {};
+    juce::String sampleFilePath {};
+    bool sampleMissing { false };
+    float startPosition { 0.0f };
+    float endPosition { 1.0f };
+    float fadeIn { 0.0f };
+    float fadeOut { 0.0f };
+
+    bool hasSampleReference() const noexcept
+    {
+        return sampleFileName.isNotEmpty() || sampleFilePath.isNotEmpty();
+    }
+
+    juce::ValueTree toValueTree() const;
+    void fromValueTree(const juce::ValueTree& vt);
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // LayerData  ─  1 つのレイヤーが持つ情報（Pad 内で複数 Layer を重ねる仕組み）
 //
@@ -114,7 +141,7 @@ struct LayerFxSlot
 // Layer に置く設定:
 //   - サンプル参照
 //   - Volume / Pan / Pitch（Layer 単位の音量・パン・ピッチ）
-//   - Attack / Release（エンベロープ）
+//   - Attack / Hold / Decay / Release（エンベロープ）
 //   - Start/End/FadeIn/FadeOut（トリム & フェード）
 //   - Reverse / Smart Trim（サンプル依存の挙動）
 //   - Layer Mute / Solo（Pad 内のレイヤー間で有効/無効）
@@ -131,6 +158,12 @@ struct LayerData
     juce::String sampleFilePath {};
     bool         sampleMissing { false };
 
+    // Alternative samples for quick A/B comparison. The legacy sample fields
+    // above always mirror sampleStock[activeSampleStockIndex].
+    std::vector<LayerSampleStockItem> sampleStock {};
+    int activeSampleStockIndex { 0 };
+    bool roundRobin { false };
+
     // ── 表示名（空ならサンプル名 / "Layer N" を UI 側で派生表示） ───────────
     juce::String layerName {};
 
@@ -140,9 +173,12 @@ struct LayerData
     float volume { 0.75f };
     float pan    { 0.0f };       // -1=L, 0=center, 1=R
     float pitch  { 0.0f };       // 半音単位
+    float fine   { 0.0f };       // cents (-100..100)
 
     // ── エンベロープ ───────────────────────────────────────────────────────
-    float attack  { 0.002f };    // 秒
+    float attack  { 0.0f };      // 秒（0 = 原音の立ち上がりを維持）
+    float hold    { -1.0f };      // 秒（-1 = FULL、One Shot の終端まで維持）
+    float decay   { 0.05f };      // 秒（One Shot の有限 Hold 後のみ使用）
     float release { 0.05f  };    // 秒
 
     // ── トリム ─────────────────────────────────────────────────────────────
@@ -153,7 +189,9 @@ struct LayerData
 
     // ── 再生（サンプル単位の挙動） ─────────────────────────────────────────
     bool reverse   { false };
+    bool keepLength { true };
     bool smartTrim { true };
+    bool polarityInvert { false };
 
     // ── Layer 単位 Mute / Solo（Pad の Mute/Solo とは独立） ────────────────
     //   優先順位: Pad.mute > Layer.solo（同 Pad 内） > Layer.mute
@@ -181,6 +219,10 @@ struct LayerData
     {
         return sampleFileName.isNotEmpty() || sampleFilePath.isNotEmpty();
     }
+
+    void captureActiveSampleToStock();
+    void activateSampleStockItem(int index);
+    std::vector<LayerSampleStockItem> normalizedSampleStock() const;
 
     // ── シリアライズ ──────────────────────────────────────────────────────
     juce::ValueTree toValueTree() const;
@@ -222,9 +264,12 @@ struct PadData
     float volume { 0.75f };
     float pan    { 0.0f };                   // -1.0（左）〜 0.0（中央）〜 1.0（右）
     float pitch  { 0.0f };                   // 半音単位（Phase 2 以降で有効化）
+    float fine   { 0.0f };                   // cents (-100..100)、Layer 0 mirror
 
     // ── エンベロープ ──────────────────────────────────────────────────────────
-    float attack  { 0.002f };                // 秒（立ち上がり時間）
+    float attack  { 0.0f };                  // 秒（0 = 即時に最大音量）
+    float hold    { -1.0f };                  // 秒（-1 = FULL、Layer 0 mirror）
+    float decay   { 0.05f };                  // 秒（Layer 0 mirror）
     float release { 0.05f  };               // 秒（フェードアウト時間）
 
     // ── トリム位置（0.0〜1.0） ────────────────────────────────────────────────
@@ -237,6 +282,7 @@ struct PadData
 
     // ── 逆再生 ───────────────────────────────────────────────────────────────
     bool  reverse { false };                // true = 終端から始端に向かって再生
+    bool  keepLength { true };              // Pitch変更時もトリム範囲の長さを維持
 
     // ── 再生モード ────────────────────────────────────────────────────────────
     PlaybackMode playbackMode { PlaybackMode::OneShot };
@@ -257,6 +303,7 @@ struct PadData
     // デフォルトは KitData::resetToDefaults() で全 Pad を Main に設定。
     // 旧版（-1 = Main / 0〜7 = Aux）の値は KitData::fromValueTree() で 0〜47 に変換される。
     int  outputAssign { 0 };
+    bool swapLR { false };                      // Pad出力の左右チャンネルを交換
 
     // ── ベロシティ / ヒューマナイズ ───────────────────────────────────────────
     float velocitySens { 1.0f };            // 0.0=ベロシティ無視, 1.0=完全追従
@@ -277,14 +324,15 @@ struct PadData
     VelCurve velCurve;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Pad-level Volume / Pan / Pitch（Layer パラメータの上位段）
+    // Pad-level Volume / Pan / Pitch / Fine（Layer パラメータの上位段）
     //
-    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan/Pitch → Output Routing
-    // 既存プリセット互換のため初期値は unity / center / 0 semitone。
+    // 信号フロー: Layer Vol/Pan/Pitch → Pad Vol/Pan/Pitch/Fine → Output Routing
+    // 既存プリセット互換のため初期値は unity / center / 0 semitone / 0 cent。
     // ─────────────────────────────────────────────────────────────────────────
     float padVolume { 0.75f };  // fader position（0.75 = 0 dB unity）
     float padPan    { 0.0f  };  // -1.0〜1.0
     float padPitch  { 0.0f  };  // semitones
+    float padFine   { 0.0f  };  // cents (-100..100)
 
     // ── Layers（1 つ以上、最大 MAX_LAYERS_PER_PAD） ───────────────────────────
     // 既存の flat fields（sampleFilePath / volume / pan / ... など）は

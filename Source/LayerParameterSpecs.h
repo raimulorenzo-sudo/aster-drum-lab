@@ -42,6 +42,7 @@ namespace LayerParameterSpecs
         EqHighFreq,
         EqHighGain,
         EqHighQ,
+        Fine,
     };
 
     struct Spec
@@ -55,7 +56,7 @@ namespace LayerParameterSpecs
         bool         isBoolean;
     };
 
-    constexpr int numAutomatableParams = 20;
+    constexpr int numAutomatableParams = 21;
 
     const std::array<Spec, numAutomatableParams>& all() noexcept;
     const Spec&  specFor(Param param) noexcept;

@@ -290,7 +290,7 @@ PadDetailEditor::PadDetailEditor(DrumSamplerAudioProcessor& processor)
     setupSlider(sFadeIn,   "FADE IN",      0.0,  1.0,   0.0,   0, "%");
     setupSlider(sFadeOut,  "FADE OUT",     0.0,  1.0,   0.0,   0, "%");
     setupSlider(sPitch,    "PITCH",      -24.0, 24.0,   0.0,   1, " st");
-    setupSlider(sAttack,   "ATTACK",       0.0,  2.0,   0.002, 3, " s");
+    setupSlider(sAttack,   "ATTACK",       0.0,  2.0,   0.0,   3, " s");
     setupSlider(sRelease,  "RELEASE",      0.0,  4.0,   0.05,  3, " s");
     setupSlider(sVolume,   "VOLUME",       0.0,  1.0,   1.0,   0, "%");
     setupSlider(sPan,      "PAN",         -1.0,  1.0,   0.0,   2);

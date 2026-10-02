@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include "PadData.h"
+#include "KeepLengthEngine.h"
 
 struct BiquadCoefficients
 {
@@ -65,6 +66,12 @@ struct VoiceFxState
     std::array<float, MAX_LAYER_FX_SLOTS> transientSlowRight {};
     std::array<float, MAX_LAYER_FX_SLOTS> compressorEnvLeft {};
     std::array<float, MAX_LAYER_FX_SLOTS> compressorEnvRight {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorMakeupLeft {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorMakeupRight {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorOutputLeft {};
+    std::array<float, MAX_LAYER_FX_SLOTS> compressorOutputRight {};
+    std::array<bool, MAX_LAYER_FX_SLOTS> compressorGainInitialisedLeft {};
+    std::array<bool, MAX_LAYER_FX_SLOTS> compressorGainInitialisedRight {};
     // このブロックで各 Compressor スロットが適用したゲインリダクション量 (dB, 正値)。
     // render() 開始時に 0 リセットし、処理中に max を記録 → VoiceManager が集計。
     std::array<float, MAX_LAYER_FX_SLOTS> compReductionDb {};
@@ -86,6 +93,12 @@ struct VoiceFxState
         transientSlowRight.fill(0.0f);
         compressorEnvLeft.fill(0.0f);
         compressorEnvRight.fill(0.0f);
+        compressorMakeupLeft.fill(1.0f);
+        compressorMakeupRight.fill(1.0f);
+        compressorOutputLeft.fill(1.0f);
+        compressorOutputRight.fill(1.0f);
+        compressorGainInitialisedLeft.fill(false);
+        compressorGainInitialisedRight.fill(false);
         compReductionDb.fill(0.0f);
     }
 };
@@ -106,6 +119,7 @@ struct DrumVoice
 {
     int   padIndex     { -1    };    // どのパッドか
     int   layerIndex   { 0     };    // どの Layer か（0..MAX_LAYERS_PER_PAD-1）
+    int   sampleVariationIndex { 0 }; // 発音時に確定した Sample Variation
     bool  isActive     { false };    // 発音中かどうか
     bool  isPreview    { false };    // UIクリックによるプレビュー発音かどうか
     uint64_t triggerSerial { 0 };    // 同一 Pad の最新 Voice を選ぶための発音順
@@ -119,6 +133,7 @@ struct DrumVoice
     // ── ゲイン（パンと音量を事前計算して保持） ───────────────────────────
     float gainL        { 1.0f  };
     float gainR        { 1.0f  };
+    bool  swapLR       { false };
 
     // ── 再生モード ────────────────────────────────────────────────────────
     bool  isOneShot    { true  };    // true = Note Off を無視
@@ -127,11 +142,18 @@ struct DrumVoice
     float envelope     { 0.0f  };    // 現在のエンベロープ値（0.0〜1.0）
     float attackRate   { 0.0f  };    // 1 サンプルあたりの増加量
     float releaseRate  { 0.0f  };    // 1 サンプルあたりの減少量
+    float oneShotDecayRate { 0.0f }; // 有限 Hold 後の 1 サンプルあたりの減少量
+    int   oneShotHoldSamplesRemaining { -1 }; // -1 = FULL（サンプル終端まで維持）
+    bool  oneShotDecayEnabled { false };
+    bool  attackComplete { false };
     bool  isReleasing  { false };
 
     // ── Phase 2: ピッチ / リバース / フェード ────────────────────────────
     double playbackRatio { 1.0  };   // 再生速度比（2^(semitones/12)）ピッチシフト
     bool   reversed      { false };  // true = 逆再生
+    bool   keepLengthEnabled { false };
+    float  keepLengthWetMix { 0.0f };
+    float  humanizePitchOffset { 0.0f };
     int    fadeInSamples { 0    };   // フェードイン長（出力サンプル数）
     int    fadeOutSamples{ 0    };   // フェードアウト長（出力サンプル数）
     int    samplesRendered{ 0   };   // レンダリング済みサンプル数（フェード計算用）
@@ -142,6 +164,9 @@ struct DrumVoice
     // ── Phase 3: レベル計測 ───────────────────────────────────────────────
     // render() が呼ばれるたびに更新される。VoiceManager が集計してミキサーメーターに渡す。
     float lastPeakLevel  { 0.0f };   // 直前ブロックのピーク出力振幅（線形、0〜1+）
+    KeepLengthEngine keepLengthEngine;
+
+    void prepare(double hostSampleRate, int maximumBlockSize);
 
     // ── 発音開始 ──────────────────────────────────────────────────────────
     // Phase 2 で追加した引数にはデフォルト値を付けているので、
@@ -162,12 +187,22 @@ struct DrumVoice
                double sourceLen   = 1.0,    // 元サンプル長
                uint64_t serial    = 0,      // 発音順
                int    startDelaySamp = 0,   // Humanize タイミング揺れ
-               bool   previewVoice = false  // UI preview専用voice
+               bool   previewVoice = false, // UI preview専用voice
+               bool   swapChannels = false, // Pad output L/R swap
+               bool   keepLength = false,
+               double sourceRateRatio = 1.0,
+               float  initialPitchSemitones = 0.0f,
+               float  perVoicePitchOffset = 0.0f,
+               float  oneShotHoldSec = -1.0f,
+               float  oneShotDecaySec = 0.05f
                ) noexcept;
 
     // ── リリース開始（Gate モード専用） ────────────────────────────────────
     void triggerRelease() noexcept;
     void forceRelease(float releaseTimeSec, double hostSampleRate) noexcept;
+
+    // Returns false once a release/decay reaches silence.
+    bool advanceEnvelope() noexcept;
 
     // ── レンダリング（processBlock から呼ぶ） ──────────────────────────────
     // source: このパッドのオーディオバッファ
@@ -175,9 +210,11 @@ struct DrumVoice
     // 戻り値: 発音継続中なら true、終了したら false
     bool render(const juce::AudioBuffer<float>& source,
                 juce::AudioBuffer<float>&       output,
+                int                             outputStartSample,
                 int                             numSamples,
                 const LayerData&                layer,
-                double                          hostSampleRate) noexcept;
+                double                          hostSampleRate,
+                float                           pitchSemitones) noexcept;
 
     float getPlaybackPositionNormalized() const noexcept;
 };

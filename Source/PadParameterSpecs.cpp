@@ -7,7 +7,7 @@ namespace
         { PadParameterSpecs::Param::Volume,  "volume",  "Volume",   0.75f,  0.0f, 1.0f,  false },
         { PadParameterSpecs::Param::Pan,     "pan",     "Pan",      0.0f,  -1.0f, 1.0f,  false },
         { PadParameterSpecs::Param::Pitch,   "pitch",   "Pitch",    0.0f, -24.0f, 24.0f, false },
-        { PadParameterSpecs::Param::Attack,  "attack",  "Attack",   0.002f, 0.0f, 2.0f,  false },
+        { PadParameterSpecs::Param::Attack,  "attack",  "Attack",   0.0f,   0.0f, 2.0f,  false },
         { PadParameterSpecs::Param::Release, "release", "Release",  0.05f,  0.0f, 4.0f,  false },
         { PadParameterSpecs::Param::Start,   "start",   "Start",    0.0f,   0.0f, 1.0f,  false },
         { PadParameterSpecs::Param::End,     "end",     "End",      1.0f,   0.0f, 1.0f,  false },
@@ -23,6 +23,7 @@ namespace
         { PadParameterSpecs::Param::PadVolume, "padVolume", "Pad Volume", 0.75f, 0.0f, 1.0f, false },
         { PadParameterSpecs::Param::PadPan, "padPan", "Pad Pan", 0.0f, -1.0f, 1.0f, false },
         { PadParameterSpecs::Param::PadPitch, "padPitch", "Pad Pitch", 0.0f, -24.0f, 24.0f, false },
+        { PadParameterSpecs::Param::PadFine, "padFine", "Pad Fine", 0.0f, -100.0f, 100.0f, false },
     }};
 
     juce::String pagePrefix(int padIndex)

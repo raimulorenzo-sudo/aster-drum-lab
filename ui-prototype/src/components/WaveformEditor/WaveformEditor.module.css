@@ -7,9 +7,9 @@
 }
 
 .titleRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   min-height: 0;
   padding: 0 22px;
@@ -18,24 +18,38 @@
     linear-gradient(180deg, rgba(28, 26, 22, 0.22), rgba(10, 10, 10, 0.12));
 }
 
-.selectedBlock,
+.selectedBlock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: 12px 22px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 1px;
+  min-width: 0;
+}
+
 .sampleBlock {
   display: flex;
   align-items: center;
-  gap: 10px;
   min-width: 0;
 }
 
 .selectedLabel {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  align-self: end;
   color: var(--text-sub);
-  font-size: var(--fs-13);
+  font-size: var(--fs-10);
   font-weight: 650;
   letter-spacing: 0.14em;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .selectedName {
-  display: inline-block;
-  max-width: 220px;
+  display: block;
+  width: 100%;
+  max-width: 100%;
   color: var(--accent-cyan);
   font-size: var(--fs-14);
   font-weight: 700;
@@ -49,16 +63,25 @@
 }
 
 .selectedNameButton {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
   min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
   cursor: text;
+  overflow: hidden;
+  text-align: left;
 }
 
 .nameInput {
-  width: 132px;
-  height: 24px;
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  box-sizing: border-box;
   padding: 0 8px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(82, 200, 232, 0.38);
@@ -78,9 +101,12 @@
 
 /* ── MIDI Note ピル ─────────────────────────────────────────────── */
 .midiWrap {
+  grid-column: 2;
+  grid-row: 2;
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: max-content;
 }
 
 .midiPill {
@@ -166,31 +192,299 @@
 
 .sampleBlock {
   justify-content: flex-end;
+  position: relative;
+  gap: 6px;
 }
 
-.sampleNav {
+.sampleNavButton,
+.sampleAddButton {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(82, 200, 232, 0.28);
+  background: rgba(82, 200, 232, 0.035);
+  color: var(--accent-cyan);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.sampleNavButton {
   color: var(--text-sub);
   font-size: var(--fs-15);
-  letter-spacing: 0.20em;
+}
+
+.sampleNavButton:hover:not(:disabled),
+.sampleAddButton:hover:not(:disabled) {
+  border-color: rgba(82, 200, 232, 0.55);
+  color: var(--accent-cyan-hot);
+  background: rgba(82, 200, 232, 0.08);
+}
+
+.sampleNavButton:disabled,
+.sampleAddButton:disabled {
+  opacity: 0.28;
+  cursor: default;
 }
 
 .sampleLabel {
+  flex: 0 0 auto;
   color: var(--platinum-gold-soft);
   font-size: var(--fs-11);
   font-weight: 650;
   letter-spacing: 0.15em;
 }
 
+.sampleMenuButton {
+  height: 24px;
+  min-width: 0;
+  max-width: 250px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.sampleMenuButton:hover,
+.sampleMenuButton[aria-expanded='true'] {
+  border-bottom-color: rgba(82, 200, 232, 0.45);
+}
+
+.stockCount {
+  flex: 0 0 auto;
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  white-space: nowrap;
+}
+
+.sampleChevron {
+  color: var(--accent-cyan);
+  font-size: var(--fs-13);
+  flex: 0 0 auto;
+}
+
 .filename {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: var(--fs-13);
   font-weight: 500;
   letter-spacing: 0.04em;
   color: var(--text-soft);
   font-family: var(--font-sans);
-  max-width: 220px;
+  max-width: 160px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.sampleStockMenu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(330px, 70vw);
+  padding: 6px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius-md);
+  background:
+    var(--noise-warm),
+    linear-gradient(180deg, rgba(30, 29, 27, 0.99), rgba(14, 14, 13, 0.99));
+  background-size: 200px 200px, auto;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.sampleVariationsHeader {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sampleVariationsTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-9);
+  font-weight: 700;
+  letter-spacing: 0.13em;
+}
+
+.sampleVariationsCapacity {
+  flex: 0 0 auto;
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-10);
+  letter-spacing: 0.04em;
+}
+
+.roundRobinBadge {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(82, 200, 232, 0.48);
+  border-radius: 3px;
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.09);
+  font-family: var(--font-mono);
+  font-size: var(--fs-9);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.samplePlayMode {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.samplePlayModeLabel {
+  flex: 0 0 auto;
+  color: var(--text-sub);
+  font-size: var(--fs-9);
+  font-weight: 700;
+  letter-spacing: 0.11em;
+}
+
+.samplePlayModeButtons {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.samplePlayModeButton {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-sub);
+  font-size: var(--fs-9);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+
+.samplePlayModeButton:hover:not(:disabled) {
+  border-color: rgba(82, 200, 232, 0.4);
+  color: var(--text-soft);
+}
+
+.samplePlayModeButtonActive {
+  border-color: rgba(82, 200, 232, 0.55);
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.12);
+}
+
+.samplePlayModeButton:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.sampleStockRow {
+  min-height: 32px;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+.sampleStockRowActive {
+  background: linear-gradient(90deg, rgba(82, 200, 232, 0.16), rgba(82, 200, 232, 0.04));
+}
+
+.sampleStockSelect {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-soft);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sampleStockIndex {
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  text-align: center;
+}
+
+.sampleStockRowActive .sampleStockIndex,
+.sampleStockRowActive .sampleStockName {
+  color: var(--accent-cyan);
+}
+
+.sampleStockName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-12);
+}
+
+.sampleStockRemove {
+  width: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--text-sub);
+  font-size: var(--fs-15);
+  cursor: pointer;
+}
+
+.sampleStockRemove:hover {
+  color: var(--mute-color);
+}
+
+.sampleStockAddRow {
+  width: 100%;
+  height: 32px;
+  margin-top: 5px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--platinum-gold-soft);
+  font-size: var(--fs-11);
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sampleStockAddRow:hover:not(:disabled) {
+  background: rgba(201, 173, 120, 0.08);
+  color: var(--platinum-gold);
+}
+
+.sampleStockAddRow:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 .filenameMissing {
@@ -216,9 +510,10 @@
 }
 
 .waveBox {
-  --wave-editor-bg-top: var(--panel-inset);
-  --wave-editor-bg-bottom: var(--panel-floor);
+  --wave-editor-bg-top: #060605;
+  --wave-editor-bg-bottom: #0b0a08;
   --wave-editor-wave: var(--accent-blue);
+  --wave-editor-wave-edge: var(--accent-cyan-hot);
   --wave-editor-trim: var(--accent-cyan-hot);
   --wave-editor-fade: var(--platinum-gold);
   --wave-editor-fade-glow: rgba(191, 163, 106, 0.32);
@@ -266,16 +561,64 @@
   text-shadow: 0 0 8px rgba(82, 200, 232, 0.28);
 }
 
+.emptyWaveformPrompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(209, 184, 122, 0.58);
+  font-size: var(--fs-11);
+  font-weight: 760;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 8px rgba(191, 163, 106, 0.14),
+    0 1px 0 rgba(0, 0, 0, 0.62);
+}
+
 /* ── 上部ツールレーン: zoom controls 専用 (波形と完全に分離) ───── */
 .waveToolLane {
   flex: 0 0 auto;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   height: 22px;
   padding: 0 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   background: rgba(0, 0, 0, 0.18);
+}
+
+.channelModeControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid rgba(82, 200, 232, 0.24);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.channelModeBtn {
+  height: 18px;
+  min-width: 40px;
+  padding: 0 6px;
+  border-radius: 2px;
+  color: rgba(170, 202, 211, 0.52);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.10em;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.channelModeBtn:hover {
+  color: rgba(120, 216, 240, 0.86);
+}
+
+.channelModeBtnActive {
+  color: var(--accent-cyan);
+  background: rgba(82, 200, 232, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(82, 200, 232, 0.16);
 }
 
 /* ── 中段: 波形描画レーン (overlay label 等の position 基準) ───── */
@@ -304,15 +647,59 @@
   display: block;
 }
 
+.svgAudition {
+  cursor: pointer;
+}
+
 .waveform {
   filter:
-    drop-shadow(0 0 3px rgba(82, 200, 232, 0.32))
-    drop-shadow(0 0 6px rgba(82, 200, 232, 0.12));
+    drop-shadow(0 0 1px rgba(82, 200, 232, 0.22))
+    drop-shadow(0 0 3px rgba(82, 200, 232, 0.06));
 }
 
 /* zoom 中も波形ストロークが太くならないように */
 .waveform path {
   vector-effect: non-scaling-stroke;
+}
+
+.waveGridLine,
+.waveZeroLine,
+.waveLaneDivider {
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.waveGridLine {
+  stroke: rgba(120, 216, 240, 0.10);
+  stroke-width: 0.45;
+}
+
+.waveZeroLine {
+  stroke: rgba(120, 216, 240, 0.23);
+  stroke-width: 0.55;
+}
+
+.waveLaneDivider {
+  stroke: rgba(120, 216, 240, 0.08);
+  stroke-width: 0.55;
+}
+
+.waveChannelLabels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.waveChannelLabel {
+  position: absolute;
+  left: 7px;
+  transform: translateY(-50%);
+  color: rgba(120, 216, 240, 0.46);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
 /* ── Zoom controls (waveToolLane の右端に通常フローで配置) ─────── */
@@ -323,6 +710,7 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.36);
+  margin-left: auto;
 }
 
 .zoomBtn {
@@ -478,6 +866,44 @@
     drop-shadow(0 0 2px var(--wave-editor-fade-glow))
     drop-shadow(0 0 5px rgba(191, 163, 106, 0.10));
   pointer-events: none;
+}
+
+.envelopePreview {
+  opacity: 0.98;
+}
+
+.envelopePreviewShadow,
+.envelopePreviewPath {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.envelopePreviewShadow {
+  stroke: rgba(0, 0, 0, 0.82);
+  stroke-width: 4.8px;
+}
+
+.envelopePreviewPath {
+  stroke: #e2bd72;
+  stroke-width: 2.1px;
+  filter:
+    drop-shadow(0 0 2px rgba(226, 189, 114, 0.76))
+    drop-shadow(0 0 7px rgba(191, 163, 106, 0.24));
+}
+
+.envelopePreviewLabel {
+  fill: #e2bd72;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.88);
+  stroke-width: 2.6px;
+  vector-effect: non-scaling-stroke;
 }
 
 .previewPlayhead {

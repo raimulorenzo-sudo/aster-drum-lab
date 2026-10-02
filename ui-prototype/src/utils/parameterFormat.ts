@@ -45,6 +45,10 @@ export function formatPitch(value: number) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(0)} st`;
 }
 
+export function formatFine(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(0)} ct`;
+}
+
 export function formatMs(value: number, digits = 1) {
   return `${value.toFixed(digits)} ms`;
 }

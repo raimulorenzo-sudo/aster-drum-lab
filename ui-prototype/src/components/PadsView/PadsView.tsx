@@ -6,6 +6,7 @@ import { PadEditorTabs } from '../PadEditorTabs/PadEditorTabs';
 import { LayerTabs } from '../LayerTabs/LayerTabs';
 import { Knob } from '../Knob/Knob';
 import { SettingsMenu } from '../SettingsMenu/SettingsMenu';
+import { AutomationModeButton } from '../AutomationAssign/AutomationAssign';
 import type { PadParams, KitPage, PreviewPlayback } from '../../types';
 import {
   composePadView,
@@ -20,6 +21,7 @@ import { dbToPosition, formatFaderDb } from '../../utils/fader';
 import { registerMasterMeter } from '../../utils/meterRegistry';
 import { registerResourceMeter } from '../../utils/resourceRegistry';
 import { parseNumericText } from '../../utils/numericInput';
+import { masterAutomationTarget } from '../../utils/automationTarget';
 
 interface PadsViewProps {
   pads: PadParams[];
@@ -32,6 +34,9 @@ interface PadsViewProps {
   onChangePad: (index: number, patch: Partial<PadParams>) => void;
   onSampleDrop: (index: number, file: File) => void;
   onWaveformSampleDrop?: (file: File) => void;
+  onAddSampleStock?: () => void;
+  onSelectSampleStock?: (stockIndex: number) => void;
+  onRemoveSampleStock?: (stockIndex: number) => void;
   onReanalyzeSelected?: () => void;
   onPadSwap: (sourceIndex: number, targetIndex: number) => void;
   onChangeSelected: (patch: Partial<PadParams>) => void;
@@ -40,6 +45,7 @@ interface PadsViewProps {
   onRelinkSelected?: () => void;
   previewPlayback: PreviewPlayback;
   onPreviewFinished: (triggerId: number) => void;
+  onWaveformAudition?: (layerIndex: number) => void;
   /** 直近に発音された MIDI velocity (0..127)。VelocityRangeSlider のマーカー表示用。 */
   liveVelocity?: number | null;
   /** Master output knob position 0..1.  60/66 ≈ 0.909 = 0 dB. */
@@ -60,6 +66,9 @@ function PadsViewComponent({
   onChangePad,
   onSampleDrop,
   onWaveformSampleDrop,
+  onAddSampleStock,
+  onSelectSampleStock,
+  onRemoveSampleStock,
   onReanalyzeSelected,
   onPadSwap,
   onChangeSelected,
@@ -68,22 +77,29 @@ function PadsViewComponent({
   onRelinkSelected,
   previewPlayback,
   onPreviewFinished,
+  onWaveformAudition,
   liveVelocity,
   masterKnob,
   onMasterKnobChange,
   masterClipHit,
   onResetMasterClip,
 }: PadsViewProps) {
+  const [showEnvelopePreview, setShowEnvelopePreview] = useState(false);
   // Layer-aware view: 選択中 Layer の値を flat フィールドに上書きした「仮想 Pad」を
   // 既存の WaveformEditor / PadControlSections に渡す。編集側 patch は
   // routeLayerPatch で Layer-level キーだけ layers[idx] に振り分けてから親へ。
   const viewPad = useMemo(() => composePadView(selectedPad), [selectedPad]);
+  const selectedPadRef = useRef(selectedPad);
+  selectedPadRef.current = selectedPad;
 
+  // Knob deliberately keeps a stable callback while sibling controls update.
+  // Read the current pad through a ref so a Pitch/Pan gesture cannot rebuild
+  // layers[] from the snapshot captured before the previous Volume edit.
   const onChangeLayerAware = useCallback(
     (patch: Partial<PadParams>) => {
-      onChangeSelected(routeLayerPatch(selectedPad, patch));
+      onChangeSelected(routeLayerPatch(selectedPadRef.current, patch));
     },
-    [onChangeSelected, selectedPad],
+    [onChangeSelected],
   );
 
   const onSelectLayer = useCallback(
@@ -161,18 +177,24 @@ function PadsViewComponent({
           <WaveformEditor
             pad={viewPad}
             padIndex={selectedIndex}
+            showEnvelopePreview={showEnvelopePreview}
             onChange={onChangeLayerAware}
             onSampleDrop={onWaveformSampleDrop}
+            onAddSampleStock={onAddSampleStock}
+            onSelectSampleStock={onSelectSampleStock}
+            onRemoveSampleStock={onRemoveSampleStock}
             onReanalyze={onReanalyzeSelected}
             onRelinkSample={onRelinkSelected}
             previewPlayback={previewPlayback}
             onPreviewFinished={onPreviewFinished}
+            onWaveformAudition={() => onWaveformAudition?.(selectedLayerIndexOf(selectedPad))}
           />
           <PadEditorTabs
             pad={viewPad}
             padIndex={selectedIndex}
             onChange={onChangeLayerAware}
             liveVelocity={liveVelocity}
+            onEnvelopePreviewChange={setShowEnvelopePreview}
           />
         </section>
       </div>
@@ -198,7 +220,7 @@ interface FooterBarProps {
   onResetMasterClip: () => void;
 }
 
-function PadFooterBar({
+export function PadFooterBar({
   masterKnob,
   onMasterKnobChange,
   masterClipHit,
@@ -241,6 +263,7 @@ function PadFooterBar({
         </svg>
       </button>
       <SettingsMenu anchorRef={gearRef} open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AutomationModeButton />
 
       <Resource kind="cpu" label="CPU" />
       <Resource kind="mem" label="MEM" />
@@ -260,6 +283,7 @@ function PadFooterBar({
             return parsed === null ? null : dbToPosition(parsed);
           }}
           onChange={onMasterKnobChange}
+          automationTarget={masterAutomationTarget}
         />
         {editingOutput ? (
           <input

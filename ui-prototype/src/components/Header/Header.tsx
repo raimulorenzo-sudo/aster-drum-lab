@@ -13,10 +13,11 @@ export type HeaderKitItem = {
 const UI_SCALES: UiScale[] = [2, 1.75, 1.5, 1.2, 1, 0.75, 0.5];
 
 interface HeaderProps {
+  isDemo: boolean;
   kitName: string;
   kitItems: HeaderKitItem[];
   currentKitPath: string;
-  uiScale: UiScale;
+  uiScale: number;
   onSelectKit: (path: string) => void;
   onRescanKitFolder: () => void;
   onRevealKitFolder: () => void;
@@ -134,7 +135,10 @@ export function Header(props: HeaderProps) {
       <div className={styles.brand}>
         <SunburstMark />
         <div className={styles.title}>
-          <span className={styles.brandMark}>ASTER</span>
+          <div className={styles.brandTopLine}>
+            <span className={styles.brandMark}>ASTER</span>
+            {props.isDemo && <span className={styles.demoBadge}>Demo</span>}
+          </div>
           <span className={styles.brandSub}>Drum Lab</span>
         </div>
       </div>
@@ -230,8 +234,18 @@ export function Header(props: HeaderProps) {
         </button>
         <span className={styles.actionSeparator} aria-hidden />
 
-        <button className={styles.actionBtn} onClick={props.onSaveKit}>SAVE KIT</button>
-        <button className={styles.actionBtn} onClick={props.onSaveKitAs}>SAVE KIT AS</button>
+        <button
+          className={styles.actionBtn}
+          onClick={props.onSaveKit}
+          disabled={props.isDemo}
+          title={props.isDemo ? 'Available in the Full version' : undefined}
+        >SAVE KIT</button>
+        <button
+          className={styles.actionBtn}
+          onClick={props.onSaveKitAs}
+          disabled={props.isDemo}
+          title={props.isDemo ? 'Available in the Full version' : undefined}
+        >SAVE KIT AS</button>
         <button
           ref={menuButtonRef}
           className={`${styles.menuBtn} ${menuOpen ? styles.menuBtnActive : ''}`}
@@ -253,7 +267,7 @@ export function Header(props: HeaderProps) {
               {UI_SCALES.map(scale => (
                 <button
                   key={scale}
-                  className={`${styles.scaleItem} ${props.uiScale === scale ? styles.scaleItemActive : ''}`}
+                  className={`${styles.scaleItem} ${Math.abs(props.uiScale - scale) < 0.01 ? styles.scaleItemActive : ''}`}
                   onClick={() => chooseScale(scale)}
                 >
                   {Math.round(scale * 100)}%

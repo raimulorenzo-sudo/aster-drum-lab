@@ -1,8 +1,25 @@
 #include "VoiceManager.h"
 #include "FaderCurve.h"
 
+namespace
+{
+void accumulatePeak(std::atomic<float>& destination, float value) noexcept
+{
+    auto current = destination.load(std::memory_order_relaxed);
+    while (value > current
+           && ! destination.compare_exchange_weak(current, value,
+                                                   std::memory_order_relaxed,
+                                                   std::memory_order_relaxed))
+    {
+    }
+}
+}
+
 VoiceManager::VoiceManager() noexcept
 {
+    for (auto& level : padPeakLevels)
+        level.store(0.0f, std::memory_order_relaxed);
+
     for (auto& level : padTriggerLevels)
         level.store(0.0f, std::memory_order_relaxed);
 
@@ -12,6 +29,16 @@ VoiceManager::VoiceManager() noexcept
 
     for (auto& padLayers : layerPeakLevels)
         padLayers.fill(0.0f);
+
+    for (auto& padLayers : roundRobinCursors)
+        for (auto& cursor : padLayers)
+            cursor.store(0, std::memory_order_relaxed);
+}
+
+void VoiceManager::prepare(double hostSampleRate, int maximumBlockSize)
+{
+    for (auto& voice : voices)
+        voice.prepare(hostSampleRate, maximumBlockSize);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,7 +165,9 @@ void VoiceManager::noteOn(int                     padIndex,
 {
     startVoicesForPad(padIndex, velocity, kit, files, hostSampleRate,
                       /*previewVoice=*/ false,
-                      /*previewLayerIndex=*/ -1);
+                      /*previewLayerIndex=*/ -1,
+                      /*previewStartPosition=*/ -1.0f,
+                      /*ignoreMuteSoloAndVelocityRange=*/ false);
 }
 
 // v7+: Pad の視覚フラッシュだけ発火 (Voice 生成しない)。
@@ -158,12 +187,16 @@ void VoiceManager::previewNoteOn(int                     padIndex,
                                  const KitData&          kit,
                                  const AudioFileManager& files,
                                  double                  hostSampleRate,
-                                 int                     layerIndex)
+                                 int                     layerIndex,
+                                 float                   startPosition,
+                                 bool                    ignoreMuteSoloAndVelocityRange)
 {
     stopPreviewVoices(hostSampleRate);
     startVoicesForPad(padIndex, velocity, kit, files, hostSampleRate,
                       /*previewVoice=*/ true,
-                      /*previewLayerIndex=*/ layerIndex);
+                      /*previewLayerIndex=*/ layerIndex,
+                      startPosition,
+                      ignoreMuteSoloAndVelocityRange);
 }
 
 void VoiceManager::startVoicesForPad(int                     padIndex,
@@ -172,18 +205,23 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
                                      const AudioFileManager& files,
                                      double                  hostSampleRate,
                                      bool                    previewVoice,
-                                     int                     previewLayerIndex)
+                                     int                     previewLayerIndex,
+                                     float                   previewStartPosition,
+                                     bool                    ignoreMuteSoloAndVelocityRange)
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     const PadData& pad = kit.pads[static_cast<size_t>(padIndex)];
+    const bool forcePreviewLayer = previewVoice
+                                && previewLayerIndex >= 0
+                                && ignoreMuteSoloAndVelocityRange;
 
     // Pad-level Mute / Solo は全 Layer を一括スキップ
-    if (pad.mute) return;
+    if (! forcePreviewLayer && pad.mute) return;
 
     const bool anySoloActive = std::any_of(kit.pads.begin(), kit.pads.end(),
                                            [] (const PadData& p) { return p.solo; });
-    if (anySoloActive && ! pad.solo) return;
+    if (! forcePreviewLayer && anySoloActive && ! pad.solo) return;
 
     // ── Pad 内で Layer Solo が立っていれば、その Layer 群だけ通す ───────────
     bool anyLayerSolo = false;
@@ -204,7 +242,8 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
     // same musical movement, preserving phase and transient relationships.
     PadHumanize humanize;
     const float amount = juce::jlimit(0.0f, 1.0f, pad.humanize);
-    if (amount > 0.0f)
+    const bool exactPreviewStart = previewVoice && previewStartPosition >= 0.0f;
+    if (! exactPreviewStart && amount > 0.0f)
     {
         const auto bipolarRandom = [this]() noexcept
         {
@@ -227,18 +266,16 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
 
         const auto& L = pad.layers[(size_t) li];
 
-        if (L.mute)                                              continue;
-        if (anyLayerSolo && ! L.solo)                            continue;
-        if (velMidi < L.velocityMin || velMidi > L.velocityMax)  continue;
+        if (! forcePreviewLayer)
+        {
+            if (L.mute)                                             continue;
+            if (anyLayerSolo && ! L.solo)                           continue;
+            if (velMidi < L.velocityMin || velMidi > L.velocityMax) continue;
+        }
 
-        // サンプルが読み込まれていなければ Skip（CPU を使わない）
-        const juce::AudioBuffer<float>* buf = files.getBufferNoLock(padIndex, li);
-        if (buf == nullptr || buf->getNumSamples() == 0)
-            continue;
-
-        startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate,
-                        previewVoice, humanize);
-        triggeredAny = true;
+        if (startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate,
+                            previewVoice, humanize, previewStartPosition))
+            triggeredAny = true;
     }
 
     if (triggeredAny)
@@ -249,30 +286,74 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
     }
 }
 
-void VoiceManager::startLayerVoice(int                     padIndex,
+bool VoiceManager::startLayerVoice(int                     padIndex,
                                    int                     layerIndex,
                                    float                   velocity,
                                    const KitData&          kit,
                                    const AudioFileManager& files,
                                    double                  hostSampleRate,
                                    bool                    previewVoice,
-                                   const PadHumanize&      humanize)
+                                   const PadHumanize&      humanize,
+                                   float                   previewStartPosition)
 {
-    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+    if (padIndex < 0 || padIndex >= NUM_PADS) return false;
 
     const PadData&   pad = kit.pads[static_cast<size_t>(padIndex)];
-    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
     const LayerData& L   = pad.layers[static_cast<size_t>(layerIndex)];
 
-    const juce::AudioBuffer<float>* buf = files.getBufferNoLock(padIndex, layerIndex);
-    if (buf == nullptr || buf->getNumSamples() == 0) return;
+    const int variationCount = juce::jlimit(0, MAX_SAMPLE_STOCK_PER_LAYER,
+                                            static_cast<int>(L.sampleStock.size()));
+    int variationIndex = variationCount > 0
+        ? juce::jlimit(0, variationCount - 1, L.activeSampleStockIndex)
+        : 0;
+
+    if (! previewVoice && L.roundRobin && variationCount > 1)
+    {
+        auto& cursor = roundRobinCursors[static_cast<size_t>(padIndex)]
+                                        [static_cast<size_t>(layerIndex)];
+        const int start = ((cursor.load(std::memory_order_relaxed) % variationCount)
+                           + variationCount) % variationCount;
+        bool found = false;
+        for (int offset = 0; offset < variationCount; ++offset)
+        {
+            const int candidate = (start + offset) % variationCount;
+            if (! files.hasSample(padIndex, layerIndex, candidate)) continue;
+            variationIndex = candidate;
+            cursor.store((candidate + 1) % variationCount, std::memory_order_relaxed);
+            found = true;
+            break;
+        }
+        if (! found) return false;
+    }
+
+    const juce::AudioBuffer<float>* buf =
+        files.getBufferNoLock(padIndex, layerIndex, variationIndex);
+    if (buf == nullptr || buf->getNumSamples() == 0) return false;
+
+    // The active variation's trim/fade can be edited continuously in the UI.
+    // Its live LayerData values are authoritative until the next capture/save;
+    // inactive variations use their stored per-sample values.
+    const int activeVariationIndex = variationCount > 0
+        ? juce::jlimit(0, variationCount - 1, L.activeSampleStockIndex)
+        : 0;
+    const LayerSampleStockItem* variation = variationCount > variationIndex
+        && variationIndex != activeVariationIndex
+        ? &L.sampleStock[static_cast<size_t>(variationIndex)]
+        : nullptr;
+    const float variationStart = variation != nullptr ? variation->startPosition : L.startPosition;
+    const float variationEnd   = variation != nullptr ? variation->endPosition   : L.endPosition;
+    const float variationFadeIn  = variation != nullptr ? variation->fadeIn  : L.fadeIn;
+    const float variationFadeOut = variation != nullptr ? variation->fadeOut : L.fadeOut;
 
     const float humanizedVelocity = juce::jlimit(
         0.0f, 1.0f, velocity * humanize.velocityMultiplier);
     const float effectivePan = juce::jlimit(
         -1.0f, 1.0f, L.pan + pad.padPan + humanize.panOffset);
     const float humanizedPitch = juce::jlimit(
-        -48.0f, 48.0f, L.pitch + pad.padPitch + humanize.pitchOffset);
+        -48.0f, 48.0f, L.pitch + (L.fine / 100.0f)
+                         + pad.padPitch + (pad.padFine / 100.0f)
+                         + humanize.pitchOffset);
     double startOffsetSamples = 0.0;
     int startDelaySamples = 0;
 
@@ -314,12 +395,23 @@ void VoiceManager::startLayerVoice(int                     padIndex,
 
     // ── 再生範囲 ─────────────────────────────────────────────────────────
     const double totalSamples = static_cast<double>(buf->getNumSamples());
-    double startSamp = totalSamples * static_cast<double>(L.startPosition);
-    double endSamp   = totalSamples * static_cast<double>(L.endPosition);
+    double startSamp = totalSamples * static_cast<double>(variationStart);
+    double endSamp   = totalSamples * static_cast<double>(variationEnd);
+
+    if (previewVoice && previewStartPosition >= 0.0f)
+    {
+        const double previewSamp = totalSamples
+                                 * static_cast<double>(juce::jlimit(0.0f, 1.0f, previewStartPosition));
+        if (L.reverse)
+            endSamp = juce::jlimit(startSamp + 1.0, endSamp, previewSamp);
+        else
+            startSamp = juce::jlimit(startSamp, endSamp - 1.0, previewSamp);
+    }
 
     if (humanize.startOffsetAmount > 0.0f || humanize.delayAmount > 0.0f)
     {
-        const double srcSampleRateForStart = files.getSampleRate(padIndex, layerIndex);
+        const double srcSampleRateForStart = files.getSampleRate(padIndex, layerIndex,
+                                                                  variationIndex);
         const double samplesPerMs = (srcSampleRateForStart > 0.0) ? (srcSampleRateForStart / 1000.0) : 44.1;
         const double maxStartOffset = juce::jmin(8.0 * samplesPerMs,
                                                  (endSamp - startSamp) * 0.02);
@@ -336,20 +428,24 @@ void VoiceManager::startLayerVoice(int                     padIndex,
     const double rangeSamples = endSamp - startSamp;
 
     // ── ピッチ / リバース / フェード ─────────────────────────────────────
-    const double srcSampleRate   = files.getSampleRate(padIndex, layerIndex);
+    const double srcSampleRate   = files.getSampleRate(padIndex, layerIndex, variationIndex);
     const double sampleRateRatio = (hostSampleRate > 0.0 && srcSampleRate > 0.0)
                                      ? (srcSampleRate / hostSampleRate)
                                      : 1.0;
     const double pitchRatio      = std::pow(2.0, static_cast<double>(humanizedPitch) / 12.0);
     const double playbackRatio   = sampleRateRatio * pitchRatio;
 
-    const int fadeInSamp  = static_cast<int>(L.fadeIn  * rangeSamples / playbackRatio);
-    const int fadeOutSamp = static_cast<int>(L.fadeOut * rangeSamples / playbackRatio);
+    const double fadeTimelineSamples = L.keepLength
+        ? rangeSamples / juce::jmax(1.0e-9, sampleRateRatio)
+        : rangeSamples / playbackRatio;
+    const int fadeInSamp  = static_cast<int>(variationFadeIn  * fadeTimelineSamples);
+    const int fadeOutSamp = static_cast<int>(variationFadeOut * fadeTimelineSamples);
 
     // ── ボイスを起動 ──────────────────────────────────────────────────────
     const int slot = findFreeVoice();
     auto& v = voices[static_cast<size_t>(slot)];
     v.layerIndex = layerIndex;
+    v.sampleVariationIndex = variationIndex;
 
     // 発音通知: UI 発音フラッシュ / レイヤーメーター用
     if (padIndex >= 0 && padIndex < NUM_PADS
@@ -375,7 +471,15 @@ void VoiceManager::startLayerVoice(int                     padIndex,
             totalSamples,
             ++triggerSerialCounter,
             startDelaySamples,
-            previewVoice);
+            previewVoice,
+            pad.swapLR,
+            L.keepLength,
+            sampleRateRatio,
+            humanizedPitch,
+            humanize.pitchOffset,
+            L.hold,
+            L.decay);
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -417,18 +521,26 @@ bool VoiceManager::hasActiveVoices() const noexcept
 // オーディオレンダリング（マルチアウト対応）
 // 呼び出し元が fileManager の読み取りロックを保持している前提
 // ─────────────────────────────────────────────────────────────────────────────
+void VoiceManager::beginProcessBlock() noexcept
+{
+    // Pad peaks are atomic and accumulate until the UI consumes them. These
+    // non-atomic per-block meters are cleared exactly once even when the audio
+    // block is rendered in multiple MIDI-timestamped segments.
+    for (auto& pl : layerPeakLevels) pl.fill(0.0f);
+    for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
+}
+
 void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
                             int                              busCount,
                             OutputMode                       outputMode,
                             const KitData&                   kit,
                             const AudioFileManager&          files,
+                            int                              startSample,
                             int                              numSamples,
                             double                           hostSampleRate)
 {
-    // ── このブロックのレベルをリセット ──────────────────────────────────────
-    padPeakLevels.fill(0.0f);
-    for (auto& pl : layerPeakLevels) pl.fill(0.0f);
-    for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
+    if (numSamples <= 0)
+        return;
 
     const bool anySoloActive = std::any_of(kit.pads.begin(), kit.pads.end(),
                                            [] (const PadData& p) { return p.solo; });
@@ -450,7 +562,7 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
 
         // ── どのバスに送るか決める ────────────────────────────────────────
         const auto& pad = kit.pads[static_cast<size_t>(voice.padIndex)];
-        if (pad.mute || (anySoloActive && ! pad.solo))
+        if (! voice.isPreview && (pad.mute || (anySoloActive && ! pad.solo)))
             continue;
 
         int busIdx = forceMain ? 0 : pad.outputAssign;
@@ -477,7 +589,8 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         if (dst == nullptr || dst->getNumChannels() < 2)
             continue;  // Main も無効: 諦めて Voice 維持
 
-        const juce::AudioBuffer<float>* src = files.getBufferNoLock(voice.padIndex, voice.layerIndex);
+        const juce::AudioBuffer<float>* src = files.getBufferNoLock(
+            voice.padIndex, voice.layerIndex, voice.sampleVariationIndex);
         if (src == nullptr)
         {
             voice.isActive = false;
@@ -491,11 +604,17 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         }
 
         const auto& layer = pad.layers[static_cast<size_t>(voice.layerIndex)];
-        voice.render(*src, *dst, numSamples, layer, hostSampleRate);
+        const float livePitch = juce::jlimit(
+            -48.0f, 48.0f,
+            layer.pitch + (layer.fine / 100.0f)
+                      + pad.padPitch + (pad.padFine / 100.0f)
+                      + voice.humanizePitchOffset);
+        voice.render(*src, *dst, startSample, numSamples, layer, hostSampleRate,
+                     livePitch);
 
         // ── パッドのピークを集計 ──────────────────────────────────────────
         const auto pu = static_cast<size_t>(voice.padIndex);
-        padPeakLevels[pu] = std::max(padPeakLevels[pu], voice.lastPeakLevel);
+        accumulatePeak(padPeakLevels[pu], voice.lastPeakLevel);
         if (voice.lastPeakLevel >= 1.0f)
             padClipLatched[pu] = true;
 
@@ -513,15 +632,16 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
     }
 }
 
-float VoiceManager::getPadLevel(int padIndex) const noexcept
+float VoiceManager::consumePadLevel(int padIndex) const noexcept
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return 0.0f;
-    return padPeakLevels[static_cast<size_t>(padIndex)];
+    return padPeakLevels[static_cast<size_t>(padIndex)].exchange(0.0f, std::memory_order_relaxed);
 }
 
 void VoiceManager::clearPadLevels() noexcept
 {
-    padPeakLevels.fill(0.0f);
+    for (auto& level : padPeakLevels)
+        level.store(0.0f, std::memory_order_relaxed);
     for (auto& padLayers : layerPeakLevels)
         padLayers.fill(0.0f);
     for (auto& pl : compReductionDb) for (auto& ll : pl) ll.fill(0.0f);
@@ -606,6 +726,22 @@ float VoiceManager::getCompReductionDb(int padIndex, int layerIndex, int slotInd
         || slotIndex < 0 || slotIndex >= static_cast<int>(MAX_LAYER_FX_SLOTS))
         return 0.0f;
     return compReductionDb[static_cast<size_t>(padIndex)][static_cast<size_t>(layerIndex)][static_cast<size_t>(slotIndex)];
+}
+
+void VoiceManager::resetRoundRobin(int padIndex, int layerIndex) noexcept
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS
+        || layerIndex < 0 || layerIndex >= MAX_LAYERS_PER_PAD)
+        return;
+    roundRobinCursors[static_cast<size_t>(padIndex)][static_cast<size_t>(layerIndex)]
+        .store(0, std::memory_order_relaxed);
+}
+
+void VoiceManager::resetRoundRobinForPad(int padIndex) noexcept
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+    for (int layerIndex = 0; layerIndex < MAX_LAYERS_PER_PAD; ++layerIndex)
+        resetRoundRobin(padIndex, layerIndex);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

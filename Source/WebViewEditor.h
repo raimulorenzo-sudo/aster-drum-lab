@@ -41,7 +41,8 @@ private:
     {
         Pads,
         Mixer,
-        Missing
+        Missing,
+        Browser
     };
 
     ActiveWebTab activeWebTab { ActiveWebTab::Pads };
@@ -52,6 +53,10 @@ private:
     bool metersWereActive { false };
     int fastTimerTick { 0 };
     double lastStatsBroadcastMs { 0.0 };
+    juce::String lastDemoStateJson;
+    double currentUiScale { 1.0 };
+    bool uiScaleDirty { false };
+    bool applyingInitialUiScale { true };
 
     struct PendingSampleByteDrop
     {
@@ -62,16 +67,39 @@ private:
         int expectedChunks { 0 };
         int receivedChunks { 0 };
         int64 expectedBytes { 0 };
+        bool addToSampleStock { false };
         juce::MemoryBlock data;
         bool active { false };
     };
 
     PendingSampleByteDrop pendingSampleByteDrop;
 
+    // Workers own their inputs only. SafePointer callbacks publish on the message thread.
+    juce::ThreadPool browserWorkers { 2 };
+    std::shared_ptr<std::atomic<int>> browserDirectoryGeneration = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> browserPreviewGeneration = std::make_shared<std::atomic<int>>(0);
+    std::shared_ptr<std::atomic<int>> browserImportGeneration = std::make_shared<std::atomic<int>>(0);
+    juce::File browserDirectory;
+    juce::StringArray browserRecentPaths;
+    juce::var browserPreferences;
+    juce::var browserListing;
+    int browserPreviewRequest = 0;
+    bool browserWasPlaying = false;
+    bool browserImportBusy = false;
+    void handleBrowserMessage(const juce::String&, const juce::var&);
+    void openBrowserDirectory(const juce::File&, int requestId);
+    void cancelBrowserWork();
+    void loadBrowserPreferences();
+    void saveBrowserPreferences();
+    void emitBrowserResult(const juce::String& kind, int requestId, const juce::String& error = {});
+
     // C++ → JS: 現在の Kit を JSON でブロードキャスト
     void broadcastKitState();
+    void broadcastPreferencesState();
+    void broadcastAutomationSlots();
     void broadcastKitList();
     void broadcastPadUpdate(int padIndex);
+    void broadcastDemoState(bool force = false);
     juce::var padToWebVar(int padIndex) const;
     juce::var kitToWebVar() const;
 
@@ -82,8 +110,10 @@ private:
     int padIndexForDropPosition(int x, int y) const;
     bool loadDroppedFileForPad(int padIndex, const juce::File& file, const juce::String& displayFileName = {});
     bool loadDroppedFileForLayer(int padIndex, int layerIndex, const juce::File& file, const juce::String& displayFileName = {});
+    bool addSampleStockFileForLayer(int padIndex, int layerIndex, const juce::File& file, const juce::String& displayFileName = {});
     bool loadDroppedBytesForPad(int padIndex, const juce::String& fileName, const void* data, size_t size);
     bool loadDroppedBytesForLayer(int padIndex, int layerIndex, const juce::String& fileName, const void* data, size_t size);
+    bool addSampleStockBytesForLayer(int padIndex, int layerIndex, const juce::String& fileName, const void* data, size_t size);
     juce::File getDroppedSampleCacheDirectory() const;
     static bool isSupportedAudioFile(const juce::File& file);
 
@@ -92,6 +122,7 @@ private:
 
     // JS → C++ メッセージハンドラ
     void handleUiMessage(const juce::var& message);
+    void persistUiScaleIfNeeded();
 
     // タイマー:
     //   Phase 1: 120ms 遅延で kitData を初回送信

@@ -25,6 +25,7 @@ namespace
         { LayerParameterSpecs::Param::EqHighFreq,    "eqHighFreq",    "EQ High Freq",    10000.0f, 20.0f,   20000.0f, false },
         { LayerParameterSpecs::Param::EqHighGain,    "eqHighGain",    "EQ High Gain",    0.0f,   -18.0f,    18.0f, false },
         { LayerParameterSpecs::Param::EqHighQ,       "eqHighQ",       "EQ High Q",       0.7f,    0.2f,     8.0f, false },
+        { LayerParameterSpecs::Param::Fine,          "fine",          "Fine",            0.0f,   -100.0f,  100.0f, false },
     }};
 
     juce::String pagePrefix(int padIndex)

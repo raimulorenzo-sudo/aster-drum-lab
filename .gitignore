@@ -19,6 +19,7 @@ dist/
 *.pkg
 *.exe
 *.msi
+/ASTER Drum Lab v*/
 
 # Local installer dependencies
 packaging/windows/vendor/
@@ -29,6 +30,7 @@ packaging/windows/vendor/
 *.cer
 *.key
 *.pem
+*.wfc
 
 # Editor and temporary files
 .vscode/

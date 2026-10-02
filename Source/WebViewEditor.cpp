@@ -5,6 +5,12 @@
 #include "SmartTrim.h"
 #include "WebUIBinaryData.h"
 
+#include <cmath>
+
+#if JUCE_WINDOWS && ! JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING
+ #error "Windows builds must statically link WebView2Loader."
+#endif
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 静的: BinaryData から MIME と本体を引く
 // ─────────────────────────────────────────────────────────────────────────────
@@ -16,6 +22,133 @@ namespace
     constexpr int minEditorHeight = 426;
     constexpr int maxEditorWidth = 2800;
     constexpr int maxEditorHeight = 1704;
+    constexpr double defaultUiScale = 1.0;
+    const juce::String uiPreferencesFolderName { "ASTER Drum Lab" };
+    const juce::String uiPreferencesFileName { "ui-preferences.json" };
+    juce::CriticalSection uiPreferencesLock;
+
+    struct StoredPluginPreferences
+    {
+        bool initialized { false };
+        bool keepLengthOnSampleLoad { true };
+        bool smartTrimOnSampleLoad { true };
+        bool autoFadeOnTrim { true };
+        bool previewOnPadClick { true };
+        bool preservePadNameOnSampleLoad { true };
+    };
+
+    double clampUiScale(double scale)
+    {
+        if (! std::isfinite(scale))
+            return defaultUiScale;
+        return juce::jlimit(0.5, 2.0, scale);
+    }
+
+    juce::File getUiPreferencesFile()
+    {
+        return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+            .getChildFile(uiPreferencesFolderName)
+            .getChildFile(uiPreferencesFileName);
+    }
+
+    juce::var loadPreferencesFileUnlocked()
+    {
+        const auto file = getUiPreferencesFile();
+        if (file.existsAsFile())
+        {
+            auto value = juce::JSON::parse(file.loadFileAsString());
+            if (value.getDynamicObject() != nullptr)
+                return value;
+        }
+
+        return juce::var(new juce::DynamicObject());
+    }
+
+    bool writePreferencesFileUnlocked(const juce::var& value)
+    {
+        const auto file = getUiPreferencesFile();
+        if (! file.getParentDirectory().createDirectory())
+            return false;
+
+        juce::TemporaryFile temporary(file);
+        if (! temporary.getFile().replaceWithText(juce::JSON::toString(value, true)))
+            return false;
+        return temporary.overwriteTargetFileWithTemporary();
+    }
+
+    double loadSavedUiScale()
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        const auto value = loadPreferencesFileUnlocked();
+        const auto* object = value.getDynamicObject();
+        if (object == nullptr || ! object->hasProperty("uiScale"))
+            return defaultUiScale;
+
+        const auto scale = static_cast<double>(object->getProperty("uiScale"));
+        if (! std::isfinite(scale) || scale < 0.5 || scale > 2.0)
+            return defaultUiScale;
+        return scale;
+    }
+
+    bool saveUiScale(double scale)
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        auto value = loadPreferencesFileUnlocked();
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
+            return false;
+
+        object->setProperty("version", 2);
+        object->setProperty("uiScale", clampUiScale(scale));
+        return writePreferencesFileUnlocked(value);
+    }
+
+    StoredPluginPreferences loadStoredPluginPreferences()
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        const auto value = loadPreferencesFileUnlocked();
+        const auto* object = value.getDynamicObject();
+        StoredPluginPreferences preferences;
+        if (object == nullptr)
+            return preferences;
+
+        preferences.initialized = (bool) value.getProperty("preferencesInitialized", false);
+        preferences.keepLengthOnSampleLoad = (bool) value.getProperty("keepLengthOnSampleLoad", true);
+        preferences.smartTrimOnSampleLoad = (bool) value.getProperty("smartTrimOnSampleLoad", true);
+        preferences.autoFadeOnTrim = (bool) value.getProperty("autoFadeOnTrim", true);
+        preferences.previewOnPadClick = (bool) value.getProperty("previewOnPadClick", true);
+        preferences.preservePadNameOnSampleLoad = (bool) value.getProperty("preservePadNameOnSampleLoad", true);
+        return preferences;
+    }
+
+    bool saveStoredPluginPreferences(const StoredPluginPreferences& preferences)
+    {
+        const juce::ScopedLock lock(uiPreferencesLock);
+        auto value = loadPreferencesFileUnlocked();
+        auto* object = value.getDynamicObject();
+        if (object == nullptr)
+            return false;
+
+        object->setProperty("version", 2);
+        object->setProperty("preferencesInitialized", preferences.initialized);
+        object->setProperty("keepLengthOnSampleLoad", preferences.keepLengthOnSampleLoad);
+        object->setProperty("smartTrimOnSampleLoad", preferences.smartTrimOnSampleLoad);
+        object->setProperty("autoFadeOnTrim", preferences.autoFadeOnTrim);
+        object->setProperty("previewOnPadClick", preferences.previewOnPadClick);
+        object->setProperty("preservePadNameOnSampleLoad", preferences.preservePadNameOnSampleLoad);
+        return writePreferencesFileUnlocked(value);
+    }
+
+    void applyStoredPluginPreferences(DrumSamplerAudioProcessor& processor,
+                                      const StoredPluginPreferences& preferences)
+    {
+        processor.setKeepLengthOnSampleLoad(preferences.keepLengthOnSampleLoad);
+        auto& kit = processor.getKit();
+        kit.smartTrimOnSampleLoad = preferences.smartTrimOnSampleLoad;
+        kit.autoFadeOnTrim = preferences.autoFadeOnTrim;
+        kit.previewOnPadClick = preferences.previewOnPadClick;
+        kit.preservePadNameOnSampleLoad = preferences.preservePadNameOnSampleLoad;
+    }
 
     juce::String mimeForPath(const juce::String& path)
     {
@@ -55,44 +188,101 @@ namespace
         return nullptr;
     }
 
-    juce::Array<juce::var> buildWaveformPeaks(const juce::AudioBuffer<float>* buffer,
-                                               int targetPoints = 600)
+    struct WaveformPreview
     {
         juce::Array<juce::var> peaks;
+        juce::Array<juce::var> channels;
+    };
+
+    WaveformPreview buildWaveformPreview(const juce::AudioBuffer<float>* buffer,
+                                         int targetPoints = 2000)
+    {
+        WaveformPreview preview;
 
         if (buffer == nullptr || buffer->getNumSamples() <= 0 || buffer->getNumChannels() <= 0)
-            return peaks;
+            return preview;
 
         const int numSamples = buffer->getNumSamples();
-        const int numChannels = buffer->getNumChannels();
+        const int numChannels = juce::jmin(2, buffer->getNumChannels());
         const int points = juce::jlimit(1, targetPoints, numSamples);
-        peaks.ensureStorageAllocated(points);
+        preview.peaks.ensureStorageAllocated(points);
 
-        float maxPeak = 0.0f;
-        juce::Array<float> raw;
-        raw.ensureStorageAllocated(points);
+        float sharedPeak = 0.0f;
+        juce::Array<float> rawPeaks;
+        juce::Array<float> rawMins[2];
+        juce::Array<float> rawMaxs[2];
+        juce::Array<int> rawExtremeOrders[2];
+        rawPeaks.ensureStorageAllocated(points);
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            rawMins[channel].ensureStorageAllocated(points);
+            rawMaxs[channel].ensureStorageAllocated(points);
+            rawExtremeOrders[channel].ensureStorageAllocated(points);
+        }
 
         for (int i = 0; i < points; ++i)
         {
             const int start = (int) ((int64) i * numSamples / points);
             const int end = juce::jmax(start + 1, (int) ((int64) (i + 1) * numSamples / points));
 
-            float peak = 0.0f;
-            for (int sample = start; sample < end; ++sample)
+            float bucketPeak = 0.0f;
+            for (int channel = 0; channel < numChannels; ++channel)
             {
-                for (int channel = 0; channel < numChannels; ++channel)
-                    peak = juce::jmax(peak, std::abs(buffer->getSample(channel, sample)));
+                float minimum = buffer->getSample(channel, start);
+                float maximum = minimum;
+                int minimumIndex = start;
+                int maximumIndex = start;
+                for (int sample = start + 1; sample < end; ++sample)
+                {
+                    const float value = buffer->getSample(channel, sample);
+                    if (value < minimum)
+                    {
+                        minimum = value;
+                        minimumIndex = sample;
+                    }
+                    if (value > maximum)
+                    {
+                        maximum = value;
+                        maximumIndex = sample;
+                    }
+                }
+                rawMins[channel].add(minimum);
+                rawMaxs[channel].add(maximum);
+                rawExtremeOrders[channel].add(maximumIndex < minimumIndex ? 1 : 0);
+                bucketPeak = juce::jmax(bucketPeak, juce::jmax(std::abs(minimum), std::abs(maximum)));
             }
 
-            raw.add(peak);
-            maxPeak = juce::jmax(maxPeak, peak);
+            rawPeaks.add(bucketPeak);
+            sharedPeak = juce::jmax(sharedPeak, bucketPeak);
         }
 
-        const float invMax = maxPeak > 0.0f ? 1.0f / maxPeak : 0.0f;
-        for (float peak : raw)
-            peaks.add((double) juce::jlimit(0.0f, 1.0f, peak * invMax));
+        const float invPeak = sharedPeak > 0.0f ? 1.0f / sharedPeak : 0.0f;
+        for (float peak : rawPeaks)
+            preview.peaks.add((double) juce::jlimit(0.0f, 1.0f, peak * invPeak));
 
-        return peaks;
+        preview.channels.ensureStorageAllocated(numChannels);
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            auto* channelObject = new juce::DynamicObject();
+            juce::Array<juce::var> minima;
+            juce::Array<juce::var> maxima;
+            juce::Array<juce::var> extremeOrders;
+            minima.ensureStorageAllocated(points);
+            maxima.ensureStorageAllocated(points);
+            extremeOrders.ensureStorageAllocated(points);
+            for (int i = 0; i < points; ++i)
+            {
+                minima.add((double) juce::jlimit(-1.0f, 1.0f, rawMins[channel][i] * invPeak));
+                maxima.add((double) juce::jlimit(-1.0f, 1.0f, rawMaxs[channel][i] * invPeak));
+                extremeOrders.add(rawExtremeOrders[channel][i]);
+            }
+            channelObject->setProperty("min", minima);
+            channelObject->setProperty("max", maxima);
+            channelObject->setProperty("extremeOrder", extremeOrders);
+            preview.channels.add(juce::var(channelObject));
+        }
+
+        return preview;
     }
 
     juce::String filesForLog(const juce::StringArray& files)
@@ -134,11 +324,20 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
                       })
               )
 {
-    setSize(baseEditorWidth, baseEditorHeight);
-    setResizable(true, true);
-    setResizeLimits(minEditorWidth, minEditorHeight, maxEditorWidth, maxEditorHeight);
-
     addAndMakeVisible(webView);
+
+    // Keep host-driven resizing enabled for formats such as VST3. A native
+    // WebView sits above JUCE child components, so the resize grip itself is
+    // rendered inside the Web UI and sends setUiScale messages back here.
+    setResizable(true, false);
+    setResizeLimits(minEditorWidth, minEditorHeight, maxEditorWidth, maxEditorHeight);
+    if (auto* constrainer = getConstrainer())
+        constrainer->setFixedAspectRatio((double) baseEditorWidth / (double) baseEditorHeight);
+    currentUiScale = loadSavedUiScale();
+    applyStoredPluginPreferences(audioProcessor, loadStoredPluginPreferences());
+    setSize(juce::roundToInt((double) baseEditorWidth * currentUiScale),
+            juce::roundToInt((double) baseEditorHeight * currentUiScale));
+    applyingInitialUiScale = false;
 
     // BinaryData の index.html を WebView に読み込む
     // JUCE 8 の resource provider は固定 origin (juce://juce.backend/ など) を使うので
@@ -152,6 +351,9 @@ WebViewEditor::WebViewEditor(DrumSamplerAudioProcessor& p)
 WebViewEditor::~WebViewEditor()
 {
     stopTimer();
+    persistUiScaleIfNeeded();
+    cancelBrowserWork();
+    browserWorkers.removeAllJobs(true, 10000);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,6 +365,24 @@ void WebViewEditor::paint(juce::Graphics& g)
 void WebViewEditor::resized()
 {
     webView.setBounds(getLocalBounds());
+
+    const auto measuredScale = clampUiScale(juce::jmin((double) getWidth() / (double) baseEditorWidth,
+                                                       (double) getHeight() / (double) baseEditorHeight));
+    if (std::abs(measuredScale - currentUiScale) > 0.001)
+    {
+        currentUiScale = measuredScale;
+        if (! applyingInitialUiScale)
+            uiScaleDirty = true;
+    }
+}
+
+void WebViewEditor::persistUiScaleIfNeeded()
+{
+    if (! uiScaleDirty)
+        return;
+
+    if (saveUiScale(currentUiScale))
+        uiScaleDirty = false;
 }
 
 bool WebViewEditor::isSupportedAudioFile(const juce::File& file)
@@ -206,12 +426,14 @@ void WebViewEditor::fileDragExit(const juce::StringArray& files)
 
 void WebViewEditor::filesDropped(const juce::StringArray& files, int x, int y)
 {
+    if (activeWebTab == ActiveWebTab::Browser) return; // Browser uses explicit destination actions.
     juce::Logger::writeToLog("[ASTER DND] native drop fired files count=" + juce::String(files.size()));
     juce::Logger::writeToLog("[ASTER DND] native dropped file path or available file info "
                              + filesForLog(files));
 
     int targetPad = padIndexForDropPosition(x, y);
-    if ((targetPad < 0 || targetPad >= NUM_PADS) && activeWebTab == ActiveWebTab::Pads)
+    const bool droppedOnEditor = targetPad < 0 || targetPad >= NUM_PADS;
+    if (droppedOnEditor && activeWebTab == ActiveWebTab::Pads)
     {
         // Native macOS file D&D does not go through the browser's HTML5 drop
         // handlers, so waveform/editor drops do not have a pad-cell target.
@@ -241,7 +463,10 @@ void WebViewEditor::filesDropped(const juce::StringArray& files, int x, int y)
         if (! isSupportedAudioFile(file))
             continue;
 
-        loadDroppedFileForLayer(targetPad, targetLayer, file);
+        if (droppedOnEditor)
+            addSampleStockFileForLayer(targetPad, targetLayer, file);
+        else
+            loadDroppedFileForLayer(targetPad, targetLayer, file);
         return;
     }
 
@@ -371,6 +596,33 @@ bool WebViewEditor::loadDroppedFileForLayer(int padIndex, int layerIndex, const 
     return true;
 }
 
+bool WebViewEditor::addSampleStockFileForLayer(int padIndex,
+                                               int layerIndex,
+                                               const juce::File& file,
+                                               const juce::String& displayFileName)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return false;
+    if (! file.existsAsFile() || ! isSupportedAudioFile(file)) return false;
+    auto& pad = audioProcessor.getKit().pads[(size_t) padIndex];
+    if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
+
+    if (! audioProcessor.addOrReplaceLayerSampleStock(padIndex, layerIndex, file))
+        return false;
+
+    if (displayFileName.isNotEmpty())
+    {
+        auto& layer = pad.layers[(size_t) layerIndex];
+        layer.sampleFileName = displayFileName;
+        layer.captureActiveSampleToStock();
+        if (layerIndex == 0)
+            pad.syncFlatFromLayer0();
+    }
+
+    broadcastPadUpdate(padIndex);
+    broadcastKitState();
+    return true;
+}
+
 juce::File WebViewEditor::getDroppedSampleCacheDirectory() const
 {
     return DrumSamplerAudioProcessor::getUserKitsDirectory()
@@ -468,14 +720,44 @@ bool WebViewEditor::loadDroppedBytesForLayer(int padIndex,
     return loadDroppedFileForLayer(padIndex, layerIndex, target, safeName);
 }
 
+bool WebViewEditor::addSampleStockBytesForLayer(int padIndex,
+                                                int layerIndex,
+                                                const juce::String& fileName,
+                                                const void* data,
+                                                size_t size)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS || data == nullptr || size == 0)
+        return false;
+
+    const auto legalName = juce::File::createLegalFileName(fileName).trim();
+    const auto safeName = legalName.isNotEmpty() ? legalName : juce::String("Dropped Sample.wav");
+    const juce::File probe(safeName);
+    if (! isSupportedAudioFile(probe)) return false;
+
+    auto directory = getDroppedSampleCacheDirectory();
+    if (! directory.createDirectory()) return false;
+    auto target = directory.getChildFile(safeName);
+    if (target.exists())
+        target = directory.getNonexistentChildFile(probe.getFileNameWithoutExtension(),
+                                                   probe.getFileExtension(), false);
+    if (! target.replaceWithData(data, size)) return false;
+    return addSampleStockFileForLayer(padIndex, layerIndex, target, safeName);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 起動直後の遅延送信
 // ─────────────────────────────────────────────────────────────────────────────
 void WebViewEditor::timerCallback()
 {
+    const bool browserPlaying = audioProcessor.browserPreview.isPlaying();
+    if (browserWasPlaying && ! browserPlaying)
+        emitBrowserResult("ended", browserPreviewRequest);
+    browserWasPlaying = browserPlaying;
+
     if (! initialKitSent)
     {
         broadcastKitState();
+        broadcastDemoState(true);
         broadcastSystemStats();
         lastStatsBroadcastMs = juce::Time::getMillisecondCounterHiRes();
         initialKitSent = true;
@@ -484,12 +766,16 @@ void WebViewEditor::timerCallback()
     }
 
     const bool hasAudioActivity = audioProcessor.hasRecentAudioActivity(0.75);
+    broadcastDemoState();
     broadcastPadTriggers();
 
     // v7+: DAW automation 起因の kit 変化があれば UI に push する。
     // (UI 内のノブ位置が DAW automation 再生に追従するために必要)
     if (audioProcessor.consumeKitChangedByAutomation())
         broadcastKitState();
+
+    if (audioProcessor.consumeAutomationSlotsChanged())
+        broadcastAutomationSlots();
 
     int learnedPad = -1;
     int learnedNote = -1;
@@ -609,6 +895,14 @@ void WebViewEditor::broadcastPadTriggers()
 // ─────────────────────────────────────────────────────────────────────────────
 void WebViewEditor::broadcastLevelData()
 {
+    const auto& vm = audioProcessor.getVoiceManager();
+
+    // Drain every accumulator on each visual tick. Off-page values are
+    // discarded so changing pages never exposes a peak from an earlier view.
+    std::array<float, NUM_PADS> padLevels {};
+    for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
+        padLevels[(size_t) padIndex] = vm.consumePadLevel(padIndex);
+
     if (activeWebTab == ActiveWebTab::Missing)
         return;
 
@@ -626,9 +920,8 @@ void WebViewEditor::broadcastLevelData()
 
     juce::Array<juce::var> padArr;
     padArr.ensureStorageAllocated(count);
-    const auto& vm = audioProcessor.getVoiceManager();
     for (int i = 0; i < count; ++i)
-        padArr.add((double) vm.getPadLevel(startPad + i));
+        padArr.add((double) padLevels[(size_t) (startPad + i)]);
 
     obj->setProperty("start", startPad);
     obj->setProperty("pads", padArr);
@@ -679,6 +972,17 @@ void WebViewEditor::broadcastSystemStats()
     obj->setProperty("cpuPercent", (double) audioProcessor.getAudioProcessLoadPercent());
     obj->setProperty("sampleBytes", static_cast<double>(audioProcessor.getLoadedSampleBytes()));
     webView.emitEventIfBrowserIsVisible("systemStats", juce::var(obj));
+}
+
+void WebViewEditor::broadcastDemoState(bool force)
+{
+    const auto value = AsterDemoMode::getStateAsVar(
+        audioProcessor.wasDemoOfflineRenderBlocked());
+    const auto json = juce::JSON::toString(value, true);
+    if (!force && json == lastDemoStateJson)
+        return;
+    lastDemoStateJson = json;
+    webView.emitEventIfBrowserIsVisible("demoState", value);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -752,8 +1056,10 @@ juce::var WebViewEditor::padToWebVar(int padIndex) const
         const double len0Ms = (buf0 != nullptr && buf0->getNumSamples() > 0 && sr0 > 0.0)
                                ? (static_cast<double>(buf0->getNumSamples()) / sr0) * 1000.0
                                : 0.0;
+        const auto waveform0 = buildWaveformPreview(buf0);
         obj->setProperty("sampleLengthMs", len0Ms);
-        obj->setProperty("waveformPeaks",  buildWaveformPeaks(buf0));
+        obj->setProperty("waveformPeaks", waveform0.peaks);
+        obj->setProperty("waveformChannels", waveform0.channels);
 
         // ── per-Layer: 各 Layer のバッファから sampleLengthMs / waveformPeaks を生成 ──
         // composePadView() が選択中 Layer の値を flat に上書きするため、
@@ -773,8 +1079,10 @@ juce::var WebViewEditor::padToWebVar(int padIndex) const
                     const double len = (buf != nullptr && buf->getNumSamples() > 0 && sr > 0.0)
                                        ? (static_cast<double>(buf->getNumSamples()) / sr) * 1000.0
                                        : 0.0;
+                    const auto waveform = buildWaveformPreview(buf);
                     lo->setProperty("sampleLengthMs", len);
-                    lo->setProperty("waveformPeaks",  buildWaveformPeaks(buf));
+                    lo->setProperty("waveformPeaks", waveform.peaks);
+                    lo->setProperty("waveformChannels", waveform.channels);
 
                     juce::Logger::writeToLog(
                         "[ASTER WFM] padToWebVar padIndex=" + juce::String(padIndex)
@@ -834,8 +1142,51 @@ juce::var WebViewEditor::kitToWebVar() const
 
 void WebViewEditor::broadcastKitState()
 {
+    // Saved kits and DAW projects still contain these legacy KitData fields.
+    // Reapply the user-level values before each full state broadcast so a kit
+    // change cannot silently replace the global preferences.
+    applyStoredPluginPreferences(audioProcessor, loadStoredPluginPreferences());
     webView.emitEventIfBrowserIsVisible("kitData", kitToWebVar());
     broadcastKitList();
+    broadcastAutomationSlots();
+}
+
+void WebViewEditor::broadcastPreferencesState()
+{
+    const auto preferences = loadStoredPluginPreferences();
+    applyStoredPluginPreferences(audioProcessor, preferences);
+    auto* object = new juce::DynamicObject();
+    object->setProperty("initialized", preferences.initialized);
+    object->setProperty("keepLengthOnSampleLoad", preferences.keepLengthOnSampleLoad);
+    object->setProperty("smartTrimOnSampleLoad", preferences.smartTrimOnSampleLoad);
+    object->setProperty("autoFadeOnTrim", preferences.autoFadeOnTrim);
+    object->setProperty("previewOnPadClick", preferences.previewOnPadClick);
+    object->setProperty("preservePadNameOnSampleLoad", preferences.preservePadNameOnSampleLoad);
+    webView.emitEventIfBrowserIsVisible("preferencesState", juce::var(object));
+}
+
+void WebViewEditor::broadcastAutomationSlots()
+{
+    auto* obj = new juce::DynamicObject();
+    juce::Array<juce::var> slots;
+    slots.ensureStorageAllocated(DrumSamplerAudioProcessor::automationSlotCount);
+
+    const int learningSlot = audioProcessor.getAutomationLearnSlot();
+    for (int slot = 0; slot < DrumSamplerAudioProcessor::automationSlotCount; ++slot)
+    {
+        auto* item = new juce::DynamicObject();
+        const auto targetID = audioProcessor.getAutomationSlotTargetID(slot);
+        item->setProperty("index", slot);
+        item->setProperty("parameterId", targetID);
+        item->setProperty("targetName", audioProcessor.getAutomationSlotTargetName(slot));
+        item->setProperty("assigned", targetID.isNotEmpty());
+        item->setProperty("learning", slot == learningSlot);
+        slots.add(juce::var(item));
+    }
+
+    obj->setProperty("slots", slots);
+    obj->setProperty("learningSlot", learningSlot);
+    webView.emitEventIfBrowserIsVisible("automationSlots", juce::var(obj));
 }
 
 void WebViewEditor::broadcastKitList()
@@ -900,6 +1251,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     const auto type = message.getProperty("type", juce::var()).toString();
     const auto payload = message.getProperty("payload", juce::var());
 
+    if (type.startsWith("browser")) { handleBrowserMessage(type, payload); return; }
+
     const auto getIndex = [&]() -> int
     {
         return (int) payload.getProperty("index", -1);
@@ -913,9 +1266,91 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         return (bool) payload.getProperty("value", false);
     };
 
+    if (type == "requestDemoState")
+    {
+        broadcastDemoState(true);
+        return;
+    }
+
     if (type == "ready")
     {
         broadcastKitState();
+        broadcastPreferencesState();
+        broadcastDemoState(true);
+    }
+    else if (type == "requestPreferences")
+    {
+        broadcastPreferencesState();
+    }
+    else if (type == "setPreferences")
+    {
+        StoredPluginPreferences preferences;
+        preferences.initialized = true;
+        preferences.keepLengthOnSampleLoad = (bool) payload.getProperty("keepLengthOnSampleLoad", true);
+        preferences.smartTrimOnSampleLoad = (bool) payload.getProperty("smartTrimOnSampleLoad", true);
+        preferences.autoFadeOnTrim = (bool) payload.getProperty("autoFadeOnTrim", true);
+        preferences.previewOnPadClick = (bool) payload.getProperty("previewOnPadClick", true);
+        preferences.preservePadNameOnSampleLoad = (bool) payload.getProperty("preservePadNameOnSampleLoad", true);
+        if (saveStoredPluginPreferences(preferences))
+        {
+            applyStoredPluginPreferences(audioProcessor, preferences);
+            broadcastPreferencesState();
+        }
+    }
+    else if (type == "setPreference")
+    {
+        const auto key = payload.getProperty("key", {}).toString();
+        auto preferences = loadStoredPluginPreferences();
+        const bool value = getBool();
+        bool recognized = true;
+        if (key == "keepLengthOnSampleLoad") preferences.keepLengthOnSampleLoad = value;
+        else if (key == "smartTrimOnSampleLoad") preferences.smartTrimOnSampleLoad = value;
+        else if (key == "autoFadeOnTrim") preferences.autoFadeOnTrim = value;
+        else if (key == "previewOnPadClick") preferences.previewOnPadClick = value;
+        else if (key == "preservePadNameOnSampleLoad") preferences.preservePadNameOnSampleLoad = value;
+        else recognized = false;
+
+        if (recognized)
+        {
+            preferences.initialized = true;
+            if (saveStoredPluginPreferences(preferences))
+            {
+                applyStoredPluginPreferences(audioProcessor, preferences);
+                broadcastPreferencesState();
+            }
+        }
+    }
+    else if (type == "requestAutomationSlots")
+    {
+        broadcastAutomationSlots();
+    }
+    else if (type == "beginAutomationLearn")
+    {
+        audioProcessor.beginAutomationLearn((int) payload.getProperty("slot", -1));
+        broadcastAutomationSlots();
+    }
+    else if (type == "cancelAutomationLearn")
+    {
+        audioProcessor.cancelAutomationLearn();
+        broadcastAutomationSlots();
+    }
+    else if (type == "clearAutomationSlot")
+    {
+        audioProcessor.clearAutomationSlot((int) payload.getProperty("slot", -1));
+        broadcastAutomationSlots();
+    }
+    else if (type == "assignAutomationSlot")
+    {
+        audioProcessor.assignAutomationSlot((int) payload.getProperty("slot", -1),
+                                             payload.getProperty("targetId", {}).toString());
+        broadcastAutomationSlots();
+    }
+    else if (type == "setFxAutomationTargetValue")
+    {
+        audioProcessor.setFxAutomationTargetValue(
+            payload.getProperty("targetId", {}).toString(),
+            juce::jlimit(0.0f, 1.0f, (float) (double) payload.getProperty("value", 0.0)),
+            true);
     }
     else if (type == "selectPad")
     {
@@ -943,7 +1378,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     else if (type == "setTab")
     {
         const auto tab = payload.getProperty("tab", "PADS").toString();
-        if (tab == "MIXER")
+        if (tab != "BROWSER") cancelBrowserWork();
+        if (tab == "BROWSER")
+            activeWebTab = ActiveWebTab::Browser;
+        else if (tab == "MIXER")
             activeWebTab = ActiveWebTab::Mixer;
         else if (tab == "MISSING")
             activeWebTab = ActiveWebTab::Missing;
@@ -952,9 +1390,23 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "setUiScale")
     {
-        const auto scale = juce::jlimit(0.5, 2.0, (double) payload.getProperty("scale", 1.0));
-        setSize(juce::roundToInt((double) baseEditorWidth * scale),
-                juce::roundToInt((double) baseEditorHeight * scale));
+        const auto scale = clampUiScale((double) payload.getProperty("scale", defaultUiScale));
+        const bool commit = (bool) payload.getProperty("commit", true);
+        const auto previousScale = currentUiScale;
+        const int targetWidth = juce::roundToInt((double) baseEditorWidth * scale);
+        const int targetHeight = juce::roundToInt((double) baseEditorHeight * scale);
+        setSize(targetWidth, targetHeight);
+
+        // Preserve the exact requested value when the host accepted the size.
+        // Deriving it back from rounded pixel dimensions would slowly drift
+        // presets such as 120% across repeated close/open cycles.
+        if (std::abs(getWidth() - targetWidth) <= 1 && std::abs(getHeight() - targetHeight) <= 1)
+            currentUiScale = scale;
+        if (std::abs(currentUiScale - previousScale) > 0.0005)
+            uiScaleDirty = true;
+
+        if (commit)
+            persistUiScaleIfNeeded();
     }
     else if (type == "setOutputMode")
     {
@@ -982,7 +1434,14 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     else if (type == "audition")
     {
         const float velocity = (float) (double) payload.getProperty("velocity", 0.9);
-        audioProcessor.auditionPadOn(getIndex(), velocity);
+        if (audioProcessor.getKit().previewOnPadClick)
+            audioProcessor.auditionPadOn(getIndex(), velocity);
+    }
+    else if (type == "auditionLayer")
+    {
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const float velocity = (float) (double) payload.getProperty("velocity", 1.0);
+        audioProcessor.auditionLayerOn(getIndex(), layerIdx, velocity);
     }
     else if (type == "auditionOff")
     {
@@ -1029,13 +1488,20 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                                   PadParameterSpecs::Param::PadPitch,
                                                   getFloat());
     }
+    else if (type == "setPadFine")
+    {
+        audioProcessor.setAutomatablePadParameter(getIndex(),
+                                                  PadParameterSpecs::Param::PadFine,
+                                                  getFloat());
+    }
     else if (type == "setMute")
     {
         const int idx = getIndex();
         if (idx >= 0 && idx < NUM_PADS)
         {
-            audioProcessor.getKit().pads[(size_t) idx].mute = getBool();
-            audioProcessor.markKitDirty();
+            audioProcessor.setAutomatablePadParameter(idx,
+                                                      PadParameterSpecs::Param::Mute,
+                                                      getBool() ? 1.0f : 0.0f);
             broadcastPadUpdate(idx);
         }
     }
@@ -1045,9 +1511,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         if (idx >= 0 && idx < NUM_PADS)
         {
             const bool v = getBool();
-            audioProcessor.getKit().pads[(size_t) idx].solo = v;
-            if (v) audioProcessor.getKit().pads[(size_t) idx].mute = false;
-            audioProcessor.markKitDirty();
+            audioProcessor.setAutomatablePadParameter(idx,
+                                                      PadParameterSpecs::Param::Solo,
+                                                      v ? 1.0f : 0.0f);
+            if (v)
+                audioProcessor.setAutomatablePadParameter(idx,
+                                                          PadParameterSpecs::Param::Mute,
+                                                          0.0f);
             broadcastPadUpdate(idx);
         }
     }
@@ -1059,6 +1529,18 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             audioProcessor.setAutomatablePadParameter(idx,
                                                       PadParameterSpecs::Param::Reverse,
                                                       getBool() ? 1.0f : 0.0f);
+            broadcastPadUpdate(idx);
+        }
+    }
+    else if (type == "setKeepLength")
+    {
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[static_cast<size_t>(idx)];
+            pad.keepLength = getBool();
+            pad.syncLayer0FromFlat();
+            audioProcessor.markKitDirty();
             broadcastPadUpdate(idx);
         }
     }
@@ -1200,9 +1682,17 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "setSmartTrim")
     {
-        // smartTrim は PadData にメンバが無いため、グローバル設定 or no-op
-        // とりあえずログ
-        juce::Logger::writeToLog("setSmartTrim (UI only) idx=" + juce::String(getIndex()));
+        // Legacy bridge compatibility: old Web UI builds addressed MAIN only.
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+            if (! pad.layers.empty())
+            {
+                pad.layers[0].smartTrim = getBool();
+                audioProcessor.markKitDirty();
+            }
+        }
     }
     else if (type == "setPlaybackMode")
     {
@@ -1291,6 +1781,16 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             broadcastPadUpdate(idx);
         }
     }
+    else if (type == "setPadSwapLR")
+    {
+        const int idx = getIndex();
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            audioProcessor.getKit().pads[(size_t) idx].swapLR = getBool();
+            audioProcessor.markKitDirty();
+            broadcastPadUpdate(idx);
+        }
+    }
     else if (type == "copyPad")
     {
         const int idx = getIndex();
@@ -1335,9 +1835,30 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 missing = pad.sampleMissing;
             }
             const juce::File file(path);
-            if (path.isNotEmpty() && ! missing && file.existsAsFile())
+            if (path.isEmpty() || missing || ! file.existsAsFile())
+            {
+                juce::Logger::writeToLog("[ASTER REVEAL] cannot reveal sample: "
+                                         + (path.isEmpty() ? "empty path" : path));
+                return;
+            }
+
+            // Native-integration callbacks are not guaranteed to run on JUCE's
+            // message thread. Finder/Explorer must be opened from that thread.
+            juce::Logger::writeToLog("[ASTER REVEAL] revealing sample: " + file.getFullPathName());
+            juce::MessageManager::callAsync([file]
+            {
                 file.revealToUser();
+            });
         }
+    }
+    else if (type == "openOfficialDownload")
+    {
+        // The official site verifies the purchaser by checkout email before
+        // issuing a time-limited download link.
+        juce::MessageManager::callAsync([]
+        {
+            juce::URL("https://aster.enigmajp.com/en/download/").launchInDefaultBrowser();
+        });
     }
     else if (type == "clearPadSample")
     {
@@ -1352,7 +1873,8 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 audioProcessor.clearLayerSample(idx, layerIdx);
             else
                 audioProcessor.clearPadSample(idx);
-            broadcastPadUpdate(idx);
+            if ((bool) payload.getProperty("broadcast", true))
+                broadcastPadUpdate(idx);
         }
     }
     else if (type == "loadSampleDialog")
@@ -1370,6 +1892,70 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 if (file.existsAsFile())
                     loadDroppedFileForLayer(idx, layerIdx, file);
             });
+    }
+    else if (type == "addSampleStockDialog")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        if (idx < 0 || idx >= NUM_PADS) return;
+        const auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+        if (layerIdx < 0 || layerIdx >= pad.layerCount()) return;
+
+        auto chooser = std::make_shared<juce::FileChooser>(
+            "Add samples to Layer stock…", juce::File(), "*.wav;*.aif;*.aiff;*.mp3;*.flac");
+        chooser->launchAsync(juce::FileBrowserComponent::openMode
+                            | juce::FileBrowserComponent::canSelectFiles
+                            | juce::FileBrowserComponent::canSelectMultipleItems,
+            [this, idx, layerIdx, chooser](const juce::FileChooser& fc)
+            {
+                bool changed = false;
+                const auto& initialLayer =
+                    audioProcessor.getKit().pads[(size_t) idx].layers[(size_t) layerIdx];
+                const bool replacingSelected =
+                    (int) initialLayer.normalizedSampleStock().size() >= MAX_SAMPLE_STOCK_PER_LAYER;
+                for (const auto& file : fc.getResults())
+                {
+                    if (file.existsAsFile() && isSupportedAudioFile(file))
+                        changed = audioProcessor.addOrReplaceLayerSampleStock(idx, layerIdx, file) || changed;
+                    const auto& layer =
+                        audioProcessor.getKit().pads[(size_t) idx].layers[(size_t) layerIdx];
+                    if (replacingSelected
+                        || (int) layer.normalizedSampleStock().size() >= MAX_SAMPLE_STOCK_PER_LAYER)
+                        break;
+                }
+                if (changed)
+                {
+                    broadcastPadUpdate(idx);
+                    broadcastKitState();
+                }
+            });
+    }
+    else if (type == "selectLayerSampleStock")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const int stockIndex = (int) payload.getProperty("stockIndex", 0);
+        const bool shouldAudition = (bool) payload.getProperty("audition", false);
+        if (audioProcessor.selectLayerSampleStock(idx, layerIdx, stockIndex))
+        {
+            // Selection and preview stay in the same native message so the
+            // newly loaded stock item is guaranteed to be the sound heard.
+            if (shouldAudition)
+                audioProcessor.auditionLayerOn(idx, layerIdx, 1.0f);
+            broadcastPadUpdate(idx);
+            broadcastKitState();
+        }
+    }
+    else if (type == "removeLayerSampleStock")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        const int stockIndex = (int) payload.getProperty("stockIndex", 0);
+        if (audioProcessor.removeLayerSampleStock(idx, layerIdx, stockIndex))
+        {
+            broadcastPadUpdate(idx);
+            broadcastKitState();
+        }
     }
     else if (type == "relinkSampleDialog")
     {
@@ -1416,7 +2002,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             return;
         }
 
-        const bool ok = loadDroppedFileForLayer(idx, layerIdx, juce::File(path));
+        const bool addToStock = (bool) payload.getProperty("addToSampleStock", false);
+        const bool ok = addToStock
+            ? addSampleStockFileForLayer(idx, layerIdx, juce::File(path), name)
+            : loadDroppedFileForLayer(idx, layerIdx, juce::File(path), name);
         juce::Logger::writeToLog(ok ? "[ASTER DND] bridge call success"
                                     : "[ASTER DND] bridge call error");
     }
@@ -1427,6 +2016,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         pendingSampleByteDrop.padIndex = getIndex();
         pendingSampleByteDrop.layerIndex = (int) payload.getProperty("layerIndex", 0);
         pendingSampleByteDrop.fileName = payload.getProperty("fileName", juce::var()).toString();
+        pendingSampleByteDrop.addToSampleStock = (bool) payload.getProperty("addToSampleStock", false);
         pendingSampleByteDrop.expectedChunks = (int) payload.getProperty("totalChunks", 0);
         pendingSampleByteDrop.expectedBytes = (int64) payload.getProperty("totalBytes", 0);
         pendingSampleByteDrop.active = pendingSampleByteDrop.transferId.isNotEmpty()
@@ -1487,6 +2077,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
         const auto receivedChunks = pendingSampleByteDrop.receivedChunks;
         const auto expectedChunks = pendingSampleByteDrop.expectedChunks;
         const auto expectedBytes = pendingSampleByteDrop.expectedBytes;
+        const bool addToSampleStock = pendingSampleByteDrop.addToSampleStock;
         auto data = std::move(pendingSampleByteDrop.data);
         pendingSampleByteDrop = {};
 
@@ -1500,7 +2091,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             return;
         }
 
-        const bool ok = loadDroppedBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize());
+        const bool ok = addToSampleStock
+            ? addSampleStockBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize())
+            : loadDroppedBytesForLayer(padIndex, layerIndex, fileName, data.getData(), data.getSize());
         juce::Logger::writeToLog(ok ? "[ASTER DND] bridge bytes finish success"
                                     : "[ASTER DND] bridge bytes finish error");
     }
@@ -1545,6 +2138,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     }
     else if (type == "saveKit")
     {
+       #if ASTER_DEMO_BUILD
+        broadcastDemoState(true);
+        return;
+       #else
         if (audioProcessor.saveKitToCurrentFile())
         {
             broadcastKitState();
@@ -1568,9 +2165,14 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 if (audioProcessor.saveKitToFile(file))
                     broadcastKitState();
             });
+       #endif
     }
     else if (type == "saveKitAs")
     {
+       #if ASTER_DEMO_BUILD
+        broadcastDemoState(true);
+        return;
+       #else
         const auto currentName = DrumSamplerAudioProcessor::isDefaultKitName(audioProcessor.getKit().kitName)
             ? juce::String("My Kit")
             : audioProcessor.getKit().kitName;
@@ -1591,6 +2193,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 if (audioProcessor.saveKitToFile(file))
                     broadcastKitState();
             });
+       #endif
     }
     else if (type == "loadKit")
     {
@@ -1774,6 +2377,12 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     L.sampleFileName.clear();
                     L.sampleFilePath.clear();
                     L.sampleMissing = false;
+                    L.sampleStock.clear();
+                    L.activeSampleStockIndex = 0;
+                    L.roundRobin = false;
+                    L.eq = {};
+                    L.fxChain.clear();
+                    L.polarityInvert = false;
                 }
 
                 const int newLayerIndex = pad.layerCount();
@@ -1785,13 +2394,13 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 }
                 else if (L.sampleFilePath.isNotEmpty())
                 {
-                    juce::File f(L.sampleFilePath);
-                    if (f.existsAsFile())
-                        audioProcessor.getFileManager().loadFileForPad(idx, newLayerIndex, f);
+                    audioProcessor.reloadLayerSampleVariations(idx, newLayerIndex);
                 }
 
+                audioProcessor.syncParametersFromKit();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+                if ((bool) payload.getProperty("broadcast", true))
+                    broadcastPadUpdate(idx);
             }
         }
     }
@@ -1808,22 +2417,16 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 for (int li = 0; li < MAX_LAYERS_PER_PAD; ++li)
                     audioProcessor.getFileManager().clearLayer(idx, li);
                 for (int li = 0; li < pad.layerCount(); ++li)
-                {
-                    const auto& layer = pad.layers[(size_t) li];
-                    if (layer.sampleFilePath.isNotEmpty())
-                    {
-                        juce::File f(layer.sampleFilePath);
-                        if (f.existsAsFile())
-                            audioProcessor.getFileManager().loadFileForPad(idx, li, f);
-                    }
-                }
+                    audioProcessor.reloadLayerSampleVariations(idx, li);
                 if (layerIdx == 0)
                 {
                     // 新しい Layer 0 を flat fields に反映
                     pad.syncFlatFromLayer0();
                 }
+                audioProcessor.syncParametersFromKit();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+                if ((bool) payload.getProperty("broadcast", true))
+                    broadcastPadUpdate(idx);
             }
         }
     }
@@ -1836,15 +2439,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             auto& pad = audioProcessor.getKit().pads[(size_t) idx];
             if (layerIdx >= 0 && layerIdx < pad.layerCount())
             {
-                auto& L = pad.layers[(size_t) layerIdx];
+                const auto& L = pad.layers[(size_t) layerIdx];
                 const int lo = juce::jlimit(0, 127, (int) payload.getProperty("min", L.velocityMin));
                 const int hi = juce::jlimit(0, 127, (int) payload.getProperty("max", L.velocityMax));
-                audioProcessor.setAutomatableLayerParameter(
-                    idx, layerIdx, LayerParameterSpecs::Param::VelMin,
-                    static_cast<float>(juce::jmin(lo, hi)) / 127.0f, true);
-                audioProcessor.setAutomatableLayerParameter(
-                    idx, layerIdx, LayerParameterSpecs::Param::VelMax,
-                    static_cast<float>(juce::jmax(lo, hi)) / 127.0f, true);
+                audioProcessor.setLayerVelocityRange(idx, layerIdx, lo, hi, true);
             }
         }
     }
@@ -1859,7 +2457,6 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
             {
                 pad.layers[(size_t) layerIdx].mute = getBool();
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
             }
         }
     }
@@ -1877,7 +2474,30 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                 L.solo = v;
                 if (v) L.mute = false;
                 audioProcessor.markKitDirty();
-                broadcastPadUpdate(idx);
+            }
+        }
+    }
+    else if (type == "setLayerSmartTrim" || type == "setLayerPolarityInvert"
+          || type == "setLayerRoundRobin")
+    {
+        const int idx = getIndex();
+        const int layerIdx = (int) payload.getProperty("layerIndex", 0);
+        if (idx >= 0 && idx < NUM_PADS)
+        {
+            auto& pad = audioProcessor.getKit().pads[(size_t) idx];
+            if (layerIdx >= 0 && layerIdx < pad.layerCount())
+            {
+                auto& L = pad.layers[(size_t) layerIdx];
+                if (type == "setLayerSmartTrim")
+                    L.smartTrim = getBool();
+                else if (type == "setLayerRoundRobin")
+                {
+                    L.roundRobin = getBool() && L.sampleStock.size() >= 2;
+                    audioProcessor.getVoiceManager().resetRoundRobin(idx, layerIdx);
+                }
+                else
+                    L.polarityInvert = getBool();
+                audioProcessor.markKitDirty();
             }
         }
     }
@@ -1885,7 +2505,10 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     // Layer 0 (MAIN) は既存の flat-field 経由ハンドラで処理されるので、こちらは
     // L2+ 用と考えてよい。ただし layerIdx を明示するため layerIdx==0 も受ける。
     else if (type == "setLayerVolume" || type == "setLayerPan" || type == "setLayerPitch"
-          || type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
+          || type == "setLayerFine"
+          || type == "setLayerAttack" || type == "setLayerHold" || type == "setLayerDecay"
+          || type == "setLayerRelease" || type == "setLayerReverse"
+          || type == "setLayerKeepLength")
     {
         const int idx = getIndex();
         const int layerIdx = (int) payload.getProperty("layerIndex", 0);
@@ -1901,11 +2524,26 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pan, getFloat(), true);
                 else if (type == "setLayerPitch")
                     audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Pitch, getFloat(), true);
+                else if (type == "setLayerFine")
+                    audioProcessor.setAutomatableLayerParameter(idx, layerIdx, LayerParameterSpecs::Param::Fine, getFloat(), true);
                 else if (type == "setLayerAttack")  L.attack  = juce::jlimit(0.0f, 10.0f, getFloat());
+                else if (type == "setLayerHold")
+                {
+                    const float requested = getFloat();
+                    L.hold = requested < 0.0f ? -1.0f : juce::jlimit(0.0f, 10.0f, requested);
+                }
+                else if (type == "setLayerDecay")   L.decay   = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerRelease") L.release = juce::jlimit(0.0f, 10.0f, getFloat());
                 else if (type == "setLayerReverse") L.reverse = getBool();
-                if (type == "setLayerAttack" || type == "setLayerRelease" || type == "setLayerReverse")
+                else if (type == "setLayerKeepLength") L.keepLength = getBool();
+                if (type == "setLayerAttack" || type == "setLayerHold"
+                    || type == "setLayerDecay" || type == "setLayerRelease"
+                    || type == "setLayerReverse" || type == "setLayerKeepLength")
+                {
+                    if (layerIdx == 0)
+                        pad.syncFlatFromLayer0();
                     audioProcessor.markKitDirty();
+                }
             }
         }
     }
@@ -2100,6 +2738,7 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                             {
                                 slot.transient.attack  = juce::jlimit(-1.0f, 1.0f, p->hasProperty("attack")  ? (float) (double) p->getProperty("attack")  : slot.transient.attack);
                                 slot.transient.sustain = juce::jlimit(-1.0f, 1.0f, p->hasProperty("sustain") ? (float) (double) p->getProperty("sustain") : slot.transient.sustain);
+                                slot.transient.outputDb = juce::jlimit(-24.0f, 12.0f, p->hasProperty("output") ? (float) (double) p->getProperty("output") : slot.transient.outputDb);
                             }
                         }
                         else if (typeName == "COMPRESSOR")
@@ -2111,7 +2750,9 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
                                 slot.compressor.ratio     = juce::jlimit(1.0f, 20.0f, p->hasProperty("ratio")     ? (float) (double) p->getProperty("ratio")     : slot.compressor.ratio);
                                 slot.compressor.attack    = juce::jlimit(1.0f, 80.0f, p->hasProperty("attack")    ? (float) (double) p->getProperty("attack")    : slot.compressor.attack);
                                 slot.compressor.release   = juce::jlimit(10.0f, 500.0f, p->hasProperty("release") ? (float) (double) p->getProperty("release")   : slot.compressor.release);
+                                slot.compressor.makeupDb  = juce::jlimit(0.0f, 24.0f, p->hasProperty("makeup")    ? (float) (double) p->getProperty("makeup")    : slot.compressor.makeupDb);
                                 slot.compressor.mix       = juce::jlimit(0.0f, 1.0f, p->hasProperty("mix")       ? (float) (double) p->getProperty("mix")       : slot.compressor.mix);
+                                slot.compressor.outputDb  = juce::jlimit(-24.0f, 12.0f, p->hasProperty("output")  ? (float) (double) p->getProperty("output")     : slot.compressor.outputDb);
                             }
                         }
                         else
@@ -2172,4 +2813,29 @@ void WebViewEditor::handleUiMessage(const juce::var& message)
     {
         juce::Logger::writeToLog("WebView unknown message: " + type);
     }
+}
+
+void WebViewEditor::loadBrowserPreferences()
+{
+    const juce::ScopedLock guard(uiPreferencesLock);
+    browserPreferences = loadPreferencesFileUnlocked().getProperty("sampleBrowser", {});
+    if (! browserPreferences.isObject()) browserPreferences = juce::var(new juce::DynamicObject());
+    browserRecentPaths.clear();
+    if (const auto* paths = browserPreferences.getProperty("recentPaths", {}).getArray())
+        for (const auto& path : *paths)
+            if (path.isString() && path.toString().isNotEmpty() && browserRecentPaths.size() < 8)
+                browserRecentPaths.addIfNotAlreadyThere(path.toString());
+    auto gain = (double) browserPreferences.getProperty("gain", 0.5);
+    audioProcessor.browserPreview.setGain(std::isfinite(gain) ? (float) gain : 0.5f);
+}
+void WebViewEditor::saveBrowserPreferences()
+{
+    const juce::ScopedLock guard(uiPreferencesLock);
+    if (! browserPreferences.isObject()) browserPreferences = juce::var(new juce::DynamicObject());
+    juce::Array<juce::var> paths;
+    for (const auto& path : browserRecentPaths) paths.add(path);
+    browserPreferences.getDynamicObject()->setProperty("recentPaths", paths);
+    auto value = loadPreferencesFileUnlocked();
+    value.getDynamicObject()->setProperty("sampleBrowser", browserPreferences);
+    writePreferencesFileUnlocked(value);
 }

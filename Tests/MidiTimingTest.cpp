@@ -1,0 +1,675 @@
+#include "../Source/PluginProcessor.h"
+
+#include <array>
+#include <iostream>
+
+namespace
+{
+bool writeConstantTestSample(const juce::File& file, float level = 0.75f)
+{
+    file.deleteFile();
+    auto stream = std::unique_ptr<juce::FileOutputStream>(file.createOutputStream());
+    if (stream == nullptr || ! stream->openedOk())
+        return false;
+
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatWriter> writer(
+        format.createWriterFor(stream.get(), 48000.0, 1, 16, {}, 0));
+    if (writer == nullptr)
+        return false;
+
+    stream.release();
+
+    juce::AudioBuffer<float> source(1, 512);
+    for (int i = 0; i < source.getNumSamples(); ++i)
+        source.setSample(0, i, level);
+
+    return writer->writeFromAudioSampleBuffer(source, 0, source.getNumSamples());
+}
+
+int firstAudibleSample(const juce::AudioBuffer<float>& buffer)
+{
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+            if (std::abs(buffer.getSample(channel, sample)) > 1.0e-5f)
+                return sample;
+
+    return -1;
+}
+
+bool renderCompressorLevel(const juce::File& sampleFile,
+                           float makeupDb,
+                           float mix,
+                           float outputDb,
+                           bool bypassed,
+                           float& level)
+{
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, sampleFile))
+        return false;
+
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    compressor.bypassed = bypassed;
+    compressor.compressor.threshold = 0.0f;
+    compressor.compressor.ratio = 1.0f;
+    compressor.compressor.makeupDb = makeupDb;
+    compressor.compressor.mix = mix;
+    compressor.compressor.outputDb = outputDb;
+    processor.getKit().pads[0].layers[0].fxChain = { compressor };
+
+    juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+    output.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+    processor.processBlock(output, midi);
+    level = std::abs(output.getSample(0, 64));
+    return true;
+}
+
+bool approximately(float actual, float expected, float tolerance = 0.015f)
+{
+    return std::abs(actual - expected) <= tolerance;
+}
+
+bool sampleStockFlowIsStable()
+{
+    std::vector<juce::File> files;
+    files.reserve(6);
+    const auto temp = juce::File::getSpecialLocation(juce::File::tempDirectory);
+    for (int i = 0; i < 6; ++i)
+    {
+        auto file = temp.getNonexistentChildFile(
+            "aster-sample-stock-" + juce::String(i + 1), ".wav", false);
+        if (! writeConstantTestSample(file, 0.1f * static_cast<float>(i + 1)))
+            return false;
+        files.push_back(file);
+    }
+
+    const auto cleanup = [&files]
+    {
+        for (const auto& file : files)
+            file.deleteFile();
+    };
+
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, files[0]))
+    {
+        cleanup();
+        return false;
+    }
+
+    auto& layer = processor.getKit().pads[0].layers[0];
+    layer.smartTrim = false;
+    layer.startPosition = 0.1f;
+    layer.endPosition = 0.9f;
+
+    for (int i = 1; i < 5; ++i)
+    {
+        if (! processor.addOrReplaceLayerSampleStock(0, 0, files[(size_t) i]))
+        {
+            cleanup();
+            return false;
+        }
+        layer.startPosition = 0.05f * static_cast<float>(i);
+        layer.endPosition = 1.0f - layer.startPosition;
+    }
+
+    if (layer.sampleStock.size() != 5 || layer.activeSampleStockIndex != 4
+        || ! processor.selectLayerSampleStock(0, 0, 0)
+        || ! approximately(layer.startPosition, 0.1f, 0.001f)
+        || ! approximately(layer.endPosition, 0.9f, 0.001f))
+    {
+        cleanup();
+        return false;
+    }
+
+    // A sixth add replaces the currently selected slot instead of exceeding
+    // the five-item cap.
+    if (! processor.addOrReplaceLayerSampleStock(0, 0, files[5])
+        || layer.sampleStock.size() != 5
+        || layer.activeSampleStockIndex != 0
+        || layer.sampleFileName != files[5].getFileName())
+    {
+        cleanup();
+        return false;
+    }
+
+    // Trim/fade values belong to each stocked sample and must come back when
+    // switching, then survive project-state serialization.
+    if (! processor.selectLayerSampleStock(0, 0, 4)
+        || ! approximately(layer.startPosition, 0.2f, 0.001f)
+        || ! approximately(layer.endPosition, 0.8f, 0.001f))
+    {
+        cleanup();
+        return false;
+    }
+
+    layer.roundRobin = true;
+    LayerData restored;
+    restored.fromValueTree(layer.toValueTree());
+    if (restored.sampleStock.size() != 5
+        || restored.activeSampleStockIndex != 4
+        || restored.sampleFileName != files[4].getFileName()
+        || ! approximately(restored.startPosition, 0.2f, 0.001f)
+        || ! restored.roundRobin)
+    {
+        cleanup();
+        return false;
+    }
+
+    // MIDI hits cycle the decoded buffers in order. Slot 1 was replaced by
+    // file 6 above, so the expected level order is 0.6, 0.2, 0.3, 0.4, 0.5.
+    const auto renderMidiHit = [&processor]
+    {
+        processor.getVoiceManager().allNotesOff();
+        juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+        output.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+        processor.processBlock(output, midi);
+        return std::abs(output.getSample(0, 64));
+    };
+
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    std::array<float, 6> roundRobinLevels {};
+    for (size_t hit = 0; hit < roundRobinLevels.size(); ++hit)
+        roundRobinLevels[hit] = renderMidiHit();
+
+    const std::array<float, 6> expectedSourceLevels { 0.6f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f };
+    const float commonGain = roundRobinLevels[0] / expectedSourceLevels[0];
+    for (size_t hit = 0; hit < roundRobinLevels.size(); ++hit)
+    {
+        if (! approximately(roundRobinLevels[hit], expectedSourceLevels[hit] * commonGain, 0.02f))
+        {
+            cleanup();
+            return false;
+        }
+    }
+
+    // UI audition always uses the selected variation and must not consume the
+    // next RR slot. The following MIDI hit still starts from slot 1.
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    processor.auditionLayerOn(0, 0, 1.0f);
+    processor.getVoiceManager().allNotesOff();
+    if (! approximately(renderMidiHit(), 0.6f * commonGain, 0.02f))
+    {
+        cleanup();
+        return false;
+    }
+
+    // A missing/unloaded variation is skipped without touching disk.
+    processor.getFileManager().clearSampleVariation(0, 0, 1);
+    processor.getVoiceManager().resetRoundRobin(0, 0);
+    const float afterSlotOne = renderMidiHit();
+    const float skippedSlotTwo = renderMidiHit();
+    if (! approximately(afterSlotOne, 0.6f * commonGain, 0.02f)
+        || ! approximately(skippedSlotTwo, 0.3f * commonGain, 0.02f))
+    {
+        cleanup();
+        return false;
+    }
+
+    if (! processor.removeLayerSampleStock(0, 0, 4)
+        || layer.sampleStock.size() != 4
+        || layer.activeSampleStockIndex != 3)
+    {
+        cleanup();
+        return false;
+    }
+
+    cleanup();
+    return true;
+}
+
+bool compressorGainPersistenceIsCompatible()
+{
+    LayerData source;
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    compressor.compressor.makeupDb = 7.5f;
+    compressor.compressor.outputDb = -3.0f;
+    source.fxChain = { compressor };
+
+    auto currentTree = source.toValueTree();
+    LayerData restored;
+    restored.fromValueTree(currentTree);
+    if (restored.fxChain.size() != 1
+        || ! approximately(restored.fxChain[0].compressor.makeupDb, 7.5f)
+        || ! approximately(restored.fxChain[0].compressor.outputDb, -3.0f))
+        return false;
+
+    auto legacyTree = currentTree.createCopy();
+    auto legacyFx = legacyTree.getChildWithName("FxChain").getChild(0);
+    legacyFx.removeProperty("makeupDb", nullptr);
+    legacyFx.removeProperty("outputDb", nullptr);
+
+    LayerData legacyRestored;
+    legacyRestored.fromValueTree(legacyTree);
+    return legacyRestored.fxChain.size() == 1
+        && approximately(legacyRestored.fxChain[0].compressor.makeupDb, 0.0f)
+        && approximately(legacyRestored.fxChain[0].compressor.outputDb, 0.0f);
+}
+
+bool renderTransientLevel(const juce::File& sampleFile,
+                          float outputDb,
+                          bool bypassed,
+                          float& level)
+{
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, sampleFile))
+        return false;
+
+    LayerFxSlot transient;
+    transient.type = LayerFxType::Transient;
+    transient.bypassed = bypassed;
+    transient.transient.attack = 0.0f;
+    transient.transient.sustain = 0.0f;
+    transient.transient.outputDb = outputDb;
+    processor.getKit().pads[0].layers[0].fxChain = { transient };
+
+    juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+    output.clear();
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+    processor.processBlock(output, midi);
+    level = std::abs(output.getSample(0, 64));
+    return true;
+}
+
+bool transientOutputPersistenceIsCompatible()
+{
+    LayerData source;
+    LayerFxSlot transient;
+    transient.type = LayerFxType::Transient;
+    transient.transient.outputDb = -4.5f;
+    source.fxChain = { transient };
+
+    auto currentTree = source.toValueTree();
+    LayerData restored;
+    restored.fromValueTree(currentTree);
+    if (restored.fxChain.size() != 1
+        || ! approximately(restored.fxChain[0].transient.outputDb, -4.5f))
+        return false;
+
+    auto legacyTree = currentTree.createCopy();
+    auto legacyFx = legacyTree.getChildWithName("FxChain").getChild(0);
+    legacyFx.removeProperty("outputDb", nullptr);
+
+    LayerData legacyRestored;
+    legacyRestored.fromValueTree(legacyTree);
+    return legacyRestored.fxChain.size() == 1
+        && approximately(legacyRestored.fxChain[0].transient.outputDb, 0.0f);
+}
+
+bool automationSlotsAreStableAndPersistent()
+{
+    DrumSamplerAudioProcessor processor;
+    int automatableCount = 0;
+    int expectedSlot = 0;
+    juce::RangedAudioParameter* firstSlot = nullptr;
+
+    for (auto* parameter : processor.getParameters())
+    {
+        if (! parameter->isAutomatable())
+            continue;
+
+        ++automatableCount;
+        const auto* parameterWithID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter);
+        if (parameterWithID == nullptr)
+        {
+            std::cerr << "Automatable parameter has no stable ID\n";
+            return false;
+        }
+
+        const auto expectedID = "asterAutomationSlot"
+                              + juce::String(expectedSlot + 1).paddedLeft('0', 2);
+        const auto expectedName = "ASTER AUTO "
+                                + juce::String(expectedSlot + 1).paddedLeft('0', 2);
+        if (parameterWithID->paramID != expectedID
+            || parameter->getName(128) != expectedName
+            || ! parameter->isMetaParameter())
+        {
+            std::cerr << "Unexpected slot " << expectedSlot << ": id="
+                      << parameterWithID->paramID << ", name=" << parameter->getName(128)
+                      << ", meta=" << parameter->isMetaParameter() << '\n';
+            return false;
+        }
+
+        if (expectedSlot == 0)
+            firstSlot = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+        ++expectedSlot;
+    }
+
+    if (automatableCount != DrumSamplerAudioProcessor::automationSlotCount
+        || expectedSlot != DrumSamplerAudioProcessor::automationSlotCount
+        || firstSlot == nullptr)
+    {
+        std::cerr << "Automatable count=" << automatableCount << ", expectedSlot="
+                  << expectedSlot << ", firstSlot=" << (firstSlot != nullptr) << '\n';
+        return false;
+    }
+
+    processor.beginAutomationLearn(0);
+    processor.setMasterVolumeParameter(0.37f, true);
+    if (processor.getAutomationSlotTargetID(0) != "masterVolume"
+        || processor.getAutomationSlotTargetName(0) != "Master Volume")
+    {
+        std::cerr << "Learn mismatch: id=" << processor.getAutomationSlotTargetID(0)
+                  << ", name=" << processor.getAutomationSlotTargetName(0) << '\n';
+        return false;
+    }
+
+    firstSlot->setValueNotifyingHost(0.64f);
+    processor.syncKitFromParameters();
+    if (! approximately(processor.getKit().masterVolume, 0.64f, 0.001f))
+    {
+        std::cerr << "Playback mismatch: " << processor.getKit().masterVolume << '\n';
+        return false;
+    }
+
+    juce::MemoryBlock savedState;
+    processor.getStateInformation(savedState);
+    DrumSamplerAudioProcessor restored;
+    restored.setStateInformation(savedState.getData(), static_cast<int>(savedState.getSize()));
+    if (restored.getAutomationSlotTargetID(0) != "masterVolume")
+    {
+        std::cerr << "Restore mismatch: " << restored.getAutomationSlotTargetID(0) << '\n';
+        return false;
+    }
+
+    restored.assignAutomationSlot(1, "masterVolume");
+    if (! restored.getAutomationSlotTargetID(0).isEmpty()
+        || restored.getAutomationSlotTargetID(1) != "masterVolume")
+    {
+        std::cerr << "Direct assignment mismatch: slot0="
+                  << restored.getAutomationSlotTargetID(0) << ", slot1="
+                  << restored.getAutomationSlotTargetID(1) << '\n';
+        return false;
+    }
+
+    restored.clearAutomationSlot(1);
+    if (! restored.getAutomationSlotTargetID(1).isEmpty())
+        return false;
+
+    LayerFxSlot compressor;
+    compressor.type = LayerFxType::Compressor;
+    restored.getKit().pads[0].layers[0].fxChain.push_back(compressor);
+    const juce::String fxTarget { "pad01.layer01.fx.compressor.threshold" };
+    restored.assignAutomationSlot(2, fxTarget);
+    if (restored.getAutomationSlotTargetID(2) != fxTarget
+        || restored.getAutomationSlotTargetName(2) != "Pad 01 L01 COMPRESSOR Threshold")
+    {
+        std::cerr << "FX assignment mismatch: " << restored.getAutomationSlotTargetName(2) << '\n';
+        return false;
+    }
+
+    restored.setFxAutomationTargetValue(fxTarget, 0.25f, true);
+    if (! approximately(restored.getKit().pads[0].layers[0].fxChain[0].compressor.threshold, -36.0f, 0.001f))
+    {
+        std::cerr << "FX UI routing mismatch\n";
+        return false;
+    }
+
+    juce::RangedAudioParameter* thirdSlot = nullptr;
+    for (auto* parameter : restored.getParameters())
+        if (const auto* withID = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter);
+            withID != nullptr && withID->paramID == "asterAutomationSlot03")
+            thirdSlot = dynamic_cast<juce::RangedAudioParameter*>(parameter);
+    if (thirdSlot == nullptr) return false;
+    thirdSlot->setValueNotifyingHost(0.75f);
+    restored.prepareToPlay(48000.0, 64);
+    if (! approximately(restored.getKit().pads[0].layers[0].fxChain[0].compressor.threshold, -12.0f, 0.001f))
+    {
+        std::cerr << "FX host routing mismatch\n";
+        return false;
+    }
+
+    juce::MemoryBlock fxState;
+    restored.getStateInformation(fxState);
+    DrumSamplerAudioProcessor fxRestored;
+    fxRestored.setStateInformation(fxState.getData(), static_cast<int>(fxState.getSize()));
+    return fxRestored.getAutomationSlotTargetID(2) == fxTarget
+        && fxRestored.getAutomationSlotTargetName(2) == "Pad 01 L01 COMPRESSOR Threshold";
+}
+
+bool mainLayerStateAndKitPersistenceAreStable()
+{
+    constexpr float expectedVolume = 0.41f;
+    constexpr float expectedPan = -0.28f;
+    constexpr float expectedPitch = -3.0f;
+    constexpr float expectedStart = 0.12f;
+    constexpr float expectedEnd = 0.46f;
+
+    DrumSamplerAudioProcessor processor;
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Volume, expectedVolume);
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pan, expectedPan);
+    processor.setAutomatablePadParameter(0, PadParameterSpecs::Param::Pitch, expectedPitch);
+    processor.setPadSampleTrim(0, expectedStart, expectedEnd, 0.03f, 0.08f);
+    processor.getKit().pads[0].layers[0].smartTrim = false;
+    processor.getKit().pads[0].layers[0].polarityInvert = true;
+
+    // Kit saving pulls current parameter values first.  MAIN's duplicate
+    // Layer-0 parameters must not overwrite the values edited through the UI.
+    processor.syncKitFromParameters();
+    const auto& synced = processor.getKit().pads[0];
+    if (! approximately(synced.layers[0].volume, expectedVolume, 0.001f)
+        || ! approximately(synced.layers[0].pan, expectedPan, 0.001f)
+        || ! approximately(synced.layers[0].pitch, expectedPitch, 0.001f))
+    {
+        std::cerr << "MAIN parameter sync reset Layer-0 values\n";
+        return false;
+    }
+
+    juce::MemoryBlock state;
+    processor.getStateInformation(state);
+    DrumSamplerAudioProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    const auto& restoredMain = restored.getKit().pads[0].layers[0];
+    if (! approximately(restoredMain.volume, expectedVolume, 0.001f)
+        || ! approximately(restoredMain.pan, expectedPan, 0.001f)
+        || ! approximately(restoredMain.pitch, expectedPitch, 0.001f)
+        || ! approximately(restoredMain.startPosition, expectedStart, 0.001f)
+        || ! approximately(restoredMain.endPosition, expectedEnd, 0.001f)
+        || restoredMain.smartTrim
+        || ! restoredMain.polarityInvert)
+    {
+        std::cerr << "DAW state restore changed MAIN volume, pan, pitch, or trim\n";
+        return false;
+    }
+
+    // Demo builds intentionally reject standalone kit files. State created
+    // within the current DAW process still restores; a process restart is
+    // covered separately by DemoModeTest and resets the content.
+    if constexpr (AsterDemoMode::isDemoBuild)
+        return true;
+
+    const auto kitFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("aster-main-persistence", ".asterkit", false);
+    const bool saved = processor.saveKitToFile(kitFile);
+    DrumSamplerAudioProcessor kitRestored;
+    const bool loaded = saved && kitRestored.loadKitFromFile(kitFile);
+    kitFile.deleteFile();
+    if (! loaded)
+    {
+        std::cerr << "Failed to round-trip persistence test kit\n";
+        return false;
+    }
+
+    const auto& kitMain = kitRestored.getKit().pads[0].layers[0];
+    return approximately(kitMain.volume, expectedVolume, 0.001f)
+        && approximately(kitMain.pan, expectedPan, 0.001f)
+        && approximately(kitMain.pitch, expectedPitch, 0.001f)
+        && approximately(kitMain.startPosition, expectedStart, 0.001f)
+        && approximately(kitMain.endPosition, expectedEnd, 0.001f)
+        && ! kitMain.smartTrim
+        && kitMain.polarityInvert;
+}
+
+bool layerVelocityRangeAndAutomationSlotsAreStable()
+{
+    DrumSamplerAudioProcessor processor;
+    auto& pad = processor.getKit().pads[0];
+    pad.layers.resize(3);
+
+    processor.setLayerVelocityRange(0, 1, 0, 20, true);
+    processor.setLayerVelocityRange(0, 1, 80, 127, true);
+    if (pad.layers[1].velocityMin != 80 || pad.layers[1].velocityMax != 127)
+    {
+        std::cerr << "Atomic velocity range update was clamped against the previous range\n";
+        return false;
+    }
+
+    pad.layers[1].volume = 0.22f;
+    pad.layers[2].volume = 0.81f;
+    processor.syncParametersFromKit();
+
+    // Removing the middle layer shifts the former L3 into L2. The fixed DAW
+    // parameter slot for L2 must be refreshed, or a later parameter pull would
+    // restore the deleted layer's 0.22 value.
+    pad.layers.erase(pad.layers.begin() + 1);
+    processor.syncParametersFromKit();
+    pad.layers[1].volume = 0.05f;
+    processor.syncKitFromParameters();
+
+    if (! approximately(pad.layers[1].volume, 0.81f, 0.001f))
+    {
+        std::cerr << "Layer removal left a stale automation-slot value\n";
+        return false;
+    }
+
+    return true;
+}
+}
+
+int main()
+{
+    juce::ScopedJuceInitialiser_GUI initialiseJuce;
+    const auto sampleFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
+        .getNonexistentChildFile("aster-midi-timing", ".wav", false);
+
+    if (! writeConstantTestSample(sampleFile))
+    {
+        std::cerr << "Failed to create timing-test sample\n";
+        return 1;
+    }
+
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 256);
+    if (! processor.loadSampleForPad(0, sampleFile))
+    {
+        std::cerr << "Failed to load timing-test sample\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    constexpr int eventSample = 73;
+    juce::AudioBuffer<float> output(processor.getTotalNumOutputChannels(), 256);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), eventSample);
+    processor.processBlock(output, midi);
+
+    const int onset = firstAudibleSample(output);
+    if (onset != eventSample)
+    {
+        std::cerr << "Expected onset at sample " << eventSample
+                  << ", got " << onset << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    float baseline = 0.0f;
+    float makeup = 0.0f;
+    float dryOutput = 0.0f;
+    float bypass = 0.0f;
+    if (! renderCompressorLevel(sampleFile, 0.0f, 1.0f, 0.0f, false, baseline)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 1.0f, 0.0f, false, makeup)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 0.0f, -6.0f, false, dryOutput)
+        || ! renderCompressorLevel(sampleFile, 6.0f, 1.0f, -6.0f, true, bypass))
+    {
+        std::cerr << "Failed to render compressor gain test\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    const float sixDbGain = juce::Decibels::decibelsToGain(6.0f);
+    if (baseline <= 1.0e-5f
+        || ! approximately(makeup / baseline, sixDbGain)
+        || ! approximately(dryOutput / baseline, 1.0f / sixDbGain)
+        || ! approximately(bypass / baseline, 1.0f)
+        || ! compressorGainPersistenceIsCompatible())
+    {
+        std::cerr << "Compressor gain flow mismatch: baseline=" << baseline
+                  << ", makeup ratio=" << makeup / baseline
+                  << ", dry/output ratio=" << dryOutput / baseline
+                  << ", bypass ratio=" << bypass / baseline << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    float transientBaseline = 0.0f;
+    float transientOutput = 0.0f;
+    float transientBypass = 0.0f;
+    if (! renderTransientLevel(sampleFile, 0.0f, false, transientBaseline)
+        || ! renderTransientLevel(sampleFile, -6.0f, false, transientOutput)
+        || ! renderTransientLevel(sampleFile, -6.0f, true, transientBypass))
+    {
+        std::cerr << "Failed to render transient output test\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (transientBaseline <= 1.0e-5f
+        || ! approximately(transientOutput / transientBaseline, 1.0f / sixDbGain)
+        || ! approximately(transientBypass / transientBaseline, 1.0f)
+        || ! transientOutputPersistenceIsCompatible())
+    {
+        std::cerr << "Transient output mismatch: baseline=" << transientBaseline
+                  << ", output ratio=" << transientOutput / transientBaseline
+                  << ", bypass ratio=" << transientBypass / transientBaseline << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (! automationSlotsAreStableAndPersistent())
+    {
+        std::cerr << "Automation slot exposure, routing, or persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (! mainLayerStateAndKitPersistenceAreStable())
+    {
+        std::cerr << "MAIN Layer state or kit persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (! layerVelocityRangeAndAutomationSlotsAreStable())
+    {
+        std::cerr << "Layer velocity range or automation-slot sync mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    if (! sampleStockFlowIsStable())
+    {
+        std::cerr << "Layer sample stock add/select/replace/remove persistence mismatch\n";
+        sampleFile.deleteFile();
+        return 1;
+    }
+
+    sampleFile.deleteFile();
+
+    std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
+    std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
+    std::cout << "Transient output volume and legacy persistence verified\n";
+    std::cout << "24 fixed automation slots and assignment persistence verified\n";
+    std::cout << "MAIN Layer volume, pan, pitch, and trim persistence verified\n";
+    std::cout << "Layer velocity range and add/remove automation-slot sync verified\n";
+    std::cout << "Layer sample stock five-item flow and persistence verified\n";
+    return 0;
+}

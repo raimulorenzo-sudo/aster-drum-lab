@@ -1,7 +1,11 @@
 [CmdletBinding()]
 param(
     [switch]$Unsigned,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [switch]$SkipInstaller,
+    [switch]$Demo,
+    [switch]$BuildTests,
+    [string]$AaxSdkPath = $env:AAX_SDK_PATH
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +16,20 @@ $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $CMakeFile = Get-Content (Join-Path $Root "CMakeLists.txt") -Raw
 $Version = [regex]::Match($CMakeFile, 'project\(AsterDrumLab VERSION ([0-9.]+)\)').Groups[1].Value
 if (-not $Version) { throw "Could not read the project version from CMakeLists.txt." }
-$BuildDir = Join-Path $Root "build-release-windows"
+$ReleaseTag = $Version
+$DemoCMakeValue = "OFF"
+$BuildDirName = "build-release-windows"
+$VstBaseName = "ASTERDrumLab"
+if ($Demo) {
+    $ReleaseTag = "$Version-Demo"
+    $DemoCMakeValue = "ON"
+    $BuildDirName = "build-release-windows-demo"
+    $VstBaseName = "ASTERDrumLabDemo"
+    # The public Demo deliverable is VST3 only. Never let a locally configured
+    # licensed AAX SDK change the contents of this package.
+    $AaxSdkPath = ""
+}
+$BuildDir = Join-Path $Root $BuildDirName
 $Artefacts = Join-Path $BuildDir "DrumSampler_artefacts\Release"
 $DistDir = Join-Path $Root "dist"
 $VendorDir = Join-Path $PSScriptRoot "vendor"
@@ -20,6 +37,13 @@ $WebView2 = Join-Path $VendorDir "MicrosoftEdgeWebview2Setup.exe"
 $WebView2PackageVersion = "1.0.3967.48"
 $WebView2NuGetPackage = Join-Path $env:USERPROFILE ".nuget\packages\microsoft.web.webview2\$WebView2PackageVersion"
 $WebView2JucePackage = Join-Path $VendorDir "Microsoft.Web.WebView2.$WebView2PackageVersion"
+if (-not $Demo -and -not $AaxSdkPath) {
+    $defaultAaxSdk = "C:\SDKs\aax-sdk-2-9-0"
+    if (Test-Path (Join-Path $defaultAaxSdk "Interfaces\ACF")) {
+        $AaxSdkPath = $defaultAaxSdk
+    }
+}
+$AaxEnabled = $AaxSdkPath -and (Test-Path (Join-Path $AaxSdkPath "Interfaces\ACF"))
 
 function Find-SignTool {
     $tool = Get-Command signtool.exe -ErrorAction SilentlyContinue
@@ -45,12 +69,14 @@ if (-not $Unsigned) {
 
 New-Item -ItemType Directory -Force $DistDir, $VendorDir | Out-Null
 
-if (-not (Test-Path $WebView2)) {
-    Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $WebView2
-}
-$webViewSignature = Get-AuthenticodeSignature $WebView2
-if ($webViewSignature.Status -ne "Valid" -or $webViewSignature.SignerCertificate.Subject -notmatch "Microsoft") {
-    throw "The WebView2 bootstrapper does not have a valid Microsoft signature."
+if (-not $SkipInstaller) {
+    if (-not (Test-Path $WebView2)) {
+        Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $WebView2
+    }
+    $webViewSignature = Get-AuthenticodeSignature $WebView2
+    if ($webViewSignature.Status -ne "Valid" -or $webViewSignature.SignerCertificate.Subject -notmatch "Microsoft") {
+        throw "The WebView2 bootstrapper does not have a valid Microsoft signature."
+    }
 }
 
 if (-not $SkipBuild) {
@@ -73,57 +99,97 @@ if (-not $SkipBuild) {
             Copy-Item (Join-Path $WebView2NuGetPackage "*") $WebView2JucePackage -Recurse -Force
         }
 
-        cmake -S . -B $BuildDir -G "Visual Studio 17 2022" -A x64 `
-            -DASTER_COPY_PLUGIN_AFTER_BUILD=OFF `
-            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$VendorDir"
+        $cmakeArgs = @(
+            "-S", ".",
+            "-B", $BuildDir,
+            "-G", "Visual Studio 17 2022",
+            "-A", "x64",
+            "-DASTER_COPY_PLUGIN_AFTER_BUILD=OFF",
+            "-DASTER_BUILD_TESTS=$($BuildTests.IsPresent)",
+            "-DASTER_DEMO_BUILD=$DemoCMakeValue",
+            "-DASTER_DEMO_DURATION_SECONDS=1200",
+            "-DJUCE_WEBVIEW2_PACKAGE_LOCATION=$VendorDir",
+            "-DASTER_AAX_SDK_PATH=$AaxSdkPath"
+        )
+        & cmake @cmakeArgs
         cmake --build $BuildDir --config Release --parallel
+        if ($BuildTests) {
+            ctest --test-dir $BuildDir -C Release --output-on-failure
+        }
     }
     finally {
         Pop-Location
     }
 }
 
-$VstBinary = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3\Contents\x86_64-win\ASTER Drum Lab.vst3"
-foreach ($file in @($VstBinary)) {
+$VstBinary = Join-Path $Artefacts "VST3\$VstBaseName.vst3\Contents\x86_64-win\$VstBaseName.vst3"
+$AaxBundle = Join-Path $Artefacts "AAX\ASTERDrumLab.aaxplugin"
+$AaxBinary = Join-Path $AaxBundle "Contents\x64\ASTERDrumLab.aaxplugin"
+$binaries = @($VstBinary)
+if ($AaxEnabled) { $binaries += $AaxBinary }
+foreach ($file in $binaries) {
     if (-not (Test-Path $file)) { throw "Missing build artefact: $file" }
     Sign-File $file
 }
 
-$VstBundle = Join-Path $Artefacts "VST3\ASTER Drum Lab.vst3"
-$VstArchive = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-VST3.zip"
+$VstBundle = Join-Path $Artefacts "VST3\$VstBaseName.vst3"
+$VstArchive = Join-Path $DistDir "ASTER-Drum-Lab-$ReleaseTag-Windows-x64-VST3.zip"
 Remove-Item $VstArchive -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path $VstBundle -DestinationPath $VstArchive -CompressionLevel Optimal
+$VstArchiveInputs = @($VstBundle)
+if ($Demo) {
+    $VstArchiveInputs += Join-Path $Root "packaging\demo\README-Windows.txt"
+}
+Compress-Archive -Path $VstArchiveInputs -DestinationPath $VstArchive -CompressionLevel Optimal
 $VstHash = (Get-FileHash -Algorithm SHA256 $VstArchive).Hash.ToLowerInvariant()
 "$VstHash  $([System.IO.Path]::GetFileName($VstArchive))" |
     Set-Content -Encoding ascii "$VstArchive.sha256"
 
-$iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
-if (-not $iscc) {
-    $defaultIscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-    if (Test-Path $defaultIscc) { $iscc = $defaultIscc }
+$AaxArchive = $null
+if ($AaxEnabled) {
+    $AaxArchive = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-AAX.zip"
+    Remove-Item $AaxArchive -Force -ErrorAction SilentlyContinue
+    Compress-Archive -Path $AaxBundle -DestinationPath $AaxArchive -CompressionLevel Optimal
+    $AaxHash = (Get-FileHash -Algorithm SHA256 $AaxArchive).Hash.ToLowerInvariant()
+    "$AaxHash  $([System.IO.Path]::GetFileName($AaxArchive))" |
+        Set-Content -Encoding ascii "$AaxArchive.sha256"
 }
-if (-not $iscc) { throw "Inno Setup 6 was not found." }
 
-$iss = Join-Path $PSScriptRoot "ASTER Drum Lab.iss"
-& $iscc `
-    "/DAppVersion=$Version" `
-    "/DBuildRoot=$Artefacts" `
-    "/DOutputDir=$DistDir" `
-    "/DWebView2Bootstrapper=$WebView2" `
-    $iss
+if (-not $SkipInstaller) {
+    $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+    if (-not $iscc) {
+        $defaultIscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+        if (Test-Path $defaultIscc) { $iscc = $defaultIscc }
+    }
+    if (-not $iscc) { throw "Inno Setup 6 was not found." }
 
-$Installer = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-Setup.exe"
-if (-not (Test-Path $Installer)) { throw "Installer was not created: $Installer" }
-Sign-File $Installer
+    $iss = Join-Path $PSScriptRoot "ASTER Drum Lab.iss"
+    $isccArgs = @(
+        "/DAppVersion=$Version",
+        "/DBuildRoot=$Artefacts",
+        "/DOutputDir=$DistDir",
+        "/DWebView2Bootstrapper=$WebView2"
+    )
+    if ($AaxEnabled) { $isccArgs += "/DIncludeAAX=1" }
+    $isccArgs += $iss
+    & $iscc @isccArgs
 
-$HashFile = "$Installer.sha256"
-$Hash = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLowerInvariant()
-"$Hash  $([System.IO.Path]::GetFileName($Installer))" | Set-Content -Encoding ascii $HashFile
+    $Installer = Join-Path $DistDir "ASTER-Drum-Lab-$Version-Windows-x64-Setup.exe"
+    if (-not (Test-Path $Installer)) { throw "Installer was not created: $Installer" }
+    Sign-File $Installer
 
-Write-Host "Created: $Installer"
-Write-Host "Checksum: $HashFile"
+    $HashFile = "$Installer.sha256"
+    $Hash = (Get-FileHash -Algorithm SHA256 $Installer).Hash.ToLowerInvariant()
+    "$Hash  $([System.IO.Path]::GetFileName($Installer))" | Set-Content -Encoding ascii $HashFile
+
+    Write-Host "Created: $Installer"
+    Write-Host "Checksum: $HashFile"
+}
 Write-Host "Created: $VstArchive"
 Write-Host "Checksum: $VstArchive.sha256"
+if ($AaxEnabled) {
+    Write-Host "Created: $AaxArchive"
+    Write-Host "Checksum: $AaxArchive.sha256"
+}
 if ($Unsigned) {
-    Write-Warning "This installer is unsigned and is only suitable for local testing."
+    Write-Warning "The generated Windows deliverables are unsigned and are only suitable for testing."
 }

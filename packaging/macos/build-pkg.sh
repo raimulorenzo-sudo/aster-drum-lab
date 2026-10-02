@@ -9,6 +9,18 @@ DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 WORK_DIR="$BUILD_DIR/package"
 PRODUCT_NAME="ASTER Drum Lab"
 OUTPUT_PKG="$DIST_DIR/ASTER-Drum-Lab-${VERSION}-macOS.pkg"
+AAX_SDK_PATH="${AAX_SDK_PATH:-$HOME/SDKs/aax-sdk-2-9-0}"
+PACE_WRAPTOOL="${PACE_WRAPTOOL:-/Applications/PACEAntiPiracy/Eden/Fusion/bin/wraptool}"
+PACE_CUSTOMER_NUMBER="${PACE_CUSTOMER_NUMBER:-}"
+PACE_CUSTOMER_NAME="${PACE_CUSTOMER_NAME:-ENIGMA}"
+PACE_PRODUCT_NAME="${PACE_PRODUCT_NAME:-$PRODUCT_NAME}"
+PACE_SIGN_IDENTITY="${PACE_SIGN_IDENTITY:-${APP_SIGN_IDENTITY:-ENIGMA AAX Code Signing}}"
+AAX_ENABLED=0
+AAX_CMAKE_PATH=""
+if [[ -d "$AAX_SDK_PATH/Interfaces/ACF" ]]; then
+  AAX_ENABLED=1
+  AAX_CMAKE_PATH="$AAX_SDK_PATH"
+fi
 UNSIGNED=0
 SKIP_BUILD=0
 SKIP_NOTARIZE=0
@@ -26,6 +38,21 @@ Signed release environment:
   APP_SIGN_IDENTITY       Developer ID Application: ...
   INSTALLER_SIGN_IDENTITY Developer ID Installer: ...
   NOTARY_PROFILE          Keychain profile created by `xcrun notarytool store-credentials`.
+
+PACE AAX signing environment:
+  PACE_CUSTOMER_NUMBER    PACE-issued customer number (required for distributable AAX).
+  PACE_CUSTOMER_NAME      PACE customer/company name (default: ENIGMA).
+  PACE_PRODUCT_NAME       PACE product name (default: ASTER Drum Lab).
+  PACE_WRAPTOOL           wraptool path (default: the licensed Fusion/Current version).
+  PACE_SIGN_IDENTITY      Certificate-backed signing identity
+                          (default: ENIGMA AAX Code Signing).
+
+When PACE_CUSTOMER_NUMBER is set, the staged AAX plug-in is signed with PACE.
+PACE signing on macOS requires APP_SIGN_IDENTITY to name a certificate-backed
+code-signing identity. A self-signed identity works for PACE signing and normal
+Pro Tools loading, but it is not eligible for Apple notarization and will not
+satisfy Gatekeeper by itself. With --unsigned, installer signing/notarization is
+skipped. Customer numbers and passwords are never written to this script.
 EOF
 }
 
@@ -48,36 +75,50 @@ if [[ "$UNSIGNED" -eq 0 ]]; then
   fi
 fi
 
+if [[ -n "$PACE_CUSTOMER_NUMBER" ]]; then
+  : "${PACE_SIGN_IDENTITY:?Set PACE_SIGN_IDENTITY to a certificate-backed macOS signing identity}"
+fi
+
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
   npm --prefix "$ROOT_DIR/ui-prototype" ci
   npm --prefix "$ROOT_DIR/ui-prototype" run build
   cmake -S "$ROOT_DIR" -B "$BUILD_DIR" \
     -DCMAKE_BUILD_TYPE=Release \
     "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
-    -DASTER_COPY_PLUGIN_AFTER_BUILD=OFF
+    -DASTER_COPY_PLUGIN_AFTER_BUILD=OFF \
+    "-DASTER_AAX_SDK_PATH=$AAX_CMAKE_PATH"
   cmake --build "$BUILD_DIR" --config Release --parallel
 fi
 
 ARTEFACTS="$BUILD_DIR/DrumSampler_artefacts/Release"
 AU="$ARTEFACTS/AU/$PRODUCT_NAME.component"
 VST3="$ARTEFACTS/VST3/$PRODUCT_NAME.vst3"
+AAX="$ARTEFACTS/AAX/$PRODUCT_NAME.aaxplugin"
 
 for path in "$AU" "$VST3"; do
   [[ -e "$path" ]] || { echo "Missing build artefact: $path" >&2; exit 1; }
 done
+if [[ "$AAX_ENABLED" -eq 1 ]]; then
+  [[ -e "$AAX" ]] || { echo "Missing build artefact: $AAX" >&2; exit 1; }
+fi
 
 rm -rf "$WORK_DIR"
 mkdir -p \
   "$WORK_DIR/root-au" \
   "$WORK_DIR/root-vst3" \
+  "$WORK_DIR/root-aax" \
   "$WORK_DIR/packages" \
   "$DIST_DIR"
 
 ditto "$AU" "$WORK_DIR/root-au/$PRODUCT_NAME.component"
 ditto "$VST3" "$WORK_DIR/root-vst3/$PRODUCT_NAME.vst3"
+if [[ "$AAX_ENABLED" -eq 1 ]]; then
+  ditto "$AAX" "$WORK_DIR/root-aax/$PRODUCT_NAME.aaxplugin"
+fi
 
 STAGED_AU="$WORK_DIR/root-au/$PRODUCT_NAME.component"
 STAGED_VST3="$WORK_DIR/root-vst3/$PRODUCT_NAME.vst3"
+STAGED_AAX="$WORK_DIR/root-aax/$PRODUCT_NAME.aaxplugin"
 
 if [[ "$UNSIGNED" -eq 0 ]]; then
   for bundle in "$STAGED_AU" "$STAGED_VST3"; do
@@ -92,14 +133,57 @@ else
   done
 fi
 
+if [[ "$AAX_ENABLED" -eq 1 ]]; then
+  if [[ -n "$PACE_CUSTOMER_NUMBER" ]]; then
+    [[ -x "$PACE_WRAPTOOL" ]] || {
+      echo "PACE wraptool is not executable: $PACE_WRAPTOOL" >&2
+      exit 1
+    }
+
+    echo "Checking the PACE signing-tools license..."
+    "$PACE_WRAPTOOL" list >/dev/null
+
+    PACE_SIGN_ARGS=(
+      sign
+      --in "$STAGED_AAX"
+      --customernumber "$PACE_CUSTOMER_NUMBER"
+      --customername "$PACE_CUSTOMER_NAME"
+      --productname "$PACE_PRODUCT_NAME"
+      --signid "$PACE_SIGN_IDENTITY"
+      --dsigharden
+    )
+
+    echo "PACE-signing the staged AAX plug-in..."
+    codesign --remove-signature "$STAGED_AAX" 2>/dev/null || true
+    "$PACE_WRAPTOOL" "${PACE_SIGN_ARGS[@]}"
+    "$PACE_WRAPTOOL" verify --in "$STAGED_AAX"
+    codesign --verify --deep --strict --verbose=2 "$STAGED_AAX"
+  else
+    if [[ "$UNSIGNED" -eq 0 ]]; then
+      echo "PACE_CUSTOMER_NUMBER is required for a distributable AAX build." >&2
+      exit 1
+    fi
+
+    codesign --force --deep --sign - "$STAGED_AAX"
+    codesign --verify --deep --strict --verbose=2 "$STAGED_AAX"
+    echo "WARNING: AAX is only ad-hoc signed because PACE_CUSTOMER_NUMBER is unset." >&2
+    echo "         Pro Tools commercial distribution requires PACE signing." >&2
+  fi
+fi
+
 AU_PKG="$WORK_DIR/packages/com.enigma.asterdrumlab.au.pkg"
 VST3_PKG="$WORK_DIR/packages/com.enigma.asterdrumlab.vst3.pkg"
+AAX_PKG="$WORK_DIR/packages/com.enigma.asterdrumlab.aax.pkg"
 AU_COMPONENTS="$WORK_DIR/packages/au-components.plist"
 VST3_COMPONENTS="$WORK_DIR/packages/vst3-components.plist"
+AAX_COMPONENTS="$WORK_DIR/packages/aax-components.plist"
 
-rm -f "$AU_PKG" "$VST3_PKG" "$AU_COMPONENTS" "$VST3_COMPONENTS"
+rm -f "$AU_PKG" "$VST3_PKG" "$AAX_PKG" "$AU_COMPONENTS" "$VST3_COMPONENTS" "$AAX_COMPONENTS"
 pkgbuild --analyze --root "$WORK_DIR/root-au" "$AU_COMPONENTS"
 pkgbuild --analyze --root "$WORK_DIR/root-vst3" "$VST3_COMPONENTS"
+if [[ "$AAX_ENABLED" -eq 1 ]]; then
+  pkgbuild --analyze --root "$WORK_DIR/root-aax" "$AAX_COMPONENTS"
+fi
 
 pkgbuild \
   --root "$WORK_DIR/root-au" \
@@ -117,16 +201,27 @@ pkgbuild \
   --install-location "/Library/Audio/Plug-Ins/VST3" \
   "$VST3_PKG"
 
+if [[ "$AAX_ENABLED" -eq 1 ]]; then
+  pkgbuild \
+    --root "$WORK_DIR/root-aax" \
+    --component-plist "$AAX_COMPONENTS" \
+    --identifier "com.enigma.asterdrumlab.aax.pkg" \
+    --version "$VERSION" \
+    --install-location "/Library/Application Support/Avid/Audio/Plug-Ins" \
+    "$AAX_PKG"
+fi
+
+PRODUCT_PACKAGES=(--package "$AU_PKG" --package "$VST3_PKG")
+[[ "$AAX_ENABLED" -eq 1 ]] && PRODUCT_PACKAGES+=(--package "$AAX_PKG")
+
 rm -f "$OUTPUT_PKG"
 if [[ "$UNSIGNED" -eq 1 ]]; then
   productbuild \
-    --package "$AU_PKG" \
-    --package "$VST3_PKG" \
+    "${PRODUCT_PACKAGES[@]}" \
     "$OUTPUT_PKG"
 else
   productbuild \
-    --package "$AU_PKG" \
-    --package "$VST3_PKG" \
+    "${PRODUCT_PACKAGES[@]}" \
     --sign "$INSTALLER_SIGN_IDENTITY" \
     --timestamp \
     "$OUTPUT_PKG"
@@ -145,5 +240,10 @@ fi
 
 echo "Created: $OUTPUT_PKG"
 if [[ "$UNSIGNED" -eq 1 ]]; then
-  echo "WARNING: This package is unsigned and is only suitable for local testing."
+  if [[ "$AAX_ENABLED" -eq 1 && -n "$PACE_CUSTOMER_NUMBER" ]]; then
+    echo "WARNING: The AAX plug-in is PACE signed, but the installer is not Apple signed or notarized."
+    echo "         BOOTH distribution requires clear Gatekeeper installation instructions."
+  else
+    echo "WARNING: This package is unsigned and is only suitable for local testing."
+  fi
 fi

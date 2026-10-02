@@ -83,3 +83,6 @@
   background: rgba(237, 87, 87, 0.32);
   border-color: rgba(237, 87, 87, 0.68);
 }
+
+.browserActive { color: var(--platinum-gold); }
+.browserActive::after { background: var(--platinum-gold); }

@@ -1,5 +1,49 @@
 #include "PadData.h"
 
+juce::ValueTree LayerSampleStockItem::toValueTree() const
+{
+    juce::ValueTree vt { "Sample" };
+    vt.setProperty("sampleFileName", sampleFileName, nullptr);
+    vt.setProperty("sampleFilePath", sampleFilePath, nullptr);
+    vt.setProperty("sampleMissing", sampleMissing, nullptr);
+    vt.setProperty("startPosition", startPosition, nullptr);
+    vt.setProperty("endPosition", endPosition, nullptr);
+    vt.setProperty("fadeIn", fadeIn, nullptr);
+    vt.setProperty("fadeOut", fadeOut, nullptr);
+    return vt;
+}
+
+void LayerSampleStockItem::fromValueTree(const juce::ValueTree& vt)
+{
+    sampleFileName = vt.getProperty("sampleFileName", sampleFileName);
+    sampleFilePath = vt.getProperty("sampleFilePath", sampleFilePath);
+    sampleMissing = vt.getProperty("sampleMissing", sampleMissing);
+    endPosition = juce::jlimit(0.001f, 1.0f,
+        static_cast<float>(vt.getProperty("endPosition", endPosition)));
+    startPosition = juce::jlimit(0.0f, endPosition - 0.001f,
+        static_cast<float>(vt.getProperty("startPosition", startPosition)));
+    fadeIn = juce::jlimit(0.0f, 1.0f,
+        static_cast<float>(vt.getProperty("fadeIn", fadeIn)));
+    fadeOut = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn),
+        static_cast<float>(vt.getProperty("fadeOut", fadeOut)));
+}
+
+namespace
+{
+    LayerSampleStockItem stockItemFromLayer(const LayerData& layer)
+    {
+        LayerSampleStockItem item;
+        item.sampleFileName = layer.sampleFileName;
+        item.sampleFilePath = layer.sampleFilePath;
+        item.sampleMissing = layer.sampleMissing;
+        item.startPosition = layer.startPosition;
+        item.endPosition = layer.endPosition;
+        item.fadeIn = layer.fadeIn;
+        item.fadeOut = layer.fadeOut;
+        return item;
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //  LayerData
 // ═════════════════════════════════════════════════════════════════════════════
@@ -12,12 +56,21 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("sampleFilePath",  sampleFilePath,  nullptr);
     vt.setProperty("sampleMissing",   sampleMissing,   nullptr);
     vt.setProperty("layerName",       layerName,       nullptr);
+    const auto stock = normalizedSampleStock();
+    const int serializedStockIndex = stock.empty()
+        ? 0
+        : juce::jlimit(0, (int) stock.size() - 1, activeSampleStockIndex);
+    vt.setProperty("activeSampleStockIndex", serializedStockIndex, nullptr);
+    vt.setProperty("roundRobin", roundRobin, nullptr);
 
     vt.setProperty("volume",          volume,          nullptr);
     vt.setProperty("pan",             pan,             nullptr);
     vt.setProperty("pitch",           pitch,           nullptr);
+    vt.setProperty("fine",            fine,            nullptr);
 
     vt.setProperty("attack",          attack,          nullptr);
+    vt.setProperty("hold",            hold,            nullptr);
+    vt.setProperty("decay",           decay,           nullptr);
     vt.setProperty("release",         release,         nullptr);
 
     vt.setProperty("startPosition",   startPosition,   nullptr);
@@ -26,7 +79,9 @@ juce::ValueTree LayerData::toValueTree() const
     vt.setProperty("fadeOut",         fadeOut,         nullptr);
 
     vt.setProperty("reverse",         reverse,         nullptr);
+    vt.setProperty("keepLength",      keepLength,      nullptr);
     vt.setProperty("smartTrim",       smartTrim,       nullptr);
+    vt.setProperty("polarityInvert",  polarityInvert,  nullptr);
 
     vt.setProperty("mute",            mute,            nullptr);
     vt.setProperty("solo",            solo,            nullptr);
@@ -98,6 +153,7 @@ juce::ValueTree LayerData::toValueTree() const
         {
             fx.setProperty("attack",  slot.transient.attack,  nullptr);
             fx.setProperty("sustain", slot.transient.sustain, nullptr);
+            fx.setProperty("outputDb", slot.transient.outputDb, nullptr);
         }
         else if (slot.type == LayerFxType::Compressor)
         {
@@ -105,12 +161,19 @@ juce::ValueTree LayerData::toValueTree() const
             fx.setProperty("ratio",     slot.compressor.ratio,     nullptr);
             fx.setProperty("attack",    slot.compressor.attack,    nullptr);
             fx.setProperty("release",   slot.compressor.release,   nullptr);
+            fx.setProperty("makeupDb",  slot.compressor.makeupDb,  nullptr);
             fx.setProperty("mix",       slot.compressor.mix,       nullptr);
+            fx.setProperty("outputDb",  slot.compressor.outputDb,  nullptr);
         }
 
         fxTree.addChild(fx, -1, nullptr);
     }
     vt.addChild(fxTree, -1, nullptr);
+
+    juce::ValueTree stockTree { "SampleStock" };
+    for (const auto& item : stock)
+        stockTree.addChild(item.toValueTree(), -1, nullptr);
+    vt.addChild(stockTree, -1, nullptr);
 
     return vt;
 }
@@ -121,13 +184,23 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     sampleFilePath = vt.getProperty("sampleFilePath", sampleFilePath);
     sampleMissing  = vt.getProperty("sampleMissing",  sampleMissing);
     layerName      = vt.getProperty("layerName",      layerName);
+    roundRobin     = vt.getProperty("roundRobin",     false);
 
     volume         = vt.getProperty("volume",         volume);
     pan            = vt.getProperty("pan",            pan);
     pitch          = vt.getProperty("pitch",          pitch);
+    fine           = juce::jlimit(-100.0f, 100.0f,
+                                  static_cast<float>(vt.getProperty("fine", 0.0f)));
 
-    attack         = vt.getProperty("attack",         attack);
-    release        = vt.getProperty("release",        release);
+    attack         = vt.getProperty("attack", attack);
+    // Missing Hold is the legacy state: keep One Shot at full level until the
+    // trimmed sample ends. A finite Hold explicitly enables the new Decay.
+    hold           = vt.hasProperty("hold")
+                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
+                   : -1.0f;
+    decay          = juce::jlimit(0.0f, 10.0f,
+                                  static_cast<float>(vt.getProperty("decay", decay)));
+    release        = vt.getProperty("release", release);
 
     startPosition  = vt.getProperty("startPosition",  startPosition);
     endPosition    = vt.getProperty("endPosition",    endPosition);
@@ -141,7 +214,12 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     fadeOut        = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn), fadeOut);
 
     reverse        = vt.getProperty("reverse",        reverse);
+    // Projects saved before KEEP LENGTH existed adopt the current ON default.
+    keepLength     = vt.hasProperty("keepLength")
+                   ? static_cast<bool>(vt.getProperty("keepLength"))
+                   : true;
     smartTrim      = vt.getProperty("smartTrim",      smartTrim);
+    polarityInvert = vt.getProperty("polarityInvert", false);
 
     mute           = vt.getProperty("mute",           mute);
     solo           = vt.getProperty("solo",           solo);
@@ -238,6 +316,7 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
             {
                 slot.transient.attack = juce::jlimit(-1.0f, 1.0f, static_cast<float>(fx.getProperty("attack", slot.transient.attack)));
                 slot.transient.sustain = juce::jlimit(-1.0f, 1.0f, static_cast<float>(fx.getProperty("sustain", slot.transient.sustain)));
+                slot.transient.outputDb = juce::jlimit(-24.0f, 12.0f, static_cast<float>(fx.getProperty("outputDb", slot.transient.outputDb)));
             }
             else if (slot.type == LayerFxType::Compressor)
             {
@@ -245,11 +324,87 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
                 slot.compressor.ratio = juce::jlimit(1.0f, 20.0f, static_cast<float>(fx.getProperty("ratio", slot.compressor.ratio)));
                 slot.compressor.attack = juce::jlimit(1.0f, 80.0f, static_cast<float>(fx.getProperty("attack", slot.compressor.attack)));
                 slot.compressor.release = juce::jlimit(10.0f, 500.0f, static_cast<float>(fx.getProperty("release", slot.compressor.release)));
+                slot.compressor.makeupDb = juce::jlimit(0.0f, 24.0f, static_cast<float>(fx.getProperty("makeupDb", slot.compressor.makeupDb)));
                 slot.compressor.mix = juce::jlimit(0.0f, 1.0f, static_cast<float>(fx.getProperty("mix", slot.compressor.mix)));
+                slot.compressor.outputDb = juce::jlimit(-24.0f, 12.0f, static_cast<float>(fx.getProperty("outputDb", slot.compressor.outputDb)));
             }
             fxChain.push_back(slot);
         }
     }
+
+    sampleStock.clear();
+    if (auto stockTree = vt.getChildWithName("SampleStock"); stockTree.isValid())
+    {
+        const int count = juce::jmin(stockTree.getNumChildren(), MAX_SAMPLE_STOCK_PER_LAYER);
+        for (int i = 0; i < count; ++i)
+        {
+            const auto child = stockTree.getChild(i);
+            if (! child.hasType("Sample")) continue;
+            LayerSampleStockItem item;
+            item.fromValueTree(child);
+            if (item.hasSampleReference())
+                sampleStock.push_back(item);
+        }
+    }
+
+    if (sampleStock.empty())
+    {
+        if (hasSampleReference())
+            sampleStock.push_back(stockItemFromLayer(*this));
+        activeSampleStockIndex = 0;
+    }
+    else
+    {
+        activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1,
+            (int) vt.getProperty("activeSampleStockIndex", 0));
+        activateSampleStockItem(activeSampleStockIndex);
+    }
+}
+
+std::vector<LayerSampleStockItem> LayerData::normalizedSampleStock() const
+{
+    auto normalized = sampleStock;
+    if (normalized.empty())
+    {
+        if (hasSampleReference())
+            normalized.push_back(stockItemFromLayer(*this));
+        return normalized;
+    }
+
+    const int active = juce::jlimit(0, (int) normalized.size() - 1, activeSampleStockIndex);
+    normalized[(size_t) active] = stockItemFromLayer(*this);
+    if ((int) normalized.size() > MAX_SAMPLE_STOCK_PER_LAYER)
+        normalized.resize(MAX_SAMPLE_STOCK_PER_LAYER);
+    return normalized;
+}
+
+void LayerData::captureActiveSampleToStock()
+{
+    sampleStock = normalizedSampleStock();
+    if (sampleStock.empty())
+        activeSampleStockIndex = 0;
+    else
+        activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1,
+                                              activeSampleStockIndex);
+}
+
+void LayerData::activateSampleStockItem(int index)
+{
+    if (sampleStock.empty())
+    {
+        activeSampleStockIndex = 0;
+        return;
+    }
+
+    activeSampleStockIndex = juce::jlimit(0, (int) sampleStock.size() - 1, index);
+    const auto& item = sampleStock[(size_t) activeSampleStockIndex];
+    sampleFileName = item.sampleFileName;
+    sampleFilePath = item.sampleFilePath;
+    sampleMissing = item.sampleMissing;
+    startPosition = item.startPosition;
+    endPosition = item.endPosition;
+    fadeIn = item.fadeIn;
+    fadeOut = item.fadeOut;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -275,13 +430,17 @@ void PadData::syncLayer0FromFlat() noexcept
     L.volume        = volume;
     L.pan           = pan;
     L.pitch         = pitch;
+    L.fine          = fine;
     L.attack        = attack;
+    L.hold          = hold;
+    L.decay         = decay;
     L.release       = release;
     L.startPosition = startPosition;
     L.endPosition   = endPosition;
     L.fadeIn        = fadeIn;
     L.fadeOut       = fadeOut;
     L.reverse       = reverse;
+    L.keepLength    = keepLength;
     // smartTrim, mute, solo, velocityMin/Max は flat 側に対応フィールドが
     // ないので Layer 側の値をそのまま保持。
 }
@@ -300,13 +459,17 @@ void PadData::syncFlatFromLayer0() noexcept
     volume        = L.volume;
     pan           = L.pan;
     pitch         = L.pitch;
+    fine          = L.fine;
     attack        = L.attack;
+    hold          = L.hold;
+    decay         = L.decay;
     release       = L.release;
     startPosition = L.startPosition;
     endPosition   = L.endPosition;
     fadeIn        = L.fadeIn;
     fadeOut       = L.fadeOut;
     reverse       = L.reverse;
+    keepLength    = L.keepLength;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -334,6 +497,7 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("mute",            mute,                          nullptr);
     vt.setProperty("solo",            solo,                          nullptr);
     vt.setProperty("outputAssign",    outputAssign,                  nullptr);
+    vt.setProperty("swapLR",          swapLR,                        nullptr);
     vt.setProperty("velocitySens",    velocitySens,                  nullptr);
     vt.setProperty("humanize",        humanize,                      nullptr);
 
@@ -348,10 +512,11 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("velCurveP2X",     velCurve.p2x,                  nullptr);
     vt.setProperty("velCurveP2Y",     velCurve.p2y,                  nullptr);
 
-    // Pad-level Vol/Pan/Pitch。古いバージョンは無視する。
+    // Pad-level Vol/Pan/Pitch/Fine。古いバージョンは無視する。
     vt.setProperty("padVolume",       padVolume,                     nullptr);
     vt.setProperty("padPan",          padPan,                        nullptr);
     vt.setProperty("padPitch",        padPitch,                      nullptr);
+    vt.setProperty("padFine",         padFine,                       nullptr);
 
     // ── Legacy flat fields（ダウングレード互換のためミラー保存） ─────────────
     //   Layer 0 と内容が一致していることを保証してから書き出す。
@@ -361,13 +526,17 @@ juce::ValueTree PadData::toValueTree() const
     vt.setProperty("volume",          volume,          nullptr);
     vt.setProperty("pan",             pan,             nullptr);
     vt.setProperty("pitch",           pitch,           nullptr);
+    vt.setProperty("fine",            fine,            nullptr);
     vt.setProperty("attack",          attack,          nullptr);
+    vt.setProperty("hold",            hold,            nullptr);
+    vt.setProperty("decay",           decay,           nullptr);
     vt.setProperty("release",         release,         nullptr);
     vt.setProperty("startPosition",   startPosition,   nullptr);
     vt.setProperty("endPosition",     endPosition,     nullptr);
     vt.setProperty("fadeIn",          fadeIn,          nullptr);
     vt.setProperty("fadeOut",         fadeOut,         nullptr);
     vt.setProperty("reverse",         reverse,         nullptr);
+    vt.setProperty("keepLength",      keepLength,      nullptr);
 
     // ── Layers（新形式） ──────────────────────────────────────────────────
     juce::ValueTree layersTree { "Layers" };
@@ -390,6 +559,7 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     mute           = vt.getProperty("mute",           mute);
     solo           = vt.getProperty("solo",           solo);
     outputAssign   = vt.getProperty("outputAssign",   outputAssign);
+    swapLR         = vt.getProperty("swapLR",         false);
     velocitySens   = juce::jlimit(0.0f, 1.0f, static_cast<float>(vt.getProperty("velocitySens", velocitySens)));
     humanize       = juce::jlimit(0.0f, 1.0f, static_cast<float>(vt.getProperty("humanize", 0.0f)));
 
@@ -407,10 +577,11 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     // 安全: p1.x < p2.x を保証
     if (velCurve.p1x > velCurve.p2x) std::swap(velCurve.p1x, velCurve.p2x);
 
-    // Pad-level Vol/Pan/Pitch（無ければ unity / center / 0 で互換）
+    // Pad-level Vol/Pan/Pitch/Fine（無ければ unity / center / 0 で互換）
     padVolume      = juce::jlimit(0.0f, 1.0f, static_cast<float>(vt.getProperty("padVolume", 0.75f)));
     padPan         = juce::jlimit(-1.0f, 1.0f, static_cast<float>(vt.getProperty("padPan",    0.0f)));
     padPitch       = juce::jlimit(-24.0f, 24.0f, static_cast<float>(vt.getProperty("padPitch", 0.0f)));
+    padFine        = juce::jlimit(-100.0f, 100.0f, static_cast<float>(vt.getProperty("padFine", 0.0f)));
 
     // ── Legacy flat fields ────────────────────────────────────────────────
     sampleFileName = vt.getProperty("sampleFileName", sampleFileName);
@@ -419,8 +590,15 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     volume         = vt.getProperty("volume",         volume);
     pan            = vt.getProperty("pan",            pan);
     pitch          = vt.getProperty("pitch",          pitch);
-    attack         = vt.getProperty("attack",         attack);
-    release        = vt.getProperty("release",        release);
+    fine           = juce::jlimit(-100.0f, 100.0f,
+                                  static_cast<float>(vt.getProperty("fine", 0.0f)));
+    attack         = vt.getProperty("attack", attack);
+    hold           = vt.hasProperty("hold")
+                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
+                   : -1.0f;
+    decay          = juce::jlimit(0.0f, 10.0f,
+                                  static_cast<float>(vt.getProperty("decay", decay)));
+    release        = vt.getProperty("release", release);
     startPosition  = vt.getProperty("startPosition",  startPosition);
     endPosition    = vt.getProperty("endPosition",    endPosition);
     fadeIn         = vt.getProperty("fadeIn",         fadeIn);
@@ -431,6 +609,9 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     fadeIn         = juce::jlimit(0.0f, 1.0f, fadeIn);
     fadeOut        = juce::jlimit(0.0f, juce::jmax(0.0f, 1.0f - fadeIn), fadeOut);
     reverse        = vt.getProperty("reverse",        reverse);
+    keepLength     = vt.hasProperty("keepLength")
+                   ? static_cast<bool>(vt.getProperty("keepLength"))
+                   : true;
 
     // ── Layers（新形式が優先。無ければ flat fields からの自動マイグレーション） ─
     layers.clear();
