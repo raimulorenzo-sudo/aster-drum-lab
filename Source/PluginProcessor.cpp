@@ -562,7 +562,12 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     for (int i = 0; i < numBuses; ++i)
     {
         auto* bus = getBus(false, i);
-        if (bus != nullptr && bus->isEnabled())
+        // AU hosts may report the main bus as temporarily disabled while they
+        // render only bus 0 of a multi-output instrument. The processor's
+        // supported layouts always require a stereo main output, so use the
+        // supplied main channels whenever they are present. Optional Aux
+        // buses still respect their enabled state.
+        if (bus != nullptr && (i == 0 || bus->isEnabled()))
         {
             busBufStorage[static_cast<size_t>(i)] = getBusBuffer(buffer, false, i);
             if (busBufStorage[static_cast<size_t>(i)].getNumChannels() >= 2)
@@ -927,6 +932,10 @@ void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
     // Using the default (0) would silently skip every layer except MAIN,
     // making pad-click behave differently from MIDI noteOn.
     voiceManager.previewNoteOn(padIndex, velocity, kit, fileManager, hostSampleRate, -1);
+    // Logic may idle a software instrument while its transport is stopped.
+    // Tell the wrapper/host that editor-driven state changed so it schedules
+    // the next render block for the newly-created preview voice.
+    updateHostDisplay();
 }
 
 void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
@@ -956,6 +965,7 @@ void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
                                layerIndex,
                                -1.0f,
                                /*ignoreMuteSoloAndVelocityRange=*/ true);
+    updateHostDisplay();
 }
 
 void DrumSamplerAudioProcessor::auditionPadOff(int padIndex)
@@ -1911,6 +1921,9 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
     // name that has no entry in the kit list.
     kit.kitName = "Default";
     if (! needsVolumeMigration) clearKitDirty();
+    // A host can restore state while the WebView stays open (Compare, Undo,
+    // project restore). Make the editor refresh from the processor snapshot.
+    kitChangedByAutomation.store(true, std::memory_order_release);
 }
 
 void DrumSamplerAudioProcessor::reloadSamplesFromCurrentKit()

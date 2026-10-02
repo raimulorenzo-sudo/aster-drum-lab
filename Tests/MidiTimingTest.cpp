@@ -581,6 +581,22 @@ int main()
         return 1;
     }
 
+    // Pad-click audition starts a preview voice from the message thread. The
+    // next host block must render it even when that block contains no MIDI.
+    processor.getVoiceManager().allNotesOff();
+    output.clear();
+    midi.clear();
+    processor.auditionPadOn(0, 0.9f);
+    processor.processBlock(output, midi);
+    const int auditionOnset = firstAudibleSample(output);
+    if (auditionOnset != 0)
+    {
+        std::cerr << "Expected pad audition onset at sample 0, got "
+                  << auditionOnset << '\n';
+        sampleFile.deleteFile();
+        return 1;
+    }
+
     float baseline = 0.0f;
     float makeup = 0.0f;
     float dryOutput = 0.0f;
@@ -665,6 +681,7 @@ int main()
     sampleFile.deleteFile();
 
     std::cout << "MIDI onset rendered at exact sample " << onset << '\n';
+    std::cout << "Pad audition rendered from the next host block\n";
     std::cout << "Compressor gain flow verified: Make Up -> Mix -> Output\n";
     std::cout << "Transient output volume and legacy persistence verified\n";
     std::cout << "24 fixed automation slots and assignment persistence verified\n";
