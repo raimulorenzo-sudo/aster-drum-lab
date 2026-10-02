@@ -73,6 +73,20 @@ int main()
     // sample-length One Shot behaviour.
     LayerData defaults;
     ok &= check(defaults.hold < 0.0f, "new layers do not default to HOLD FULL");
+    LayerData defaultRoundTrip;
+    defaultRoundTrip.fromValueTree(defaults.toValueTree());
+    ok &= check(defaultRoundTrip.hold < 0.0f,
+                "HOLD FULL became zero after a Layer ValueTree round-trip");
+
+    PadData defaultPad;
+    defaultPad.syncLayer0FromFlat();
+    PadData defaultPadRoundTrip;
+    defaultPadRoundTrip.fromValueTree(defaultPad.toValueTree());
+    ok &= check(defaultPadRoundTrip.hold < 0.0f
+                && ! defaultPadRoundTrip.layers.empty()
+                && defaultPadRoundTrip.layers[0].hold < 0.0f,
+                "HOLD FULL became zero after a Pad ValueTree round-trip");
+
     juce::ValueTree legacyLayer { "Layer" };
     legacyLayer.setProperty("attack", 0.25f, nullptr);
     legacyLayer.setProperty("release", 0.4f, nullptr);

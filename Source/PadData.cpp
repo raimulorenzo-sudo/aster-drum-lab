@@ -30,6 +30,15 @@ void LayerSampleStockItem::fromValueTree(const juce::ValueTree& vt)
 
 namespace
 {
+    float restoredHoldValue(const juce::ValueTree& tree)
+    {
+        if (! tree.hasProperty("hold"))
+            return -1.0f;
+
+        const auto saved = static_cast<float>(tree.getProperty("hold"));
+        return saved < 0.0f ? -1.0f : juce::jlimit(0.0f, 10.0f, saved);
+    }
+
     LayerSampleStockItem stockItemFromLayer(const LayerData& layer)
     {
         LayerSampleStockItem item;
@@ -195,9 +204,7 @@ void LayerData::fromValueTree(const juce::ValueTree& vt)
     attack         = vt.getProperty("attack", attack);
     // Missing Hold is the legacy state: keep One Shot at full level until the
     // trimmed sample ends. A finite Hold explicitly enables the new Decay.
-    hold           = vt.hasProperty("hold")
-                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
-                   : -1.0f;
+    hold           = restoredHoldValue(vt);
     decay          = juce::jlimit(0.0f, 10.0f,
                                   static_cast<float>(vt.getProperty("decay", decay)));
     release        = vt.getProperty("release", release);
@@ -593,9 +600,7 @@ void PadData::fromValueTree(const juce::ValueTree& vt)
     fine           = juce::jlimit(-100.0f, 100.0f,
                                   static_cast<float>(vt.getProperty("fine", 0.0f)));
     attack         = vt.getProperty("attack", attack);
-    hold           = vt.hasProperty("hold")
-                   ? juce::jlimit(0.0f, 10.0f, static_cast<float>(vt.getProperty("hold")))
-                   : -1.0f;
+    hold           = restoredHoldValue(vt);
     decay          = juce::jlimit(0.0f, 10.0f,
                                   static_cast<float>(vt.getProperty("decay", decay)));
     release        = vt.getProperty("release", release);
