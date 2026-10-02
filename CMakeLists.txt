@@ -14,8 +14,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(ASTER_COPY_PLUGIN_AFTER_BUILD
-    "Copy built plug-ins into the current user's plug-in folders"
-    ON)
+    "Copy built plug-ins into the current user's plug-in folders (opt in to avoid duplicate system/user installs)"
+    OFF)
 option(ASTER_BUILD_TESTS
     "Build ASTER DSP regression tests"
     OFF)
