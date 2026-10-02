@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.0.3"
+  #define AppVersion "1.1.0"
 #endif
 #ifndef BuildRoot
   #error BuildRoot must point to DrumSampler_artefacts\Release
