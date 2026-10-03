@@ -111,7 +111,14 @@ export function SampleBrowser(props: Props) {
   }, [native, showLocalFolder, stop]);
 
   useEffect(() => {
-    if (!active) { stop(); setImporting(false); setLoading(false); return; }
+    if (!active) {
+      // Native workers are cancelled on tab exit, but already-sent replies can
+      // still arrive after reopening. Invalidate those requests on the UI too.
+      importRequest.current = nextRequest();
+      directoryRequest.current = nextRequest();
+      stop(); setImporting(false); setLoading(false); setError(''); setNotice('');
+      return;
+    }
     if (native) {
       // Request ids distinguish a closed/reopened view from older worker results.
       prefsReady.current = false;
@@ -150,6 +157,7 @@ export function SampleBrowser(props: Props) {
         const value = raw as { kind: string; requestId: number; error?: string };
         if (!activeRef.current) return;
         if (value.kind === 'import' && value.requestId === importRequest.current) {
+          importRequest.current = nextRequest();
           setImporting(false);
           if (value.error) setError(value.error);
           else { stop(); setNotice('Sample loaded into the selected layer.'); }

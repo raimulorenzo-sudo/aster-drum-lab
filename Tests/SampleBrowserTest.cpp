@@ -129,8 +129,81 @@ int main()
         p.setStateInformation(state.getData(), (int)state.getSize());
         expect(p.browserTargetToken(4, 1) != identity, "even identical session restore invalidates pending imports");
     }
+    {
+        // Partial kit loading must include newly-added playback parameters,
+        // without also replacing categories the user left unchecked.
+        const float savedHold[] { 0.125f, 0.0f, -1.0f };
+        const auto populate = [&](DrumSamplerAudioProcessor& p, bool savedValues)
+        {
+            auto& pad = p.getKit().pads[0];
+            while (pad.layerCount() < 3) pad.layers.emplace_back();
+            for (int li = 0; li < 3; ++li)
+            {
+                expect(p.commitBrowserSample(0, li, first, false, 0, 0, decodeBrowserSample(first)),
+                       "partial load fixture first variation");
+                expect(p.commitBrowserSample(0, li, second, false, 1, 0, decodeBrowserSample(second)),
+                       "partial load fixture second variation");
+                if (! savedValues) p.selectLayerSampleStock(0, li, 0);
+            }
+            for (int li = 0; li < 3; ++li)
+            {
+                auto& layer = pad.layers[(size_t) li];
+                layer.hold = savedValues ? savedHold[li] : 0.75f;
+                layer.decay = savedValues ? 0.375f : 0.9f;
+                layer.roundRobin = savedValues;
+                layer.volume = savedValues ? 0.25f : 0.41f;
+                layer.pan = savedValues ? -0.5f : -0.28f;
+            }
+            pad.syncFlatFromLayer0();
+            p.syncParametersFromKit();
+        };
+        DrumSamplerAudioProcessor source;
+        populate(source, true);
+        const auto file = folder.getChildFile("partial-parameters.asterkit");
+        expect(source.saveKitToFile(file), "save partial load fixture kit");
+        DrumSamplerAudioProcessor::KitLoadOptions options;
+        options.samples = false;
+        options.padNamesAndColours = false;
+        options.padParameters = true;
+        options.mixerSettings = false;
+        options.routing = false;
+
+        DrumSamplerAudioProcessor target;
+        populate(target, false);
+        expect(target.loadKitFromFile(file, options), "load playback parameters only");
+        for (int li = 0; li < 3; ++li)
+        {
+            const auto& layer = target.getKit().pads[0].layers[(size_t) li];
+            expect(near(layer.hold, savedHold[li]) && near(layer.decay, 0.375f) && layer.roundRobin,
+                   "partial playback load restores finite, zero and FULL hold, decay and RR");
+            expect(layer.sampleFilePath == first.getFullPathName() && layer.activeSampleStockIndex == 0
+                   && layer.sampleStock.size() == 2 && near(layer.volume, 0.41f) && near(layer.pan, -0.28f),
+                   "partial playback load preserves samples and mixer controls");
+        }
+        expect(near(target.getKit().pads[0].hold, savedHold[0])
+               && near(target.getKit().pads[0].decay, 0.375f), "MAIN flat envelope follows partial load");
+        expect(target.applyDefaultKit(options), "apply default playback parameters only");
+        expect(target.getKit().pads[0].layers[0].hold < 0.0f
+               && near(target.getKit().pads[0].layers[0].decay, 0.05f)
+               && ! target.getKit().pads[0].layers[0].roundRobin,
+               "partial default load resets hold, decay and RR");
+
+        DrumSamplerAudioProcessor samplesOnly;
+        populate(samplesOnly, false);
+        options.samples = true;
+        options.padParameters = false;
+        expect(samplesOnly.loadKitFromFile(file, options), "load sample category only");
+        for (int li = 0; li < 3; ++li)
+        {
+            const auto& layer = samplesOnly.getKit().pads[0].layers[(size_t) li];
+            expect(layer.sampleFilePath == second.getFullPathName() && layer.activeSampleStockIndex == 1,
+                   "samples-only load replaces variation bank");
+            expect(near(layer.hold, 0.75f) && near(layer.decay, 0.9f) && ! layer.roundRobin,
+                   "samples-only load preserves hold, decay and RR");
+        }
+    }
     folder.deleteRecursively();
     if (failures) return 1;
-    std::cout << "Sample browser: preview isolation, routing, resampling, stop/export, all 384 destinations, five-slot add/replace and persistence passed\n";
+    std::cout << "Sample browser: preview isolation, routing, resampling, stop/export, all 384 destinations, five-slot add/replace, persistence and partial kit loading passed\n";
     return 0;
 }

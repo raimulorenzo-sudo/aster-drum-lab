@@ -238,7 +238,10 @@ namespace
                         dL.pitch = sL.pitch;
                         dL.fine = sL.fine;
                         dL.attack = sL.attack;
+                        dL.hold = sL.hold;
+                        dL.decay = sL.decay;
                         dL.release = sL.release;
+                        dL.roundRobin = sL.roundRobin;
                         dL.startPosition = sL.startPosition;
                         dL.endPosition = sL.endPosition;
                         dL.fadeIn = sL.fadeIn;
@@ -282,6 +285,8 @@ namespace
                 dst.padPitch = src.padPitch;
                 dst.padFine = src.padFine;
                 dst.attack = src.attack;
+                dst.hold = src.hold;
+                dst.decay = src.decay;
                 dst.release = src.release;
                 dst.startPosition = src.startPosition;
                 dst.endPosition = src.endPosition;
