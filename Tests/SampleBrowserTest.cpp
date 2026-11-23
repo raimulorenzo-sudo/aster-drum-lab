@@ -45,7 +45,10 @@ int main()
         p.browserPreview.start(decodeBrowserSample(first));
         juce::AudioBuffer<float> out(p.getTotalNumOutputChannels(), 256);
         juce::MidiBuffer midi;
+        expect(! AsterDemoMode::hasStarted(), "loading the browser preserves trial time");
         p.processBlock(out, midi);
+        expect(AsterDemoMode::hasStarted() == AsterDemoMode::isDemoBuild,
+               "browser audio starts the timer in the Demo only");
         expect(out.getMagnitude(0, 150, 106) > .15f, "audition renders without MIDI or pad samples");
         expect(near(out.getSample(0, 200), out.getSample(1, 200)), "mono audition duplicated to stereo");
         for (int ch = 2; ch < out.getNumChannels(); ++ch)
@@ -161,8 +164,21 @@ int main()
         };
         DrumSamplerAudioProcessor source;
         populate(source, true);
-        const auto file = folder.getChildFile("partial-parameters.asterkit");
-        expect(source.saveKitToFile(file), "save partial load fixture kit");
+        const auto file = folder.getChildFile(AsterDemoMode::isDemoBuild
+            ? "partial-parameters.drumkit" : "partial-parameters.asterkit");
+        if constexpr (AsterDemoMode::isDemoBuild)
+        {
+            // The Demo imports legacy kits but intentionally cannot save kit files.
+            juce::FileOutputStream stream(file);
+            expect(stream.openedOk(), "open Demo partial load fixture");
+            source.getKit().toValueTree().writeToStream(stream);
+            stream.flush();
+            expect(stream.getStatus().wasOk(), "write Demo partial load fixture");
+        }
+        else
+        {
+            expect(source.saveKitToFile(file), "save partial load fixture kit");
+        }
         DrumSamplerAudioProcessor::KitLoadOptions options;
         options.samples = false;
         options.padNamesAndColours = false;

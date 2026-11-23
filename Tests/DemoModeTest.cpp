@@ -133,8 +133,10 @@ int main()
             ok &= require(audio.getMagnitude(0, 64) == 0.0f, "expired MIDI must be silent");
             processor.auditionPadOn(0, 1.0f);
             processor.auditionLayerOn(0, 0, 1.0f);
+            processor.browserPreview.start(decodeBrowserSample(sample.getFile()));
             processor.processBlock(audio, midi);
-            ok &= require(audio.getMagnitude(0, 64) == 0.0f, "expired previews must be silent");
+            ok &= require(audio.getMagnitude(0, 64) == 0.0f && ! processor.browserPreview.isPlaying(),
+                          "expired pad, layer and browser previews must be silent");
             processor.releaseResources();
             processor.prepareToPlay(44100.0, 64);
             processor.setStateInformation(state.getData(), static_cast<int>(state.getSize()));

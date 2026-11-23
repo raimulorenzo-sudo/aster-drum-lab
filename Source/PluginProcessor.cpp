@@ -706,7 +706,14 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     renderVoicesUntil(numSamples);
 
     if (hasBrowserPreview && busBuffers[0] != nullptr)
-        renderedAnySegment |= browserPreview.render(*busBuffers[0], hostSampleRate);
+    {
+        const bool renderedPreview = browserPreview.render(*busBuffers[0], hostSampleRate);
+        renderedAnySegment |= renderedPreview;
+       #if ASTER_DEMO_BUILD
+        if (renderedPreview)
+            AsterDemoMode::beginOnFirstSound();
+       #endif
+    }
 
     if (! renderedAnySegment && ! voiceManager.hasActiveVoices())
     {
@@ -765,7 +772,10 @@ void DrumSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& buffer,
     }
 
     if (AsterDemoMode::hasExpired())
+    {
         voiceManager.allNotesOff();
+        browserPreview.stopImmediately();
+    }
    #endif
 
     // ── マスター出力ピーク計測（Bus 0, WebView メーター用） ───────────────
