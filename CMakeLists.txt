@@ -24,6 +24,10 @@ option(ASTER_DEMO_BUILD
     OFF)
 set(ASTER_DEMO_DURATION_SECONDS "1200" CACHE STRING
     "Demo audio duration in seconds (release default: 1200)")
+if(NOT ASTER_DEMO_DURATION_SECONDS MATCHES "^[1-9][0-9]*$"
+   OR ASTER_DEMO_DURATION_SECONDS GREATER 86400)
+    message(FATAL_ERROR "ASTER_DEMO_DURATION_SECONDS must be an integer from 1 to 86400")
+endif()
 
 # ── JUCE 8 を自動ダウンロード ─────────────────────────────────────────────────
 # 初回 configure で JUCE をクローンします。
@@ -115,6 +119,28 @@ juce_add_plugin(DrumSampler
 
 juce_generate_juce_header(DrumSampler)
 
+# JUCE already supplies hidden visibility and Release LTO. Apply additional
+# symbol/dead-code reduction only to Demo Release wrappers, at link time (before
+# bundle signing/copying). Retain the exported AU/VST3 entry points and leave
+# test executables/debug builds available for diagnosis.
+if(ASTER_DEMO_BUILD)
+    foreach(format IN LISTS ASTER_PLUGIN_FORMATS)
+        if(TARGET DrumSampler_${format})
+            if(APPLE)
+                target_link_options(DrumSampler_${format} PRIVATE
+                    "$<$<CONFIG:Release>:LINKER:-x>"
+                    "$<$<CONFIG:Release>:LINKER:-S>"
+                    "$<$<CONFIG:Release>:LINKER:-dead_strip>")
+            elseif(MSVC)
+                target_link_options(DrumSampler_${format} PRIVATE
+                    "$<$<CONFIG:Release>:/OPT:REF>"
+                    "$<$<CONFIG:Release>:/OPT:ICF>"
+                    "$<$<CONFIG:Release>:/INCREMENTAL:NO>")
+            endif()
+        endif()
+    endforeach()
+endif()
+
 # ── ソースファイル ─────────────────────────────────────────────────────────────
 target_sources(DrumSampler
     PRIVATE
@@ -166,6 +192,14 @@ juce_add_binary_data(DrumSamplerWebUI
     NAMESPACE   WebUIBinaryData
     SOURCES     ${WEBUI_DIST_FILES}
 )
+
+if(ASTER_DEMO_BUILD)
+    # This generated static library does not inherit the plugin's visibility.
+    # Its resource pointers/helpers are internal, not host entry points.
+    set_target_properties(DrumSamplerWebUI PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN TRUE)
+endif()
 
 # ── コンパイル定義 ──────────────────────────────────────────────────────────────
 target_compile_definitions(DrumSampler
@@ -279,4 +313,12 @@ if(ASTER_BUILD_TESTS)
     )
     target_link_libraries(DrumSamplerDemoModeTests PRIVATE DrumSampler)
     add_test(NAME DrumSamplerDemoMode COMMAND DrumSamplerDemoModeTests)
+
+    add_executable(DrumSamplerDemoVoiceGuardTests Tests/DemoVoiceGuardTest.cpp)
+    target_include_directories(DrumSamplerDemoVoiceGuardTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode"
+        "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerDemoVoiceGuardTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerDemoVoiceGuard COMMAND DrumSamplerDemoVoiceGuardTests)
+    add_test(NAME DrumSamplerDemoPreviewGuard COMMAND DrumSamplerDemoVoiceGuardTests preview)
 endif()

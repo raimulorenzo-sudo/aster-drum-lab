@@ -1,9 +1,29 @@
 #include "VoiceManager.h"
 #include "FaderCurve.h"
 #include "KeepLengthRenderCache.h"
+#include "DemoMode.h"
+
+#if ASTER_DEMO_BUILD
+ #include <chrono>
+#endif
 
 namespace
 {
+#if ASTER_DEMO_BUILD
+// Independent of DemoMode's UI/output clock. Shared by every VoiceManager in
+// this loaded module; prepare(), new instances and state restore never reset it.
+// A small grace interval lets the normal output fade finish without a second
+// gain ramp or an early cut caused by the two clocks starting slightly apart.
+std::atomic<int64_t> voiceDeadlineNanoseconds { 0 };
+static_assert(std::atomic<int64_t>::is_always_lock_free);
+
+int64_t voiceClockNanoseconds() noexcept
+{
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+#endif
+
 void accumulatePeak(std::atomic<float>& destination, float value) noexcept
 {
     auto current = destination.load(std::memory_order_relaxed);
@@ -222,6 +242,11 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
                                      float                   previewStartPosition,
                                      bool                    ignoreMuteSoloAndVelocityRange)
 {
+   #if ASTER_DEMO_BUILD
+    const auto deadline = voiceDeadlineNanoseconds.load(std::memory_order_acquire);
+    if (deadline != 0 && voiceClockNanoseconds() >= deadline)
+        return;
+   #endif
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     const PadData& pad = kit.pads[static_cast<size_t>(padIndex)];
@@ -505,6 +530,17 @@ bool VoiceManager::startLayerVoice(int                     padIndex,
                 variationIndex, buf, hostSampleRate, startSamp, endSamp,
                 sampleRateRatio, L.reverse, humanizedPitch));
     }
+   #if ASTER_DEMO_BUILD
+    if (v.isActive && voiceDeadlineNanoseconds.load(std::memory_order_acquire) == 0)
+    {
+        int64_t expected = 0;
+        const auto deadline = voiceClockNanoseconds()
+            + static_cast<int64_t>(AsterDemoMode::durationSeconds) * 1000000000LL
+            + 100000000LL;
+        voiceDeadlineNanoseconds.compare_exchange_strong(
+            expected, deadline, std::memory_order_release, std::memory_order_relaxed);
+    }
+   #endif
     return true;
 }
 
@@ -567,6 +603,18 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
 {
     if (numSamples <= 0)
         return;
+
+   #if ASTER_DEMO_BUILD
+    // Stop sustained voices even if the processor's final mute is bypassed.
+    // Do not clear bus buffers here: they may contain another segment's audio.
+    const auto deadline = voiceDeadlineNanoseconds.load(std::memory_order_acquire);
+    if (deadline != 0 && voiceClockNanoseconds() >= deadline)
+    {
+        allNotesOff();
+        clearPadLevels();
+        return;
+    }
+   #endif
 
     const bool anySoloActive = std::any_of(kit.pads.begin(), kit.pads.end(),
                                            [] (const PadData& p) { return p.solo; });

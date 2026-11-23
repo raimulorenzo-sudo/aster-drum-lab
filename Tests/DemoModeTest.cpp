@@ -7,6 +7,21 @@
 
 namespace
 {
+    bool writeTestSample(const juce::File& file)
+    {
+        auto stream = file.createOutputStream();
+        if (stream == nullptr || ! stream->openedOk()) return false;
+        juce::WavAudioFormat format;
+        std::unique_ptr<juce::AudioFormatWriter> writer(
+            format.createWriterFor(stream.get(), 48000.0, 1, 16, {}, 0));
+        if (writer == nullptr) return false;
+        stream.release();
+        juce::AudioBuffer<float> source(1, 48000);
+        for (int i = 0; i < source.getNumSamples(); ++i)
+            source.setSample(0, i, 0.5f);
+        return writer->writeFromAudioSampleBuffer(source, 0, source.getNumSamples());
+    }
+
     bool require(bool condition, const char* message)
     {
         if (condition)
@@ -26,7 +41,21 @@ int main()
     ok &= require(! AsterDemoMode::hasStarted(),
                   "the timer must not start when the plug-in is merely loaded");
 
-    AsterDemoMode::beginOnFirstSound();
+    juce::TemporaryFile sample(".wav");
+    DrumSamplerAudioProcessor processor;
+    processor.prepareToPlay(48000.0, 64);
+    if (! writeTestSample(sample.getFile()) || ! processor.loadSampleForPad(0, sample.getFile()))
+        return 1;
+    juce::AudioBuffer<float> audio(juce::jmax(2, processor.getTotalNumOutputChannels()), 64);
+    juce::MidiBuffer midi;
+    const auto play = [&]
+    {
+        midi.clear();
+        midi.addEvent(juce::MidiMessage::noteOn(1, 36, static_cast<juce::uint8>(127)), 0);
+        processor.processBlock(audio, midi);
+    };
+    play(); // Start the real MIDI/audio path, not just the timer helper.
+    ok &= require(audio.getMagnitude(0, 64) > 0.01f, "real-time audio must work before expiry");
 
     if constexpr (AsterDemoMode::isDemoBuild)
     {
@@ -39,9 +68,6 @@ int main()
                           "audio must be silent at the configured expiry time");
         }
 
-        DrumSamplerAudioProcessor processor;
-        processor.prepareToPlay(48000.0, 64);
-
         const auto saveProbe = juce::File::getSpecialLocation(juce::File::tempDirectory)
             .getNonexistentChildFile("aster-demo-save-probe", ".asterkit", false);
         ok &= require(! processor.saveKitToFile(saveProbe),
@@ -50,12 +76,15 @@ int main()
                       "a rejected Demo save must not create a file");
 
         processor.setNonRealtime(true);
-        juce::AudioBuffer<float> offlineBuffer(
-            juce::jmax(2, processor.getTotalNumOutputChannels()), 64);
-        juce::MidiBuffer offlineMidi;
-        processor.processBlock(offlineBuffer, offlineMidi);
+        play();
         ok &= require(processor.wasDemoOfflineRenderBlocked(),
                       "Demo builds must block non-realtime rendering");
+        ok &= require(audio.getMagnitude(0, 64) == 0.0f && midi.isEmpty(),
+                      "offline rendering must emit neither audio nor MIDI");
+        processor.setNonRealtime(false);
+        play();
+        ok &= require(audio.getMagnitude(0, 64) > 0.01f && ! processor.wasDemoOfflineRenderBlocked(),
+                      "returning from offline rendering must restore normal trial audio");
 
         ok &= require(AsterDemoMode::hasStarted(),
                       "the demo timer must start on first sound");
@@ -69,6 +98,14 @@ int main()
         auto stateTree = juce::ValueTree::readFromData(state.getData(), state.getSize());
         ok &= require(stateTree.getProperty("demoSessionId").toString().isNotEmpty(),
                       "Demo DAW state must contain the current process session ID");
+        const auto elapsedBeforeRestore = AsterDemoMode::getElapsedSeconds();
+        processor.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+        ok &= require(std::abs(processor.getKit().pads[0].pitch + 7.0f) < 0.001f,
+                      "same-process state restoration must retain pitch edits");
+        ok &= require(processor.getAutomationSlotTargetID(0) == "masterVolume",
+                      "same-process state restoration must retain automation");
+        ok &= require(AsterDemoMode::getElapsedSeconds() >= elapsedBeforeRestore,
+                      "state restoration must not reset the trial timer");
 
         stateTree.setProperty("demoSessionId", "different-daw-process", nullptr);
         juce::MemoryBlock previousSessionState;
@@ -81,7 +118,7 @@ int main()
         restartedProcessor.setStateInformation(previousSessionState.getData(),
                                                 static_cast<int>(previousSessionState.getSize()));
         const KitData defaults;
-        ok &= require(restartedProcessor.getKit().pads[0].pitch == defaults.pads[0].pitch,
+        ok &= require(std::abs(restartedProcessor.getKit().pads[0].pitch - defaults.pads[0].pitch) < 0.001f,
                       "content from a previous DAW process must reset to defaults");
         ok &= require(restartedProcessor.getAutomationSlotTargetID(0).isEmpty(),
                       "automation assignments from a previous DAW process must reset");
@@ -92,6 +129,18 @@ int main()
                 std::chrono::milliseconds(AsterDemoMode::durationSeconds * 1000 + 150));
             ok &= require(AsterDemoMode::hasExpired(),
                           "the shared demo timer must expire at the configured limit");
+            play();
+            ok &= require(audio.getMagnitude(0, 64) == 0.0f, "expired MIDI must be silent");
+            processor.auditionPadOn(0, 1.0f);
+            processor.auditionLayerOn(0, 0, 1.0f);
+            processor.processBlock(audio, midi);
+            ok &= require(audio.getMagnitude(0, 64) == 0.0f, "expired previews must be silent");
+            processor.releaseResources();
+            processor.prepareToPlay(44100.0, 64);
+            processor.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+            play();
+            ok &= require(audio.getMagnitude(0, 64) == 0.0f,
+                          "prepare and same-process restore must not revive expired audio");
         }
     }
     else
@@ -100,6 +149,10 @@ int main()
                       "Full builds must not start a demo timer");
         ok &= require(! AsterDemoMode::hasExpired(),
                       "Full builds must never expire");
+        processor.setNonRealtime(true);
+        play();
+        ok &= require(audio.getMagnitude(0, 64) > 0.01f,
+                      "Full builds must still support offline rendering");
     }
 
     if (ok)

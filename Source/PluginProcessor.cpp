@@ -80,6 +80,7 @@ namespace
             legacy.copyDirectoryTo(current);
     }
 
+   #if ! ASTER_DEMO_BUILD
     juce::var valueTreeToJsonVar(const juce::ValueTree& tree)
     {
         auto* obj = new juce::DynamicObject();
@@ -101,6 +102,7 @@ namespace
         obj->setProperty("children", children);
         return juce::var(obj);
     }
+   #endif
 
     juce::ValueTree jsonVarToValueTree(const juce::var& value)
     {
@@ -133,6 +135,7 @@ namespace
         return tree;
     }
 
+   #if ! ASTER_DEMO_BUILD
     juce::var makeAsterKitJson(const KitData& kit, const juce::String& kitName)
     {
         auto tree = kit.toValueTree();
@@ -145,6 +148,7 @@ namespace
         obj->setProperty("kit", valueTreeToJsonVar(tree));
         return juce::var(obj);
     }
+   #endif
 
     juce::ValueTree readKitTreeFromFile(const juce::File& file)
     {
@@ -1780,7 +1784,7 @@ bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
    #if ASTER_DEMO_BUILD
     juce::ignoreUnused(file);
     return false;
-   #endif
+   #else
     if (file == juce::File{}) return false;
 
     juce::File outFile = file;
@@ -1827,6 +1831,7 @@ bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
     }
     addRecentKitPath(outFile);
     return true;
+   #endif
 }
 
 bool DrumSamplerAudioProcessor::saveKitToCurrentFile()
