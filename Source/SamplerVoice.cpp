@@ -472,6 +472,7 @@ void DrumVoice::start(int    padIdx,
     swapLR        = swapChannels;
     isOneShot     = oneShot;
     isReleasing   = false;
+    isForcedRelease = false;
     playbackRatio = (pRatio > 0.001) ? pRatio : 0.001;   // ゼロ除算ガード
     reversed      = rev;
     keepLengthEnabled = keepLength && keepLengthEngine.isPrepared();
@@ -541,6 +542,7 @@ void DrumVoice::forceRelease(float releaseTimeSec, double hostSampleRate) noexce
 
     isOneShot = false;
     isReleasing = true;
+    isForcedRelease = true;
 
     if (releaseTimeSec > 0.001f && hostSampleRate > 0.0)
         releaseRate = 1.0f / static_cast<float>(releaseTimeSec * hostSampleRate);

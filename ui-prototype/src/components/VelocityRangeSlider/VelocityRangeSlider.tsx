@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type PointerEvent } fro
 import { createPortal } from 'react-dom';
 import styles from './VelocityRangeSlider.module.css';
 import { layerAutomationTarget } from '../../utils/automationTarget';
+import { usePointerDrag } from '../../utils/usePointerDrag';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VelocityRangeSlider — Pad 内全 Layer の velocity range を一覧表示する。
@@ -206,6 +207,7 @@ function LayerRangeRow({
   const trackRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const beginPointerDrag = usePointerDrag(`${padIndex}:${layerIndex}`);
 
   // input が開いたら即 select-all
   useEffect(() => {
@@ -242,6 +244,7 @@ function LayerRangeRow({
   //   - Option (Mac) / Alt (Win) → ドラッグせずにフルレンジリセット
   const startDrag = useCallback(
     (kind: 'min' | 'max') => (e: PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
 
@@ -253,7 +256,6 @@ function LayerRangeRow({
       }
 
       onSelect();
-      (e.target as Element).setPointerCapture?.(e.pointerId);
 
       const trackEl = trackRef.current;
       const trackWidth = trackEl ? trackEl.getBoundingClientRect().width : 200;
@@ -272,14 +274,9 @@ function LayerRangeRow({
         else onChange({ min, max: Math.max(v, min) });
       };
 
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      beginPointerDrag(e, onMove);
     },
-    [min, max, onChange, onSelect],
+    [beginPointerDrag, min, max, onChange, onSelect],
   );
 
   const minPct = (min / RANGE) * 100;

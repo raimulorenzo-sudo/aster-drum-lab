@@ -4,6 +4,7 @@
 #include "AudioFileManager.h"
 #include <array>
 #include <atomic>
+class KeepLengthRenderCache;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VoiceManager  ─  複数の DrumVoice をマルチアウトに振り分けて再生する
@@ -25,6 +26,7 @@ public:
 
     VoiceManager() noexcept;
     void prepare(double hostSampleRate, int maximumBlockSize);
+    void setKeepLengthCache(KeepLengthRenderCache* cache) noexcept { keepLengthCache = cache; }
 
     // ── Note On ────────────────────────────────────────────────────────────
     void noteOn(int                  padIndex,
@@ -67,6 +69,9 @@ public:
 
     // ── 全ボイス停止 ───────────────────────────────────────────────────────
     void allNotesOff();
+    // Stop voices before their sample slot is replaced or renumbered.
+    // Caller holds the processor callback lock, or runs on the audio thread.
+    void stopSampleVoices(int padIndex, int layerIndex = -1, int variationIndex = -1) noexcept;
 
     // ── レベルメーター用（UI スレッドから読む） ────────────────────────────
     // UI が前回取得以降の最大ピークを取り出す。読み出し時に 0 へ戻す。
@@ -95,6 +100,7 @@ public:
 
 private:
     std::array<DrumVoice, MAX_VOICES> voices;
+    KeepLengthRenderCache* keepLengthCache { nullptr };
     mutable std::array<std::atomic<float>, NUM_PADS> padPeakLevels {};
     std::array<bool, NUM_PADS>        padClipLatched {};
     std::array<std::atomic<float>, NUM_PADS> padTriggerLevels {};
@@ -160,5 +166,6 @@ private:
                          double               hostSampleRate,
                          bool                 previewVoice,
                          const PadHumanize&   humanize,
-                         float                previewStartPosition);
+                         float                previewStartPosition,
+                         uint64_t             triggerSerial);
 };

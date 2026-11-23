@@ -14,6 +14,7 @@
 import type { PadParams, PlayMode, KitPage, OutputMode, LayerParams, EqParams, FxSlot, FilterParams, FilterSlope, WaveformChannel } from '../types';
 import { NEUTRAL_EQ } from '../types';
 import { INITIAL_PADS } from '../data/padData';
+import { undoPadsEqual } from './undoState';
 import {
   FALLBACK_SAMPLE_LENGTH_MS,
   MIN_TRIM_RANGE_MS,
@@ -43,7 +44,10 @@ export function isJuceAvailable(): boolean {
 
 // ─── JS → C++ ───────────────────────────────────────────────────────────────
 /** Send a typed UI message to the C++ plugin. Silent no-op in browser. */
+type UiMessage = { type: string; payload: Record<string, unknown> };
+let collectedMessages: UiMessage[] | null = null;
 export function sendToJuce(type: string, payload: Record<string, unknown>): void {
+  if (collectedMessages) { collectedMessages.push({ type, payload }); return; }
   if (!isJuceAvailable()) return;
   try {
     window.__JUCE__!.backend.emitEvent('uiMessage', { type, payload });
@@ -79,6 +83,7 @@ export function onJuceEvent(
  * Field names must match the C++ PadData fields exactly.
  */
 export interface JucePadData {
+  nativeUndoState?: string;
   padName: string;
   sampleFileName: string;
   sampleFilePath: string;
@@ -137,6 +142,7 @@ export interface JucePadData {
  * waveformPeaks / sampleLengthMs are injected by padToWebVar() (not saved to file).
  */
 export interface JuceLayerData {
+  nativeUndoState?: string;
   sampleFileName: string;
   sampleFilePath: string;
   sampleMissing?: boolean;
@@ -276,6 +282,7 @@ function juceLayerToReact(jl: JuceLayerData, fallbackLengthMs: number): LayerPar
     : 0;
 
   return {
+    nativeUndoState: jl.nativeUndoState,
     sampleFileName: jl.sampleFileName,
     sampleFilePath: jl.sampleFilePath,
     sampleMissing:  jl.sampleMissing,
@@ -497,6 +504,7 @@ export function jucePadToReact(jp: JucePadData, existing: PadParams): PadParams 
 
   return {
     ...existing,
+    nativeUndoState: jp.nativeUndoState,
     padColor,
     padName:       jp.padName       || existing.padName,
     sampleFileName: jp.sampleFileName,
@@ -591,6 +599,7 @@ export function sendPadPatchToJuce(
   index: number,
   patch: Partial<PadParams>,
   currentPad: PadParams,
+  forceLayers = false,
 ): void {
   if (!isJuceAvailable()) return;
 
@@ -677,7 +686,7 @@ export function sendPadPatchToJuce(
   //   per-layer プロパティに着目する。velocityMin/Max と mute/solo はどの layer
   //   でも個別 message を出す (flat に対応フィールドがないため)。
   if (patch.layers !== undefined) {
-    sendLayerPatches(index, patch.layers, currentPad.layers);
+    sendLayerPatches(index, patch.layers, currentPad.layers, forceLayers, currentPad.selectedLayerIndex ?? 0);
   }
 
   // ── Selected layer tracking ────────────────────────────────────────────
@@ -688,27 +697,59 @@ export function sendPadPatchToJuce(
   }
 }
 
+/** Restore sample/structure snapshots and all visible controls in one native transaction. */
+export function sendUndoPadsToJuce(restored: PadParams[], current: PadParams[]): boolean {
+  const changed = restored.flatMap((pad, index) =>
+    current[index] && !undoPadsEqual([pad], [current[index]]) ? [{ index, pad }] : []);
+  if (changed.some(({ pad }) => !pad.nativeUndoState)) return false;
+  const commands: UiMessage[] = [];
+  const previousCollector = collectedMessages;
+  try {
+    collectedMessages = commands;
+    changed.forEach(({ index, pad }) => sendPadPatchToJuce(index, pad, pad, true));
+  } finally {
+    collectedMessages = previousCollector;
+  }
+  if (changed.length) sendToJuce('restoreUndo', {
+    states: changed.map(({ index, pad }) => ({
+      index, state: pad.nativeUndoState,
+      layers: pad.layers?.map(layer => ({
+        state: layer.nativeUndoState,
+        layerName: layer.layerName ?? '',
+        activeSampleStockIndex: layer.activeSampleStockIndex ?? 0,
+        sampleStock: layer.sampleStock ?? (layer.sampleFilePath ? [{
+          sampleFilePath: layer.sampleFilePath, sampleFileName: layer.sampleFileName,
+          sampleMissing: layer.sampleMissing,
+        }] : []),
+      })),
+    })), commands,
+  });
+  return true;
+}
+
 function sendLayerPatches(
   index: number,
   nextLayers: NonNullable<PadParams['layers']>,
   prevLayers: PadParams['layers'] | undefined,
+  force = false,
+  sourceLayerIndex = 0,
 ): void {
   const prev = prevLayers ?? [];
   const prevCount = prev.length;
   const nextCount = nextLayers.length;
 
   // Layer 追加 / 削除 (構造変更)
-  if (nextCount > prevCount) {
+  if (!force && nextCount > prevCount) {
     const added = nextCount - prevCount;
     for (let i = 0; i < added; i++) {
       sendToJuce('addLayer', {
         index,
-        copyFromIndex: Math.max(0, prevCount - 1 + i),
+        copyFromIndex: Math.max(0, Math.min(prevCount - 1, sourceLayerIndex)),
         clearSample: true,
         broadcast: false,
       });
     }
-  } else if (nextCount < prevCount) {
+  } else if (!force && nextCount < prevCount) {
     // 削除 — patchRemoveLayer は配列から指定 index を抜くので、残った object 参照を
     // 見て削除位置を推定する。これで L2 など中間 layer の × も正しく消える。
     const removed = prevCount - nextCount;
@@ -731,71 +772,71 @@ function sendLayerPatches(
     if (!a || !b) continue;
 
     // velocity range / mute / solo はどの layer でも個別 message
-    if (a.velocityMin !== b.velocityMin || a.velocityMax !== b.velocityMax) {
+    if (force || a.velocityMin !== b.velocityMin || a.velocityMax !== b.velocityMax) {
       sendToJuce('setLayerVelocityRange', {
         index, layerIndex: li, min: b.velocityMin, max: b.velocityMax,
       });
     }
-    if (a.mute !== b.mute) {
+    if (force || a.mute !== b.mute) {
       sendToJuce('setLayerMute', { index, layerIndex: li, value: b.mute });
     }
-    if (a.solo !== b.solo) {
+    if (force || a.solo !== b.solo) {
       sendToJuce('setLayerSolo', { index, layerIndex: li, value: b.solo });
     }
-    if (a.smartTrim !== b.smartTrim) {
+    if (force || a.smartTrim !== b.smartTrim) {
       sendToJuce('setLayerSmartTrim', { index, layerIndex: li, value: b.smartTrim });
     }
-    if ((a.roundRobin ?? false) !== (b.roundRobin ?? false)) {
+    if (force || (a.roundRobin ?? false) !== (b.roundRobin ?? false)) {
       sendToJuce('setLayerRoundRobin', {
         index, layerIndex: li, value: b.roundRobin ?? false,
       });
     }
-    if ((a.polarityInvert ?? false) !== (b.polarityInvert ?? false)) {
+    if (force || (a.polarityInvert ?? false) !== (b.polarityInvert ?? false)) {
       sendToJuce('setLayerPolarityInvert', {
         index, layerIndex: li, value: b.polarityInvert ?? false,
       });
     }
-    if (!eqEqual(a.eq, b.eq)) {
+    if (force || !eqEqual(a.eq, b.eq)) {
       sendToJuce('setLayerEq', {
         index,
         layerIndex: li,
         ...flattenEqPatch(normalizeEq(b.eq)),
       });
     }
-    if (!fxChainEqual(a.fxChain, b.fxChain)) {
+    if (force || !fxChainEqual(a.fxChain, b.fxChain)) {
       sendToJuce('setLayerFxChain', {
         index,
         layerIndex: li,
         slots: serializeFxChain(b.fxChain ?? []),
       });
     }
-    if ((a.fine ?? 0) !== (b.fine ?? 0))
+    if (force || (a.fine ?? 0) !== (b.fine ?? 0))
       sendToJuce('setLayerFine', { index, layerIndex: li, value: b.fine ?? 0 });
-    if ((a.hold ?? -1) !== (b.hold ?? -1))
+    if (force || (a.hold ?? -1) !== (b.hold ?? -1))
       sendToJuce('setLayerHold', { index, layerIndex: li, value: b.hold ?? -1 });
-    if ((a.decay ?? 0.05) !== (b.decay ?? 0.05))
+    if (force || (a.decay ?? 0.05) !== (b.decay ?? 0.05))
       sendToJuce('setLayerDecay', { index, layerIndex: li, value: b.decay ?? 0.05 });
 
     // L2+ の音作りパラメータは flat 側を通らないので、ここから per-layer message
     // を出す。Layer 0 は flat 経由 (setVolume 等) で既に C++ に届いている。
     if (li === 0) continue;
 
-    if (a.volume !== b.volume)
+    if (force || a.volume !== b.volume)
       sendToJuce('setLayerVolume', { index, layerIndex: li, value: b.volume });
-    if (a.pan !== b.pan)
+    if (force || a.pan !== b.pan)
       sendToJuce('setLayerPan', { index, layerIndex: li, value: b.pan });
-    if (a.pitch !== b.pitch)
+    if (force || a.pitch !== b.pitch)
       sendToJuce('setLayerPitch', { index, layerIndex: li, value: b.pitch });
-    if (a.attack !== b.attack)
+    if (force || a.attack !== b.attack)
       sendToJuce('setLayerAttack', { index, layerIndex: li, value: b.attack });
-    if (a.release !== b.release)
+    if (force || a.release !== b.release)
       sendToJuce('setLayerRelease', { index, layerIndex: li, value: b.release });
-    if (a.reverse !== b.reverse)
+    if (force || a.reverse !== b.reverse)
       sendToJuce('setLayerReverse', { index, layerIndex: li, value: b.reverse });
-    if (a.keepLength !== b.keepLength)
+    if (force || a.keepLength !== b.keepLength)
       sendToJuce('setLayerKeepLength', { index, layerIndex: li, value: b.keepLength });
 
-    if (a.startMs !== b.startMs || a.endMs !== b.endMs
+    if (force || a.startMs !== b.startMs || a.endMs !== b.endMs
         || a.fadeInMs !== b.fadeInMs || a.fadeOutMs !== b.fadeOutMs) {
       // ms → normalised 0..1 に変換。sampleLengthMs があれば使う。
       const len = Math.max(1, b.sampleLengthMs ?? a.sampleLengthMs ?? FALLBACK_SAMPLE_LENGTH_MS);

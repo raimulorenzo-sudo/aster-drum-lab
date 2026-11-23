@@ -8,7 +8,7 @@ import { NEUTRAL_EQ } from '../../../types';
 import { cloneEq, cloneFxChain, cloneFxSlot, makeFxSlot } from '../../../utils/fxChain';
 import { COMP_GR_METER_MARKS, registerCompMeter } from '../../../utils/compMeterRegistry';
 import { ensureLayers, selectedLayerIndexOf } from '../../../utils/layerView';
-import { parseNumericText } from '../../../utils/numericInput';
+import { parseFrequencyInput, parseNumericText, parsePercentInput, parseRatioInput } from '../../../utils/numericInput';
 import type { DriveType } from '../../../types';
 import { sendToJuce } from '../../../utils/juceBridge';
 import { fxAutomationTarget, layerAutomationTarget, type AutomationTarget } from '../../../utils/automationTarget';
@@ -147,7 +147,7 @@ function FilterSection({ section, params, onPatch, padIndex, layerIndex }: {
           value={freqToNorm(cutoff)}
           defaultValue={freqToNorm(isHp ? 80 : 18000)}
           valueText={fmtHz(cutoff)}
-          parseInput={text => { const v = parseNumericText(text); return v == null ? null : freqToNorm(v); }}
+          parseInput={text => { const v = parseFrequencyInput(text); return v == null ? null : freqToNorm(v); }}
           onChange={v => automatedPatch(isHp ? 'hpCutoff' : 'lpCutoff', v, isHp ? { hpCutoff: normToFreq(v) } : { lpCutoff: normToFreq(v) })}
           automationTarget={target(isHp ? 'hpCutoff' : 'lpCutoff', isHp ? 'High-Pass Frequency' : 'Low-Pass Frequency')}
         />
@@ -653,6 +653,7 @@ function FxModule({
               value={slot.params.amount}
               defaultValue={0.25}
               valueText={fmtPercent(slot.params.amount)}
+              parseInput={parsePercentInput}
               onChange={v => automate('amount', v, s => s.type === 'DRIVE' ? { ...s, params: { ...s.params, amount: v } } : s)}
               automationTarget={target('amount', 'Drive')}
             />
@@ -662,6 +663,7 @@ function FxModule({
               value={slot.params.tone}
               defaultValue={0.5}
               valueText={fmtPercent(slot.params.tone)}
+              parseInput={parsePercentInput}
               onChange={v => automate('tone', v, s => s.type === 'DRIVE' ? { ...s, params: { ...s.params, tone: v } } : s)}
               automationTarget={target('tone', 'Tone')}
             />
@@ -671,6 +673,7 @@ function FxModule({
               value={slot.params.mix}
               defaultValue={1}
               valueText={fmtPercent(slot.params.mix)}
+              parseInput={parsePercentInput}
               onChange={v => automate('mix', v, s => s.type === 'DRIVE' ? { ...s, params: { ...s.params, mix: v } } : s)}
               automationTarget={target('mix', 'Mix')}
             />
@@ -699,7 +702,7 @@ function FxModule({
               bipolar
               defaultValue={0}
               valueText={`${slot.params.attack >= 0 ? '+' : ''}${Math.round(slot.params.attack * 100)}`}
-              parseInput={parseNumericText}
+              parseInput={parsePercentInput}
               onChange={v => automate('attack', (v + 1) / 2, s => s.type === 'TRANSIENT' ? { ...s, params: { ...s.params, attack: v } } : s)}
               automationTarget={target('attack', 'Attack')}
             />
@@ -712,7 +715,7 @@ function FxModule({
               bipolar
               defaultValue={0}
               valueText={`${slot.params.sustain >= 0 ? '+' : ''}${Math.round(slot.params.sustain * 100)}`}
-              parseInput={parseNumericText}
+              parseInput={parsePercentInput}
               onChange={v => automate('sustain', (v + 1) / 2, s => s.type === 'TRANSIENT' ? { ...s, params: { ...s.params, sustain: v } } : s)}
               automationTarget={target('sustain', 'Sustain')}
             />
@@ -753,7 +756,7 @@ function FxModule({
                 max={20}
                 defaultValue={4}
                 valueText={`${slot.params.ratio.toFixed(1)}:1`}
-                parseInput={parseNumericText}
+                parseInput={parseRatioInput}
                 onChange={v => automate('ratio', (v - 1) / 19, s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, ratio: v } } : s)}
                 automationTarget={target('ratio', 'Ratio')}
               />
@@ -802,6 +805,7 @@ function FxModule({
                 value={slot.params.mix}
                 defaultValue={1}
                 valueText={fmtPercent(slot.params.mix)}
+                parseInput={parsePercentInput}
                 onChange={v => automate('mix', v, s => s.type === 'COMPRESSOR' ? { ...s, params: { ...s.params, mix: v } } : s)}
                 automationTarget={target('mix', 'Mix')}
               />

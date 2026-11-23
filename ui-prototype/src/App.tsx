@@ -36,6 +36,7 @@ import {
   sendToJuce,
   onJuceEvent,
   sendPadPatchToJuce,
+  sendUndoPadsToJuce,
   jucePadToReact,
   juceKitToReact,
 } from './utils/juceBridge';
@@ -49,6 +50,7 @@ import { updateCompMeter } from './utils/compMeterRegistry';
 import { updateResourceStats } from './utils/resourceRegistry';
 import { audioBufferToPeaks, audioBufferToWaveformChannels } from './utils/waveform';
 import { useUndoRedo } from './utils/useUndoRedo';
+import { undoPadsEqual } from './utils/undoState';
 import { countMissingSamples } from './utils/missingSamples';
 import { ensureLayers, patchAddLayer, patchRemoveLayer } from './utils/layerView';
 
@@ -136,18 +138,6 @@ function formatDemoTime(value: number): string {
   const seconds = Math.max(0, Math.ceil(value));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function routingUndoPatch(current: PadParams, restored: PadParams): Partial<PadParams> {
-  const patch: Partial<PadParams> = {};
-
-  if (current.outputAssign !== restored.outputAssign) patch.outputAssign = restored.outputAssign;
-  if (current.volume !== restored.volume) patch.volume = restored.volume;
-  if (current.pan !== restored.pan) patch.pan = restored.pan;
-  if (current.mute !== restored.mute) patch.mute = restored.mute;
-  if (current.solo !== restored.solo) patch.solo = restored.solo;
-
-  return patch;
 }
 
 function getDroppedFilePath(file: File): string {
@@ -314,20 +304,20 @@ export default function App() {
 
   // ── Undo / Redo (pads スナップショット履歴) ─────────────────────────
   // ノブ連続変更や wheel スクロールで履歴が爆発しないよう 350ms debounce。
+  const nativeUndoInitialized = useRef(false);
   const restorePadsForUndo = (restoredPads: PadParams[]) => {
-    const currentPads = padsRef.current;
-    restoredPads.forEach((restored, index) => {
-      const current = currentPads[index];
-      if (!current) return;
-      const patch = routingUndoPatch(current, restored);
-      if (Object.keys(patch).length > 0) sendPadPatchToJuce(index, patch, current);
-    });
+    if (isJuceAvailable() && !sendUndoPadsToJuce(restoredPads, padsRef.current)) {
+      nativeUndoInitialized.current = false;
+      sendToJuce('ready', {});
+      return;
+    }
+    padsRef.current = restoredPads;
     setKitDirty(true);
   };
-  const { undo, redo, canUndo, canRedo } = useUndoRedo<PadParams[]>(
+  const { undo, redo, canUndo, canRedo, clearHistory } = useUndoRedo<PadParams[]>(
     pads,
     setPads,
-    { onRestore: restorePadsForUndo },
+    { onRestore: restorePadsForUndo, isEqual: undoPadsEqual },
   );
 
   // Cmd/Ctrl+Z = Undo / Cmd/Ctrl+Shift+Z = Redo (DAW 慣習)
@@ -624,6 +614,10 @@ export default function App() {
 
       padsRef.current = newPads;
       setPads(newPads);
+      if (!nativeUndoInitialized.current) {
+        nativeUndoInitialized.current = true;
+        clearHistory(newPads);
+      }
       setPage(newPage);
       setSelectedIndex(newIdx);
       setKitName(newKitName);
@@ -1758,7 +1752,9 @@ export default function App() {
   }, [fileTarget, loadSampleForPad]);
 
   const resetPadSettings = useCallback((index: number) => {
-    const patch = resettablePadSettings(index);
+    const pad = padsRef.current[index];
+    if (!pad) return;
+    const patch = resettablePadSettings(index, pad.sampleLengthMs ?? pad.endMs);
     updatePad(index, patch);
   }, [updatePad]);
 

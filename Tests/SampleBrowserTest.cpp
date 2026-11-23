@@ -1,5 +1,6 @@
 #include "../Source/PluginProcessor.h"
 #include "../Source/PadDataJson.h"
+#include "RecentKitGuard.h"
 #include <iostream>
 #include <cmath>
 
@@ -25,6 +26,7 @@ bool near(float a, float b) { return std::abs(a - b) < 0.001f; }
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
+    RecentKitGuard recent;
     const auto folder = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("aster-browser-test-" + juce::Uuid().toString());
     folder.createDirectory();
     const auto first = folder.getChildFile("first.wav"), second = folder.getChildFile("second.wav");

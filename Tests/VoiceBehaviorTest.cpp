@@ -1,0 +1,26 @@
+#include "../Source/PluginProcessor.h"
+#include "RecentKitGuard.h"
+#include <iostream>
+#include <cmath>
+namespace {
+int passed=0,failed=0;void check(bool ok,const char* name,float value=0){std::cout<<(ok?"PASS ":"FAIL ")<<name<<" value="<<value<<std::endl;ok?++passed:++failed;}
+void setup(DrumSamplerAudioProcessor& p,int padIndex,int layers=8){auto& pad=p.getKit().pads[(size_t)padIndex];pad.layers.resize(layers);pad.midiNote=36+padIndex;pad.humanize=0;pad.velocitySens=1;pad.padVolume=.75;pad.outputAssign=padIndex;
+ for(int l=0;l<layers;++l){auto b=std::make_unique<juce::AudioBuffer<float>>(2,96000);for(int c=0;c<2;++c)for(int i=0;i<96000;++i)b->setSample(c,i,.02f);p.getFileManager().installDecodedVariation(padIndex,l,0,std::move(b),48000);auto& layer=pad.layers[(size_t)l];layer.smartTrim=false;layer.keepLength=false;layer.startPosition=0;layer.endPosition=1;layer.fadeIn=layer.fadeOut=0;layer.attack=0;layer.hold=-1;layer.release=.01f;layer.volume=.75;layer.pan=0;layer.pitch=layer.fine=0;}pad.syncFlatFromLayer0();}
+void enable(DrumSamplerAudioProcessor& p,int buses){auto layout=p.getBusesLayout();for(int i=0;i<buses;++i)layout.outputBuses.set(i,juce::AudioChannelSet::stereo());if(!p.setBusesLayout(layout))throw std::runtime_error("layout rejected");}
+float render(DrumSamplerAudioProcessor& p,int note=-1,int bus=0,float velocity=1, bool off=false){juce::AudioBuffer<float> out(p.getTotalNumOutputChannels(),256);juce::MidiBuffer midi;if(note>=0)midi.addEvent(off?juce::MidiMessage::noteOff(1,note):juce::MidiMessage::noteOn(1,note,velocity),0);p.processBlock(out,midi);return out.getSample(bus*2,255);}
+}
+int main(){juce::ScopedJuceInitialiser_GUI init;RecentKitGuard recent;
+ for(auto steal:{PadData::VoiceStealMode::Off,PadData::VoiceStealMode::Oldest,PadData::VoiceStealMode::Quietest}){
+  DrumSamplerAudioProcessor p;setup(p,0);auto& pad=p.getKit().pads[0];pad.polyphony=steal==PadData::VoiceStealMode::Oldest?1:2;pad.voiceSteal=steal;p.syncParametersFromKit();p.prepareToPlay(48000,256);
+  float first=render(p,36,0,steal==PadData::VoiceStealMode::Quietest?.2f:1.f);float second=render(p,36,0,steal==PadData::VoiceStealMode::Quietest?.9f:1.f);float third=render(p,36,0,steal==PadData::VoiceStealMode::Quietest?.5f:1.f);
+  if(steal==PadData::VoiceStealMode::Off)check(std::abs(second/first-2)<.02f&&std::abs(third/first-2)<.02f,"polyphony Off counts Pad hits, not individual Layers",second/first);
+  else if(steal==PadData::VoiceStealMode::Oldest)check(std::abs(second/first-1)<.02f&&std::abs(third/first-1)<.02f,"Oldest replaces all Layers of the old hit",third/first);
+  else {const float expected=(juce::MidiMessage::noteOn(1,36,.9f).getFloatVelocity()+juce::MidiMessage::noteOn(1,36,.5f).getFloatVelocity())/juce::MidiMessage::noteOn(1,36,.2f).getFloatVelocity();check(std::abs(third/first-expected)<.02f,"Quietest replaces all Layers of the quiet hit",third/first);}
+ }
+ {DrumSamplerAudioProcessor p;enable(p,2);setup(p,0);setup(p,1);p.syncParametersFromKit();p.prepareToPlay(48000,256);float base=render(p,37,1);p.getVoiceManager().allNotesOff();for(int i=0;i<8;++i)render(p,36);float crowded=render(p,37,1);check(std::abs(crowded/base-1)<.02f,"full voice pool preserves all Layers of a new hit",crowded/base);}
+ for(bool gate:{false,true}){DrumSamplerAudioProcessor p;setup(p,0,1);p.getKit().pads[0].playbackMode=gate?PlaybackMode::Gate:PlaybackMode::OneShot;p.syncParametersFromKit();p.prepareToPlay(48000,256);render(p,36);render(p,36,0,1,true);float tail=0;for(int n=0;n<4;++n)tail=render(p);check(gate?std::abs(tail)<1e-7f:tail>.001f,gate?"Gate stops after Note Off and Release":"One Shot retains its tail after Note Off",tail);}
+ {DrumSamplerAudioProcessor p;setup(p,0);auto& pad=p.getKit().pads[0];pad.polyphony=1;pad.voiceSteal=PadData::VoiceStealMode::Oldest;p.syncParametersFromKit();p.prepareToPlay(48000,256);float base=render(p,36);juce::AudioBuffer<float> out(p.getTotalNumOutputChannels(),256);juce::MidiBuffer midi;for(int n=0;n<3;++n)midi.addEvent(juce::MidiMessage::noteOn(1,36,(juce::uint8)127),n*32);p.processBlock(out,midi);float after=render(p);check(std::abs(after/base-1)<.02f,"rapid steals do not select an already-fading hit again",after/base);}
+ {DrumSamplerAudioProcessor p;enable(p,3);for(int i=0;i<3;++i)setup(p,i,1);p.getKit().pads[0].chokeGroup=p.getKit().pads[1].chokeGroup=1;p.getKit().pads[2].chokeGroup=2;p.syncParametersFromKit();p.prepareToPlay(48000,256);render(p,36);render(p,38,2);render(p,37,1);juce::AudioBuffer<float> out(p.getTotalNumOutputChannels(),256);juce::MidiBuffer empty;p.processBlock(out,empty);check(std::abs(out.getSample(0,255))<1e-7f&&out.getSample(2,255)>.001f&&out.getSample(4,255)>.001f,"Choke stops only the other Pad in the same group");}
+ {DrumSamplerAudioProcessor p;setup(p,0,1);p.syncParametersFromKit();p.prepareToPlay(48000,256);render(p,36);juce::AudioBuffer<float> out(p.getTotalNumOutputChannels(),256);juce::MidiBuffer midi;midi.addEvent(juce::MidiMessage::allNotesOff(1),63);p.processBlock(out,midi);check(out.getSample(0,62)>.001f&&out.getMagnitude(0,63,193)==0,"All Notes Off stops audio at the exact event offset");}
+ std::cout<<"SUMMARY passed="<<passed<<" failed="<<failed<<std::endl;return failed?1:0;
+}

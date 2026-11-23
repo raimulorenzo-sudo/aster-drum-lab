@@ -48,6 +48,8 @@ void KeepLengthEngine::prepare(double hostSampleRate, int maximumBlockSize)
 
 void KeepLengthEngine::reset() noexcept
 {
+    preparedState.reset();
+    preparedRender.reset();
     needsInitialSeek = false;
     shortOutputCached = false;
     usingShortWindow = false;
@@ -59,6 +61,8 @@ void KeepLengthEngine::reset() noexcept
     outputPosition = 0;
     outputLength = 0;
     processLength = 0;
+    tailOutputOffset = 0;
+    tailOutputLength = 0;
     shortTransientPosition = 0;
     initialPitchSemitones = 0.0f;
 }
@@ -69,6 +73,8 @@ void KeepLengthEngine::start(double startSample,
                              bool shouldReverse,
                              float initialSemitones) noexcept
 {
+    preparedState.reset();
+    preparedRender.reset();
     startPosition = startSample;
     endPosition = juce::jmax(startSample + 1.0, endSample);
     sourceStep = juce::jmax(1.0e-9, sourceSamplesPerHostSample);
@@ -90,6 +96,8 @@ void KeepLengthEngine::start(double startSample,
     activeStretch->setTransposeSemitones(initialPitchSemitones);
     needsInitialSeek = prepared;
     shortOutputCached = false;
+    tailOutputOffset = 0;
+    tailOutputLength = 0;
 }
 
 void KeepLengthEngine::fillTimeline(const juce::AudioBuffer<float>& source,
@@ -175,9 +183,12 @@ void KeepLengthEngine::initialiseFromSource(const juce::AudioBuffer<float>& sour
         engineSelectionPending = false;
     }
 
-    fillTimeline(source, 0, seekLength, inputScratch);
+    // A zero-pitch voice can stay on the exact dry path until automation
+    // actually needs the stretcher. Seek from its current timeline then.
+    const int seekStart = outputLength <= seekLength ? 0 : outputPosition;
+    fillTimeline(source, seekStart, seekLength, inputScratch);
     activeStretch->outputSeek(inputPointers, seekLength);
-    inputPosition = seekLength;
+    inputPosition = seekStart + seekLength;
 
     // A source shorter than the analysis seek window cannot be streamed a
     // callback at a time: the first small flush would contain only silence.
@@ -240,12 +251,40 @@ int KeepLengthEngine::process(const juce::AudioBuffer<float>& source,
     if (! prepared || numSamples <= 0 || outputPosition >= outputLength)
         return 0;
 
-    initialiseFromSource(source);
-    activeStretch->setTransposeSemitones(targetSemitones);
-
     const int requested = juce::jmin(numSamples, scratchCapacity);
     const int count = juce::jmin(requested, outputLength - outputPosition);
     const int chunkStartPosition = outputPosition;
+    if (preparedState)
+    {
+        const int produced = preparedState->engine.process(source, targetSemitones, count);
+        outputPosition += produced;
+        return produced;
+    }
+    if (preparedRender && preparedRender->pitch == targetSemitones
+        && preparedRender->audio.getNumSamples() == outputLength)
+    {
+        fillTimeline(source, outputPosition, count, dryScratch);
+        for (int channel = 0; channel < 2; ++channel)
+            std::copy_n(preparedRender->audio.getReadPointer(channel) + outputPosition,
+                        count, outputScratch[(size_t) channel].data());
+        outputPosition += count;
+        return count;
+    }
+    // Automation can leave the cached pitch at any sample. The live engine
+    // seeks at the current timeline, never restarts the hit from its beginning.
+    preparedRender.reset();
+    if (needsInitialSeek && std::abs(initialPitchSemitones) <= 1.0e-3f
+                         && std::abs(targetSemitones) <= 1.0e-3f)
+    {
+        fillTimeline(source, outputPosition, count, dryScratch);
+        for (size_t channel = 0; channel < 2; ++channel)
+            std::copy_n(dryScratch[channel].data(), count, outputScratch[channel].data());
+        outputPosition += count;
+        return count;
+    }
+    if (needsInitialSeek) initialPitchSemitones = targetSemitones;
+    initialiseFromSource(source);
+    activeStretch->setTransposeSemitones(targetSemitones);
     fillTimeline(source, outputPosition, count, dryScratch);
 
     if (shortOutputCached)
@@ -283,12 +322,36 @@ int KeepLengthEngine::process(const juce::AudioBuffer<float>& source,
         }
         else
         {
-            const int block = count - written;
-            std::array<float*, 2> blockOutput {
-                outputPointers[0] + written,
-                outputPointers[1] + written
-            };
-            activeStretch->flush(blockOutput, block, 1.0f);
+            // flush() resets the stretcher. Stream its zero-padded leading
+            // portion normally, then flush the last interval exactly once.
+            // Repeated callback-sized flushes discarded the remaining tail.
+            const int paddingRemaining = juce::jmax(0,
+                outputLength - activeStretch->intervalSamples() - outputPosition);
+            if (paddingRemaining > 0)
+            {
+                const int block = juce::jmin(count - written, paddingRemaining);
+                for (auto& channel : inputScratch)
+                    std::fill_n(channel.data(), block, 0.0f);
+                std::array<float*, 2> blockOutput {
+                    outputPointers[0] + written,
+                    outputPointers[1] + written
+                };
+                activeStretch->process(inputPointers, block, blockOutput, block);
+                outputPosition += block;
+                written += block;
+                continue;
+            }
+            if (tailOutputLength == 0)
+            {
+                tailOutputLength = outputLength - outputPosition;
+                tailOutputOffset = 0;
+                activeStretch->flush(inputPointers, tailOutputLength, 1.0f);
+            }
+            const int block = juce::jmin(count - written, tailOutputLength - tailOutputOffset);
+            for (size_t channel = 0; channel < 2; ++channel)
+                std::copy_n(inputScratch[channel].data() + tailOutputOffset,
+                            block, outputScratch[channel].data() + written);
+            tailOutputOffset += block;
             outputPosition += block;
             written += block;
         }
@@ -305,3 +368,31 @@ double KeepLengthEngine::getSourcePosition() const noexcept
         ? endPosition - sourceStep * timeline
         : startPosition + sourceStep * timeline;
 }
+
+void KeepLengthEngine::prime(const juce::AudioBuffer<float>& source) noexcept
+{
+    if (prepared && needsInitialSeek && std::abs(initialPitchSemitones) > 1.0e-3f)
+        initialiseFromSource(source);
+}
+
+void KeepLengthEngine::usePreparedState(std::shared_ptr<KeepLengthPreparedState> state) noexcept
+{
+    if (!state || state->engine.needsInitialSeek || state->engine.outputPosition != 0
+        || state->engine.outputLength != outputLength
+        || state->engine.processingSampleRate != processingSampleRate
+        || state->start != startPosition || state->end != endPosition
+        || state->step != sourceStep || state->reverse != reversed
+        || state->pitch != initialPitchSemitones || state->engine.scratchCapacity < scratchCapacity)
+        return;
+    preparedRender.reset();
+    preparedState = std::move(state);
+}
+
+const float* KeepLengthEngine::getLeft() const noexcept
+{ return preparedState ? preparedState->engine.getLeft() : outputScratch[0].data(); }
+const float* KeepLengthEngine::getRight() const noexcept
+{ return preparedState ? preparedState->engine.getRight() : outputScratch[1].data(); }
+const float* KeepLengthEngine::getDryLeft() const noexcept
+{ return preparedState ? preparedState->engine.getDryLeft() : dryScratch[0].data(); }
+const float* KeepLengthEngine::getDryRight() const noexcept
+{ return preparedState ? preparedState->engine.getDryRight() : dryScratch[1].data(); }

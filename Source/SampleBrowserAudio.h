@@ -11,6 +11,7 @@ struct BrowserSample
     juce::String error;
 };
 BrowserSample decodeBrowserSample(const juce::File&, const std::function<bool()>& cancelled = {});
+BrowserSample decodeSampleFile(const juce::File&, const std::function<bool()>& cancelled = {}, bool analyzeTrim = false);
 bool isBrowserAudioFile(const juce::File&);
 
 // A separate audition voice: no PadData, MIDI, FX, variation cursor, or kit state.

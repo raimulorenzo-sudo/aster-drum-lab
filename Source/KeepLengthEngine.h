@@ -5,6 +5,29 @@
 
 #include <array>
 #include <vector>
+#include <memory>
+
+// Immutable, pre-rendered spectral output. Envelopes, gain, fades and FX are
+// deliberately applied by DrumVoice afterwards, exactly as on the live path.
+struct KeepLengthRender
+{
+    std::shared_ptr<const juce::AudioBuffer<float>> source;
+    double sampleRate {}, start {}, end {}, step {};
+    float pitch {};
+    bool reverse {};
+    juce::AudioBuffer<float> audio;
+
+    bool matches(const juce::AudioBuffer<float>* input, double rate,
+                 double from, double to, double sourceStep, bool reversed,
+                 float semitones) const noexcept
+    {
+        return source.get() == input && sampleRate == rate && start == from
+            && end == to && step == sourceStep && reverse == reversed
+            && pitch == semitones;
+    }
+};
+
+struct KeepLengthPreparedState;
 
 // One realtime pitch engine per DrumVoice. The source timeline always advances
 // at its natural sample-rate ratio; only spectral pitch changes, so the trimmed
@@ -27,10 +50,10 @@ public:
                 float targetSemitones,
                 int numSamples) noexcept;
 
-    const float* getLeft() const noexcept  { return outputScratch[0].data(); }
-    const float* getRight() const noexcept { return outputScratch[1].data(); }
-    const float* getDryLeft() const noexcept  { return dryScratch[0].data(); }
-    const float* getDryRight() const noexcept { return dryScratch[1].data(); }
+    const float* getLeft() const noexcept;
+    const float* getRight() const noexcept;
+    const float* getDryLeft() const noexcept;
+    const float* getDryRight() const noexcept;
     int getScratchCapacity() const noexcept { return scratchCapacity; }
     int getOutputLength() const noexcept { return outputLength; }
     int getOutputPosition() const noexcept { return outputPosition; }
@@ -38,6 +61,13 @@ public:
     bool isUsingShortWindow() const noexcept { return usingShortWindow; }
     double getSourcePosition() const noexcept;
     bool isPrepared() const noexcept { return prepared; }
+    void usePreparedRender(std::shared_ptr<const KeepLengthRender> render) noexcept
+    { preparedRender = std::move(render); }
+    // Worker-only preparation. A prepared state is consumed by one voice;
+    // neither FFT plans nor mutable processing state are shared between voices.
+    void prime(const juce::AudioBuffer<float>& source) noexcept;
+    void usePreparedState(std::shared_ptr<KeepLengthPreparedState> state) noexcept;
+    void releasePreparedState() noexcept { preparedState.reset(); }
 
 private:
     using Stretch = signalsmith::stretch::SignalsmithStretch<float>;
@@ -81,6 +111,17 @@ private:
     int outputPosition { 0 };
     int outputLength { 0 };
     int processLength { 0 };
+    int tailOutputOffset { 0 };
+    int tailOutputLength { 0 };
     int shortTransientPosition { 0 };
     float initialPitchSemitones { 0.0f };
+    std::shared_ptr<const KeepLengthRender> preparedRender;
+    std::shared_ptr<KeepLengthPreparedState> preparedState;
+};
+
+struct KeepLengthPreparedState : KeepLengthRender
+{
+    KeepLengthEngine engine;
+    std::uint64_t reservedBytes {};
+    int preparedBlockSize {};
 };

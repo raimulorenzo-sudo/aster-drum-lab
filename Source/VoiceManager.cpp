@@ -1,5 +1,6 @@
 #include "VoiceManager.h"
 #include "FaderCurve.h"
+#include "KeepLengthRenderCache.h"
 
 namespace
 {
@@ -13,6 +14,14 @@ void accumulatePeak(std::atomic<float>& destination, float value) noexcept
     {
     }
 }
+struct ReleaseFinishedState
+{
+    DrumVoice& voice;
+    ~ReleaseFinishedState()
+    {
+        if (!voice.isActive) voice.keepLengthEngine.releasePreparedState();
+    }
+};
 }
 
 VoiceManager::VoiceManager() noexcept
@@ -42,14 +51,18 @@ void VoiceManager::prepare(double hostSampleRate, int maximumBlockSize)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 空きボイスを探す（全部使用中なら index 0 を返す＝最古を奪う）
+// 空きボイスを探す。満杯なら発音順が最も古いボイスを奪う。
 // ─────────────────────────────────────────────────────────────────────────────
 int VoiceManager::findFreeVoice() const noexcept
 {
     for (int i = 0; i < MAX_VOICES; ++i)
         if (!voices[static_cast<size_t>(i)].isActive) return i;
 
-    return 0;   // ボイス・スティーリング（Phase 2 でより賢い実装に変える）
+    int oldest = 0;
+    for (int i = 1; i < MAX_VOICES; ++i)
+        if (voices[(size_t) i].triggerSerial < voices[(size_t) oldest].triggerSerial)
+            oldest = i;
+    return oldest;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,7 +85,7 @@ bool VoiceManager::enforcePolyphonyForPad(int padIndex,
 
     for (auto& v : voices)
     {
-        if (! v.isActive || v.padIndex != padIndex) continue;
+        if (! v.isActive || v.isForcedRelease || v.padIndex != padIndex) continue;
         // すでに記録済みの serial か?
         bool found = false;
         for (int i = 0; i < hitCount; ++i)
@@ -257,6 +270,7 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
     }
 
     bool triggeredAny = false;
+    const uint64_t triggerSerial = ++triggerSerialCounter;
     const int layerCount = pad.layerCount();
     for (int li = 0; li < layerCount; ++li)
     {
@@ -274,7 +288,7 @@ void VoiceManager::startVoicesForPad(int                     padIndex,
         }
 
         if (startLayerVoice(padIndex, li, velocity, kit, files, hostSampleRate,
-                            previewVoice, humanize, previewStartPosition))
+                            previewVoice, humanize, previewStartPosition, triggerSerial))
             triggeredAny = true;
     }
 
@@ -294,7 +308,8 @@ bool VoiceManager::startLayerVoice(int                     padIndex,
                                    double                  hostSampleRate,
                                    bool                    previewVoice,
                                    const PadHumanize&      humanize,
-                                   float                   previewStartPosition)
+                                   float                   previewStartPosition,
+                                   uint64_t                triggerSerial)
 {
     if (padIndex < 0 || padIndex >= NUM_PADS) return false;
 
@@ -469,7 +484,7 @@ bool VoiceManager::startLayerVoice(int                     padIndex,
             fadeInSamp,
             fadeOutSamp,
             totalSamples,
-            ++triggerSerialCounter,
+            triggerSerial,
             startDelaySamples,
             previewVoice,
             pad.swapLR,
@@ -479,6 +494,17 @@ bool VoiceManager::startLayerVoice(int                     padIndex,
             humanize.pitchOffset,
             L.hold,
             L.decay);
+    if (L.keepLength && keepLengthCache)
+    {
+        if ((endSamp - startSamp) / sampleRateRatio > hostSampleRate * KeepLengthRenderCache::fullRenderSeconds)
+            v.keepLengthEngine.usePreparedState(keepLengthCache->takePreparedState(padIndex, layerIndex,
+                variationIndex, buf, hostSampleRate, startSamp, endSamp,
+                sampleRateRatio, L.reverse, humanizedPitch));
+        else
+            v.keepLengthEngine.usePreparedRender(keepLengthCache->find(padIndex, layerIndex,
+                variationIndex, buf, hostSampleRate, startSamp, endSamp,
+                sampleRateRatio, L.reverse, humanizedPitch));
+    }
     return true;
 }
 
@@ -552,6 +578,7 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
 
     for (auto& voice : voices)
     {
+        const ReleaseFinishedState release { voice };
         if (!voice.isActive) continue;
 
         if (voice.padIndex < 0 || voice.padIndex >= NUM_PADS)
@@ -563,7 +590,10 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         // ── どのバスに送るか決める ────────────────────────────────────────
         const auto& pad = kit.pads[static_cast<size_t>(voice.padIndex)];
         if (! voice.isPreview && (pad.mute || (anySoloActive && ! pad.solo)))
+        {
+            voice.isActive = false;
             continue;
+        }
 
         int busIdx = forceMain ? 0 : pad.outputAssign;
 
@@ -604,6 +634,12 @@ void VoiceManager::process(juce::AudioBuffer<float>* const* busBuffers,
         }
 
         const auto& layer = pad.layers[static_cast<size_t>(voice.layerIndex)];
+        if (! voice.isPreview && (layer.mute || (std::any_of(pad.layers.begin(), pad.layers.end(),
+            [] (const LayerData& l) { return l.solo; }) && ! layer.solo)))
+        {
+            voice.isActive = false;
+            continue;
+        }
         const float livePitch = juce::jlimit(
             -48.0f, 48.0f,
             layer.pitch + (layer.fine / 100.0f)
@@ -747,8 +783,23 @@ void VoiceManager::resetRoundRobinForPad(int padIndex) noexcept
 // ─────────────────────────────────────────────────────────────────────────────
 // 全ボイス停止
 // ─────────────────────────────────────────────────────────────────────────────
+void VoiceManager::stopSampleVoices(int padIndex, int layerIndex, int variationIndex) noexcept
+{
+    for (auto& voice : voices)
+        if (voice.isActive && voice.padIndex == padIndex
+            && (layerIndex < 0 || voice.layerIndex == layerIndex)
+            && (variationIndex < 0 || voice.sampleVariationIndex == variationIndex))
+        {
+            voice.isActive = false;
+            voice.keepLengthEngine.releasePreparedState();
+        }
+}
+
 void VoiceManager::allNotesOff()
 {
     for (auto& v : voices)
+    {
         v.isActive = false;
+        v.keepLengthEngine.releasePreparedState();
+    }
 }

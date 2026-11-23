@@ -10,6 +10,7 @@ import { outputCountOf } from '../../types';
 import { clamp, formatPan } from '../../utils/parameterFormat';
 import { dbToPosition, positionToDb, FADER_DB_FLOOR, FADER_DB_TOP, FADER_SCALE_MARKS, formatFaderDb } from '../../utils/fader';
 import { parseNumericText, parsePanInput } from '../../utils/numericInput';
+import { usePointerDrag } from '../../utils/usePointerDrag';
 import type { PadParams, KitPage, OutputMode } from '../../types';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
@@ -566,6 +567,7 @@ function ChannelStripBodyImpl({
   const fader = clamp(padVolume, 0, 1);
   const [editingVolume, setEditingVolume] = useState(false);
   const [volumeDraft, setVolumeDraft] = useState('');
+  const beginPointerDrag = usePointerDrag(absoluteIndex, onGestureEnd);
 
   const pan = pad.padPan ?? 0;
   const panLabel = formatPan(pan);
@@ -595,7 +597,7 @@ function ChannelStripBodyImpl({
   };
 
   const handleFaderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.detail >= 2) return;
+    if (e.detail >= 2 || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     if (e.altKey) {
@@ -605,7 +607,6 @@ function ChannelStripBodyImpl({
     // ドラッグ開始: 選択集合のスナップショットを取る (単体ならこのチャンネルのみ選択化)
     onVolumeGestureStart();
     const track = e.currentTarget;
-    track.setPointerCapture(e.pointerId);
     const startY = e.clientY;
     const startVolume = padVolume;
     let lastSentAt = 0;
@@ -627,13 +628,9 @@ function ChannelStripBodyImpl({
     const onMove = (ev: PointerEvent) => emitVolume(ev.clientY, ev.metaKey || ev.ctrlKey);
     const onUp = () => {
       if (latestValue !== lastSentValue) onVolumeCommit(latestValue);
-      onGestureEnd();
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
     };
 
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    beginPointerDrag(e, onMove, onUp);
   };
 
   const beginVolumeEdit = () => {
@@ -669,9 +666,8 @@ function ChannelStripBodyImpl({
   // pointerdown(capture) でスナップショットを取り、pointerup で gesture を閉じる。
   // Alt+クリックは reset (相対ドラッグではない) なので gesture を張らない。
   const handlePanPointerDownCapture = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.altKey) return;
+    if (e.altKey || e.button !== 0 || e.detail >= 2) return;
     onPanGestureStart();
-    window.addEventListener('pointerup', onGestureEnd, { once: true });
   };
 
   return (
@@ -718,6 +714,7 @@ function ChannelStripBodyImpl({
           parseInput={parsePanInput}
           onChange={(v) => onPanCommit(v)}
           onReset={onResetPan}
+          onGestureEnd={onGestureEnd}
           automationTarget={padAutomationTarget(absoluteIndex, 'padPan', `${padName} Pad Pan`)}
         />
         <div className={styles.panLabel}>{panLabel}</div>

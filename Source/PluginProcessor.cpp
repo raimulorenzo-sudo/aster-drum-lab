@@ -207,14 +207,8 @@ namespace
                 if (dst.layers.empty())
                     dst.layers.emplace_back();
 
-                const auto targetLayerCount = options.samples
-                    ? src.layerCount()
-                    : juce::jmin(dst.layerCount(), src.layerCount());
-
-                while (dst.layerCount() < targetLayerCount)
-                    dst.layers.emplace_back();
-                while (dst.layerCount() > juce::jmax(1, targetLayerCount))
-                    dst.layers.pop_back();
+                if (options.samples)
+                    dst.layers.resize(static_cast<size_t>(juce::jmax(1, src.layerCount())));
 
                 for (int li = 0; li < juce::jmin(dst.layerCount(), src.layerCount()); ++li)
                 {
@@ -252,6 +246,8 @@ namespace
                         dL.velocityMin = sL.velocityMin;
                         dL.velocityMax = sL.velocityMax;
                         dL.eq = sL.eq;
+                        dL.fxChain = sL.fxChain;
+                        dL.polarityInvert = sL.polarityInvert;
                     }
 
                     if (options.mixerSettings)
@@ -299,6 +295,8 @@ namespace
                 dst.velocitySens = src.velocitySens;
                 dst.humanize = src.humanize;
                 dst.velCurve = src.velCurve;
+                dst.polyphony = src.polyphony;
+                dst.voiceSteal = src.voiceSteal;
             }
 
             if (options.mixerSettings)
@@ -366,7 +364,16 @@ DrumSamplerAudioProcessor::DrumSamplerAudioProcessor()
     rebuildMidiMap();
     syncParametersFromKit();
     registerParameterListeners();
+    saveParameters.reserve(static_cast<size_t>(getParameters().size()));
+    for (auto* parameter : getParameters())
+        if (auto* identified = dynamic_cast<juce::AudioProcessorParameterWithID*>(parameter))
+            if (auto* value = parameters.getRawParameterValue(identified->paramID))
+                saveParameters.push_back({ identified->paramID, value });
     loadRecentKitPaths();
+    keepLengthCache = std::make_unique<KeepLengthRenderCache>([this](auto& requests) {
+        return captureKeepLengthRequests(requests);
+    });
+    voiceManager.setKeepLengthCache(keepLengthCache.get());
     clearKitDirty();
 }
 
@@ -401,7 +408,43 @@ bool DrumSamplerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layout
 
 DrumSamplerAudioProcessor::~DrumSamplerAudioProcessor()
 {
+    keepLengthCache->stop();
     removeParameterListeners();
+}
+
+bool DrumSamplerAudioProcessor::captureKeepLengthRequests(
+    std::vector<KeepLengthRenderCache::Request>& requests)
+{
+    const juce::ScopedTryLock callback(getCallbackLock());
+    if (!callback.isLocked()) return false;
+    const juce::ScopedReadLock files(fileManager.getReadWriteLock());
+    for (int p = 0; p < NUM_PADS; ++p)
+    {
+        const auto& pad = kit.pads[(size_t) p];
+        if (pad.humanize > 0.0f) continue; // random pitch/start needs the live engine
+        for (int l = 0; l < pad.layerCount(); ++l)
+        {
+            const auto& layer = pad.layers[(size_t) l];
+            const float pitch = juce::jlimit(-48.0f, 48.0f,
+                layer.pitch + layer.fine / 100.0f + pad.padPitch + pad.padFine / 100.0f);
+            if (!layer.keepLength || std::abs(pitch) <= 1.0e-3f) continue;
+            for (int v = 0; v < juce::jmax(1, (int) layer.sampleStock.size()); ++v)
+            {
+                if (!layer.roundRobin && v != layer.activeSampleStockIndex) continue;
+                auto source = fileManager.getSharedBufferNoLock(p, l, v);
+                if (!source) continue;
+                const bool inactive = v != layer.activeSampleStockIndex && v < (int) layer.sampleStock.size();
+                const auto from = inactive ? layer.sampleStock[(size_t) v].startPosition : layer.startPosition;
+                const auto to = inactive ? layer.sampleStock[(size_t) v].endPosition : layer.endPosition;
+                const double step = fileManager.getSampleRate(p, l, v) / hostSampleRate;
+                requests.push_back({KeepLengthRenderCache::index(p, l, v), std::move(source),
+                    hostSampleRate, from * (double) fileManager.getBufferNoLock(p, l, v)->getNumSamples(),
+                    to * (double) fileManager.getBufferNoLock(p, l, v)->getNumSamples(),
+                    step, pitch, layer.reverse, hostBlockSize});
+            }
+        }
+    }
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -421,6 +464,7 @@ void DrumSamplerAudioProcessor::rebuildMidiMap()
 
 int DrumSamplerAudioProcessor::setPadMidiNote(int padIndex, int midiNote)
 {
+    const juce::ScopedLock callback(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS || midiNote < 0 || midiNote > 127)
         return -2;
 
@@ -473,8 +517,10 @@ bool DrumSamplerAudioProcessor::consumeLearnedMidiNote(int& padIndex, int& midiN
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
+    keepLengthCache->stop();
     browserPreview.stopImmediately();
     hostSampleRate = sampleRate;
+    hostBlockSize = juce::jmax(1, samplesPerBlock);
     voiceManager.allNotesOff();
     voiceManager.prepare(sampleRate, samplesPerBlock);
     // 開始時の不要な ramp を避けるため、現在のマスターボリュームにゲインを合わせる
@@ -482,6 +528,7 @@ void DrumSamplerAudioProcessor::prepareToPlay(double sampleRate, int samplesPerB
     if (parametersNeedSync.exchange(false, std::memory_order_acq_rel))
         syncKitFromParameters();
     syncFxAutomationSlots();
+    keepLengthCache->prepare();
 }
 
 void DrumSamplerAudioProcessor::releaseResources()
@@ -798,6 +845,7 @@ bool DrumSamplerAudioProcessor::hasRecentAudioActivity(double holdSeconds) const
 // ─────────────────────────────────────────────────────────────────────────────
 bool DrumSamplerAudioProcessor::loadSampleForPad(int padIndex, const juce::File& file)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     juce::Logger::writeToLog("[ASTER DND] C++ loadSampleForPad start padIndex="
                              + juce::String(padIndex)
                              + " file=" + file.getFullPathName());
@@ -825,6 +873,7 @@ bool DrumSamplerAudioProcessor::loadSampleForPad(int padIndex, const juce::File&
         return false;
     }
     fileManager.setActiveVariationIndex(padIndex, 0, variationIndex);
+    voiceManager.stopSampleVoices(padIndex, 0, variationIndex);
     voiceManager.resetRoundRobin(padIndex, 0);
     voiceManager.clearPadClip(padIndex);
 
@@ -898,7 +947,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
     // Layer 0 を flat fields に同期（再生は layers[] を参照）
     pad.syncLayer0FromFlat();
 
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -907,6 +956,7 @@ void DrumSamplerAudioProcessor::resetSampleDependentParameters(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::auditionPadOn(int padIndex, float velocity)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     // Layer 0 だけでなく、いずれかの Layer にバッファがあれば鳴らす。
@@ -947,6 +997,7 @@ void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
                                                 int layerIndex,
                                                 float velocity)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     const auto& padRef = kit.pads[static_cast<size_t>(padIndex)];
@@ -975,6 +1026,7 @@ void DrumSamplerAudioProcessor::auditionLayerOn(int padIndex,
 
 void DrumSamplerAudioProcessor::auditionPadOff(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
     voiceManager.previewNoteOff(padIndex, hostSampleRate);
 }
@@ -1054,8 +1106,10 @@ void DrumSamplerAudioProcessor::applyAutoFadeOnTrim(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::clearPadSample(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
+    voiceManager.stopSampleVoices(padIndex);
     fileManager.clearPad(padIndex);
     voiceManager.resetRoundRobinForPad(padIndex);
     voiceManager.clearPadClip(padIndex);
@@ -1068,13 +1122,14 @@ void DrumSamplerAudioProcessor::clearPadSample(int padIndex)
     padRef.layers.emplace_back();
     padRef.syncLayer0FromFlat();
     // padName はクリアしない
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
 }
 
 // 任意 Layer にサンプルを読み込む（Layer 0 は flat fields とミラーする）。
 bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex, const juce::File& file)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return false;
     if (! file.existsAsFile()) return false;
 
@@ -1098,6 +1153,7 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     if (! fileManager.loadFileForPadVariation(padIndex, layerIndex, variationIndex, file))
         return false;
     fileManager.setActiveVariationIndex(padIndex, layerIndex, variationIndex);
+    voiceManager.stopSampleVoices(padIndex, layerIndex, variationIndex);
     voiceManager.resetRoundRobin(padIndex, layerIndex);
 
     voiceManager.clearPadClip(padIndex);
@@ -1113,7 +1169,7 @@ bool DrumSamplerAudioProcessor::loadSampleForLayer(int padIndex, int layerIndex,
     L.keepLength    = keepLengthOnSampleLoad.load(std::memory_order_relaxed);
     L.captureActiveSampleToStock();
 
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
     return true;
 }
@@ -1122,6 +1178,7 @@ bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
                                                              int layerIndex,
                                                              const juce::File& file)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS || ! file.existsAsFile()) return false;
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
@@ -1136,6 +1193,7 @@ bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
     if (! fileManager.loadFileForPadVariation(padIndex, layerIndex, targetIndex, file))
         return false;
     fileManager.setActiveVariationIndex(padIndex, layerIndex, targetIndex);
+    voiceManager.stopSampleVoices(padIndex, layerIndex, targetIndex);
     voiceManager.resetRoundRobin(padIndex, layerIndex);
     voiceManager.clearPadClip(padIndex);
 
@@ -1173,7 +1231,7 @@ bool DrumSamplerAudioProcessor::addOrReplaceLayerSampleStock(int padIndex,
     if (layerIndex == 0)
         pad.syncFlatFromLayer0();
 
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
     return true;
 }
@@ -1182,6 +1240,7 @@ bool DrumSamplerAudioProcessor::selectLayerSampleStock(int padIndex,
                                                        int layerIndex,
                                                        int stockIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return false;
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
@@ -1197,7 +1256,7 @@ bool DrumSamplerAudioProcessor::selectLayerSampleStock(int padIndex,
     layer.captureActiveSampleToStock();
     if (layerIndex == 0)
         pad.syncFlatFromLayer0();
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
     return true;
 }
@@ -1206,6 +1265,7 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
                                                        int layerIndex,
                                                        int stockIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return false;
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
@@ -1214,6 +1274,7 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
     if (stockIndex < 0 || stockIndex >= (int) layer.sampleStock.size()) return false;
 
     const int previousActive = layer.activeSampleStockIndex;
+    voiceManager.stopSampleVoices(padIndex, layerIndex);
     layer.sampleStock.erase(layer.sampleStock.begin() + stockIndex);
     if (layer.sampleStock.size() < 2)
         layer.roundRobin = false;
@@ -1247,19 +1308,21 @@ bool DrumSamplerAudioProcessor::removeLayerSampleStock(int padIndex,
 
     if (layerIndex == 0)
         pad.syncFlatFromLayer0();
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
     return true;
 }
 
 void DrumSamplerAudioProcessor::reloadLayerSampleVariations(int padIndex, int layerIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
 
     auto& layer = pad.layers[static_cast<size_t>(layerIndex)];
     layer.captureActiveSampleToStock();
+    voiceManager.stopSampleVoices(padIndex, layerIndex);
     fileManager.clearLayer(padIndex, layerIndex);
 
     const int count = juce::jmin(static_cast<int>(layer.sampleStock.size()),
@@ -1290,11 +1353,13 @@ void DrumSamplerAudioProcessor::reloadLayerSampleVariations(int padIndex, int la
 // 任意 Layer のサンプルだけ消去 (Layer 構造は維持し、空 Layer として残す)。
 void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
 
+    voiceManager.stopSampleVoices(padIndex, layerIndex);
     if (layerIndex == 0)
     {
         // Layer 0 は flat fields と AudioFileManager の slot 0 をクリア
@@ -1325,7 +1390,7 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
         L.roundRobin = false;
     }
 
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
 }
 
@@ -1344,6 +1409,7 @@ void DrumSamplerAudioProcessor::clearLayerSample(int padIndex, int layerIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::copyPad(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     padClipboard   = kit.pads[static_cast<size_t>(padIndex)];
@@ -1357,6 +1423,7 @@ void DrumSamplerAudioProcessor::copyPad(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::pastePad(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (! clipboardValid)                       return;
     if (padIndex < 0 || padIndex >= NUM_PADS)   return;
 
@@ -1373,6 +1440,7 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
 
     // サンプルもコピー: Layer ごとのパスを再ロードする。Layer 0 だけを見ると
     // multi-layer pad の Paste 後に L2+ が無音になるため、全 Layer を同期する。
+    voiceManager.stopSampleVoices(padIndex);
     fileManager.clearPad(padIndex);
     voiceManager.resetRoundRobinForPad(padIndex);
     for (int li = 0; li < dst.layerCount(); ++li)
@@ -1380,7 +1448,7 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
     dst.syncFlatFromLayer0();
 
     voiceManager.clearPadClip(padIndex);
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
 }
 
@@ -1389,6 +1457,7 @@ void DrumSamplerAudioProcessor::pastePad(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
@@ -1400,6 +1469,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
     const auto         keepColourMode = pad.padColourMode;
 
     // バッファとサンプル情報を消去
+    voiceManager.stopSampleVoices(padIndex);
     fileManager.clearPad(padIndex);
     voiceManager.resetRoundRobinForPad(padIndex);
     voiceManager.clearPadClip(padIndex);
@@ -1415,7 +1485,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
     pad.swapLR = false;
     pad.padColourARGB = keepColour;
     pad.padColourMode = keepColourMode;
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
 }
 
@@ -1425,6 +1495,7 @@ void DrumSamplerAudioProcessor::clearPadFull(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
 
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
@@ -1441,13 +1512,29 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     const auto         keepColour = pad.padColourARGB;
     const auto         keepColourMode = pad.padColourMode;
 
-    // 全フィールドをデフォルトに
+    // Preserve all sample banks and active buffer slots when resetting settings.
+    const auto sampleLayers = pad.layers;
     pad = PadData{};
+    pad.layers.resize(juce::jmax((size_t) 1, sampleLayers.size()));
+    for (size_t li = 0; li < sampleLayers.size(); ++li)
+    {
+        auto& layer = pad.layers[li];
+        const auto& previous = sampleLayers[li];
+        layer.sampleStock = previous.normalizedSampleStock();
+        layer.activeSampleStockIndex = previous.activeSampleStockIndex;
+        layer.layerName = previous.layerName;
+        for (auto& item : layer.sampleStock)
+        {
+            item.startPosition = 0.0f; item.endPosition = 1.0f;
+            item.fadeIn = 0.0f; item.fadeOut = 0.0f;
+        }
+        if (! layer.sampleStock.empty()) layer.activateSampleStockItem(layer.activeSampleStockIndex);
+    }
 
     // 復元
     pad.padName        = keepName;
     pad.midiNote       = keepMidi;
-    pad.volume         = keepVolume;
+    pad.layers[0].volume = keepVolume;
     pad.sampleFileName = keepFile;
     pad.sampleFilePath = keepPath;
     pad.sampleMissing  = keepMissing;
@@ -1455,9 +1542,9 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
     pad.swapLR         = keepSwapLR;
     pad.padColourARGB  = keepColour;
     pad.padColourMode  = keepColourMode;
-    pad.syncLayer0FromFlat();
+    pad.syncFlatFromLayer0();
     voiceManager.clearPadClip(padIndex);
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
 }
 
@@ -1469,6 +1556,7 @@ void DrumSamplerAudioProcessor::resetPadSettings(int padIndex)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::swapPads(int a, int b)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (a == b)                 return;
     if (a < 0 || a >= NUM_PADS) return;
     if (b < 0 || b >= NUM_PADS) return;
@@ -1482,6 +1570,8 @@ void DrumSamplerAudioProcessor::swapPads(int a, int b)
     const int outputA = pa.outputAssign;
     const int outputB = pb.outputAssign;
 
+    voiceManager.stopSampleVoices(a);
+    voiceManager.stopSampleVoices(b);
     std::swap(pa, pb);
 
     pa.midiNote = midiA;
@@ -1639,6 +1729,7 @@ void DrumSamplerAudioProcessor::resetMixerPage(int page)
 
 void DrumSamplerAudioProcessor::newKit()
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     kit.resetToDefaults();
     kit.outputMode = kit.defaultOutputMode;
     currentKitFile = juce::File{};
@@ -1692,11 +1783,6 @@ bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
    #endif
     if (file == juce::File{}) return false;
 
-    syncKitFromParameters();
-    syncFxAutomationSlots();
-    kit.kitVersion = CURRENT_KIT_VERSION;
-    kit.pluginVersion = JucePlugin_VersionString;
-
     juce::File outFile = file;
     if (outFile.getFileExtension().isEmpty())
         outFile = outFile.withFileExtension(kKitFileExtension);
@@ -1710,16 +1796,36 @@ bool DrumSamplerAudioProcessor::saveKitToFile(const juce::File& file)
     if (isDefaultKitName(nextKitName))
         return false;
 
-    const auto json = makeAsterKitJson(kit, nextKitName);
+    KitData snapshot;
+    std::uint64_t savedEdits = 0, savedKitGeneration = 0;
+    {
+        const juce::ScopedLock guard(getCallbackLock());
+        syncKitFromParameters();
+        syncFxAutomationSlots();
+        kit.kitVersion = CURRENT_KIT_VERSION;
+        kit.pluginVersion = JucePlugin_VersionString;
+        snapshot = kit;
+        savedEdits = kitEditGeneration.load(std::memory_order_relaxed);
+        savedKitGeneration = browserKitGeneration.load(std::memory_order_relaxed);
+    }
+    const auto json = makeAsterKitJson(snapshot, nextKitName);
     const auto text = juce::JSON::toString(json, false);
 
     if (! outFile.replaceWithText(text))
         return false;
 
-    kit.kitName = nextKitName;
-    currentKitFile = outFile;
+    {
+        const juce::ScopedLock guard(getCallbackLock());
+        if (browserKitGeneration.load(std::memory_order_relaxed) == savedKitGeneration)
+        {
+            kit.kitName = nextKitName;
+            currentKitFile = outFile;
+            // Edits made while the file was being written remain unsaved.
+            if (kitEditGeneration.load(std::memory_order_relaxed) == savedEdits)
+                clearKitDirty();
+        }
+    }
     addRecentKitPath(outFile);
-    clearKitDirty();
     return true;
 }
 
@@ -1748,6 +1854,7 @@ bool DrumSamplerAudioProcessor::loadKitFromFile(const juce::File& file,
     if (! kitTree.isValid())
         return false;
 
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     KitData loadedKit;
     loadedKit.fromValueTree(kitTree);
     loadedKit.kitName = file.getFileNameWithoutExtension();
@@ -1783,6 +1890,7 @@ bool DrumSamplerAudioProcessor::loadKitFromFile(const juce::File& file,
 
 bool DrumSamplerAudioProcessor::applyDefaultKit(const KitLoadOptions& options)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     const bool loadEverything = options.samples
                              && options.padNamesAndColours
                              && options.padParameters
@@ -1828,20 +1936,42 @@ void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     // Flush any host/automation changes that arrived since the last audio
     // block so the Kit snapshot remains the complete source of truth.
-    syncKitFromParameters();
-    syncFxAutomationSlots();
+    KitData snapshot;
+    std::array<juce::String, automationSlotCount> savedTargets;
+    std::vector<float> savedValues(saveParameters.size());
+    {
+        const juce::ScopedLock guard(getCallbackLock());
+        syncKitFromParameters();
+        syncFxAutomationSlots();
+        snapshot = kit;
+        savedTargets = automationSlotTargets;
+        for (size_t i = 0; i < saveParameters.size(); ++i)
+            savedValues[i] = saveParameters[i].value->load(std::memory_order_relaxed);
+    }
+    // The Kit, slot assignments and parameter values now describe one moment.
+    // Do tree allocation and serialization without holding up processBlock.
+    auto parameterState = parameters.copyState();
+    juce::HashMap<juce::String, float> frozenValues;
+    for (size_t i = 0; i < saveParameters.size(); ++i)
+        frozenValues.set(saveParameters[i].id, savedValues[i]);
+    for (int i = 0; i < parameterState.getNumChildren(); ++i)
+    {
+        auto parameter = parameterState.getChild(i);
+        const auto id = parameter.getProperty("id").toString();
+        if (frozenValues.contains(id)) parameter.setProperty("value", frozenValues[id], nullptr);
+    }
     auto root = juce::ValueTree { "DrumSamplerState" };
     root.setProperty(kStateVersionId, kCurrentStateVersion, nullptr);
     if constexpr (AsterDemoMode::isDemoBuild)
         root.setProperty(kDemoSessionId,
                          AsterDemoMode::getProcessSessionIdentifier(), nullptr);
-    root.addChild(kit.toValueTree(), -1, nullptr);
-    root.addChild(parameters.copyState(), -1, nullptr);
+    root.addChild(snapshot.toValueTree(), -1, nullptr);
+    root.addChild(parameterState, -1, nullptr);
 
     juce::ValueTree automationSlotsState { kAutomationSlotsStateId };
     for (int slot = 0; slot < automationSlotCount; ++slot)
         automationSlotsState.setProperty("target" + juce::String(slot + 1).paddedLeft('0', 2),
-                                         automationSlotTargets[static_cast<size_t>(slot)],
+                                         savedTargets[static_cast<size_t>(slot)],
                                          nullptr);
     root.addChild(automationSlotsState, -1, nullptr);
 
@@ -1854,6 +1984,7 @@ void DrumSamplerAudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 // ─────────────────────────────────────────────────────────────────────────────
 void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     juce::MemoryInputStream stream(data, static_cast<size_t>(sizeInBytes), false);
     const auto tree = juce::ValueTree::readFromStream(stream);
 
@@ -1931,6 +2062,191 @@ void DrumSamplerAudioProcessor::setStateInformation(const void* data, int sizeIn
     kitChangedByAutomation.store(true, std::memory_order_release);
 }
 
+std::unique_ptr<DrumSamplerAudioProcessor::PreparedPadUndoState>
+DrumSamplerAudioProcessor::preparePadUndoStates(const juce::Array<juce::var>& states)
+{
+    if (states.isEmpty() || states.size() > NUM_PADS) return {};
+    std::array<bool, NUM_PADS> seen {};
+    auto prepared = std::make_unique<PreparedPadUndoState>();
+    for (const auto& item : states)
+    {
+        const int index = (int) item.getProperty("index", -1);
+        const auto encoded = item.getProperty("state", {}).toString();
+        if (index < 0 || index >= NUM_PADS || seen[(size_t) index]
+            || encoded.isEmpty() || encoded.length() > 1024 * 1024) return {};
+        juce::MemoryBlock data;
+        if (!data.fromBase64Encoding(encoded)) return {};
+        const auto tree = juce::ValueTree::readFromData(data.getData(), data.getSize());
+        if (!tree.hasType("Pad")) return {};
+        PadData pad;
+        pad.fromValueTree(tree);
+        // Layer snapshots follow the UI objects through optimistic add/remove.
+        // This also makes an immediate Redo work before a native echo arrives.
+        if (const auto* layers = item.getProperty("layers", {}).getArray())
+        {
+            if (layers->isEmpty() || layers->size() > MAX_LAYERS_PER_PAD) return {};
+            std::vector<LayerData> nextLayers;
+            for (const auto& layerItem : *layers)
+            {
+                LayerData layer;
+                const auto layerEncoded = layerItem.getProperty("state", {}).toString();
+                if (layerEncoded.isNotEmpty())
+                {
+                    juce::MemoryBlock layerData;
+                    if (layerEncoded.length() > 1024 * 1024 || !layerData.fromBase64Encoding(layerEncoded)) return {};
+                    const auto layerTree = juce::ValueTree::readFromData(layerData.getData(), layerData.getSize());
+                    if (!layerTree.hasType("Layer")) return {};
+                    layer.fromValueTree(layerTree);
+                }
+                const auto* bank = layerItem.getProperty("sampleStock", {}).getArray();
+                if (!bank || bank->size() > MAX_SAMPLE_STOCK_PER_LAYER) return {};
+                const auto stored = layer.normalizedSampleStock();
+                std::vector<LayerSampleStockItem> nextBank;
+                for (const auto& sample : *bank)
+                {
+                    const auto path = sample.getProperty("sampleFilePath", {}).toString();
+                    LayerSampleStockItem next;
+                    const size_t slot = nextBank.size();
+                    if (slot < stored.size() && stored[slot].sampleFilePath == path) next = stored[slot];
+                    else
+                        for (const auto& saved : stored)
+                            if (saved.sampleFilePath == path) { next = saved; break; }
+                    next.sampleFilePath = path;
+                    next.sampleFileName = sample.getProperty("sampleFileName", {}).toString();
+                    next.sampleMissing = (bool) sample.getProperty("sampleMissing", false);
+                    nextBank.push_back(std::move(next));
+                }
+                layer.layerName = layerItem.getProperty("layerName", {}).toString();
+                layer.sampleStock = std::move(nextBank);
+                if (layer.sampleStock.empty())
+                {
+                    layer.sampleFilePath.clear(); layer.sampleFileName.clear(); layer.sampleMissing = false;
+                    layer.activeSampleStockIndex = 0; layer.roundRobin = false;
+                }
+                else
+                    layer.activateSampleStockItem((int) layerItem.getProperty("activeSampleStockIndex", 0));
+                nextLayers.push_back(std::move(layer));
+            }
+            pad.layers = std::move(nextLayers);
+            pad.syncFlatFromLayer0();
+        }
+        prepared->entries.push_back({index, std::move(pad), {}});
+        seen[(size_t) index] = true;
+    }
+    // Only capture shared ownership under the audio lock. File reads and
+    // snapshot parsing must never hold up a render callback.
+    struct Cached { juce::String path; PreparedPadUndoState::Sample sample; };
+    std::vector<std::vector<Cached>> cached(prepared->entries.size());
+    {
+        const juce::ScopedLock guard(getCallbackLock());
+        const juce::ScopedReadLock audioGuard(fileManager.getReadWriteLock());
+        for (size_t ei = 0; ei < prepared->entries.size(); ++ei)
+        {
+            const auto index = prepared->entries[ei].index;
+            const auto& previous = kit.pads[(size_t) index];
+            for (int li = 0; li < previous.layerCount(); ++li)
+            {
+                const auto bank = previous.layers[(size_t) li].normalizedSampleStock();
+                for (size_t si = 0; si < bank.size(); ++si)
+                {
+                    auto audio = fileManager.getSharedBufferNoLock(index, li, (int) si);
+                    if (!audio) continue;
+                    cached[ei].push_back({bank[si].sampleFilePath,
+                        {audio, fileManager.getSampleRate(index, li, (int) si)}});
+                    prepared->retiredAudio.push_back(std::move(audio));
+                }
+            }
+        }
+    }
+    for (size_t ei = 0; ei < prepared->entries.size(); ++ei)
+    {
+        auto& entry = prepared->entries[ei];
+        entry.samples.resize(entry.pad.layers.size());
+        for (size_t li = 0; li < entry.pad.layers.size(); ++li)
+        {
+            auto& layer = entry.pad.layers[li];
+            auto bank = layer.normalizedSampleStock();
+            for (auto& item : bank)
+            {
+                PreparedPadUndoState::Sample sample;
+                for (const auto& saved : cached[ei])
+                    if (saved.path == item.sampleFilePath) { sample = saved.sample; break; }
+                if (!sample.audio && item.sampleFilePath.isNotEmpty())
+                {
+                    auto decoded = decodeSampleFile(juce::File(item.sampleFilePath));
+                    sample.audio = std::move(decoded.audio);
+                    sample.rate = decoded.sampleRate;
+                    if (sample.audio) cached[ei].push_back({item.sampleFilePath, sample});
+                }
+                item.sampleMissing = item.sampleFilePath.isNotEmpty() && !sample.audio;
+                entry.samples[li].push_back(std::move(sample));
+            }
+            layer.sampleStock = std::move(bank);
+            if (!layer.sampleStock.empty()) layer.activateSampleStockItem(layer.activeSampleStockIndex);
+        }
+        entry.pad.syncFlatFromLayer0();
+    }
+    return prepared;
+}
+
+bool DrumSamplerAudioProcessor::restorePadUndoStates(const juce::Array<juce::var>& states)
+{
+    auto prepared = preparePadUndoStates(states);
+    if (!prepared) return false;
+    applyPreparedPadUndoStates(*prepared);
+    return true;
+}
+
+void DrumSamplerAudioProcessor::applyPreparedPadUndoStates(PreparedPadUndoState& prepared)
+{
+    const juce::ScopedLock guard(getCallbackLock());
+    std::array<bool, NUM_PADS> seen {};
+    ++browserKitGeneration;
+    browserPreview.stopImmediately();
+    for (auto& entry : prepared.entries)
+    {
+        const int index = entry.index;
+        seen[(size_t) index] = true;
+        auto& previous = kit.pads[(size_t) index];
+        auto& next = entry.pad;
+        bool reload = previous.layerCount() != next.layerCount();
+        for (int li = 0; !reload && li < next.layerCount(); ++li)
+        {
+            const auto a = previous.layers[(size_t) li].normalizedSampleStock();
+            const auto b = next.layers[(size_t) li].normalizedSampleStock();
+            reload = a.size() != b.size();
+            for (size_t si = 0; !reload && si < a.size(); ++si)
+                reload = a[si].sampleFilePath != b[si].sampleFilePath
+                    || fileManager.getSharedBufferNoLock(index, li, (int) si)
+                        != entry.samples[(size_t) li][si].audio;
+        }
+        if (reload) voiceManager.stopSampleVoices(index);
+        previous = std::move(next);
+        if (reload)
+        {
+            fileManager.clearPad(index);
+            for (size_t li = 0; li < entry.samples.size(); ++li)
+                for (size_t si = 0; si < entry.samples[li].size(); ++si)
+                {
+                    auto& sample = entry.samples[li][si];
+                    if (sample.audio) fileManager.installSharedVariation(index, (int) li, (int) si,
+                                                                         sample.audio, sample.rate);
+                }
+            for (int li = 0; li < previous.layerCount(); ++li)
+                fileManager.setActiveVariationIndex(index, li, previous.layers[(size_t) li].activeSampleStockIndex);
+        }
+        else
+        {
+            for (int li = 0; li < previous.layerCount(); ++li)
+                fileManager.setActiveVariationIndex(index, li, previous.layers[(size_t) li].activeSampleStockIndex);
+        }
+        voiceManager.resetRoundRobinForPad(index);
+    }
+    syncParametersFromKit(&seen);
+    rebuildMidiMap();
+    markKitDirty();
+}
+
 void DrumSamplerAudioProcessor::reloadSamplesFromCurrentKit()
 {
     for (int i = 0; i < NUM_PADS; ++i)
@@ -1948,6 +2264,7 @@ void DrumSamplerAudioProcessor::reloadSamplesFromCurrentKit()
 
 void DrumSamplerAudioProcessor::hydrateRuntimeFromKit(bool restoreFromParametersTree)
 {
+    voiceManager.allNotesOff();
     ++browserKitGeneration;
     browserPreview.stopImmediately();
     if (! restoreFromParametersTree)
@@ -2268,6 +2585,7 @@ void DrumSamplerAudioProcessor::syncFxAutomationSlots()
 void DrumSamplerAudioProcessor::setAutomationSlotTarget(int slotIndex,
                                                         const juce::String& parameterID)
 {
+    const juce::ScopedLock guard(getCallbackLock());
     if (! juce::isPositiveAndBelow(slotIndex, automationSlotCount))
         return;
 
@@ -2721,6 +3039,7 @@ void DrumSamplerAudioProcessor::setAutomatablePadParameter(int padIndex,
                                                            float value,
                                                            bool notifyHost)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
     const auto id = PadParameterSpecs::parameterID(padIndex, param);
     auto* parameter = parameters.getParameter(id);
@@ -2744,6 +3063,7 @@ void DrumSamplerAudioProcessor::setAutomatableLayerParameter(int padIndex,
                                                              float value,
                                                              bool notifyHost)
 {
+    const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS) return;
     auto& pad = kit.pads[static_cast<size_t>(padIndex)];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return;
@@ -2868,7 +3188,7 @@ void DrumSamplerAudioProcessor::setMasterVolumeParameter(float position, bool no
         markKitDirty();
 }
 
-void DrumSamplerAudioProcessor::syncParametersFromKit()
+void DrumSamplerAudioProcessor::syncParametersFromKit(const std::array<bool, NUM_PADS>* changedPads)
 {
     suppressParameterCallbacks.store(true, std::memory_order_release);
 
@@ -2877,6 +3197,7 @@ void DrumSamplerAudioProcessor::syncParametersFromKit()
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
+        if (changedPads != nullptr && !(*changedPads)[(size_t) padIndex]) continue;
         for (const auto& spec : PadParameterSpecs::all())
         {
             const auto id = PadParameterSpecs::parameterID(padIndex, spec.param);
@@ -2904,16 +3225,26 @@ void DrumSamplerAudioProcessor::syncParametersFromKit()
     }
 
     suppressParameterCallbacks.store(false, std::memory_order_release);
-    parametersNeedSync.store(false, std::memory_order_release);
+    // A local edit must not discard a pending host change on another pad.
+    if (changedPads == nullptr) parametersNeedSync.store(false, std::memory_order_release);
 }
 
-void DrumSamplerAudioProcessor::syncKitFromParameters()
+void DrumSamplerAudioProcessor::syncParametersForPad(int padIndex)
+{
+    if (padIndex < 0 || padIndex >= NUM_PADS) return;
+    std::array<bool, NUM_PADS> changedPads {};
+    changedPads[(size_t) padIndex] = true;
+    syncParametersFromKit(&changedPads);
+}
+
+void DrumSamplerAudioProcessor::syncKitFromParameters(int changedPad)
 {
     if (const auto* mv = parameters.getRawParameterValue(kMasterVolumeParamId))
         kit.masterVolume = juce::jlimit(0.0f, 1.0f, mv->load());
 
     for (int padIndex = 0; padIndex < NUM_PADS; ++padIndex)
     {
+        if (changedPad >= 0 && padIndex != changedPad) continue;
         for (const auto& spec : PadParameterSpecs::all())
         {
             const auto id = PadParameterSpecs::parameterID(padIndex, spec.param);
@@ -3074,7 +3405,7 @@ bool DrumSamplerAudioProcessor::commitBrowserSample(int padIndex, int layerIndex
 {
     const juce::ScopedLock callbackGuard(getCallbackLock());
     if (padIndex < 0 || padIndex >= NUM_PADS || ! sample.audio) return false;
-    syncKitFromParameters();
+    syncKitFromParameters(padIndex);
     auto& pad = kit.pads[(size_t) padIndex];
     if (layerIndex < 0 || layerIndex >= pad.layerCount()) return false;
     auto& layer = pad.layers[(size_t) layerIndex];
@@ -3086,6 +3417,7 @@ bool DrumSamplerAudioProcessor::commitBrowserSample(int padIndex, int layerIndex
     const int target = replace ? active : count;
     if (! fileManager.installDecodedVariation(padIndex, layerIndex, target,
                                               std::move(sample.audio), sample.sampleRate)) return false;
+    if (replace) voiceManager.stopSampleVoices(padIndex, layerIndex, target);
     layer.captureActiveSampleToStock();
     LayerSampleStockItem item;
     item.sampleFileName = file.getFileName();
@@ -3097,7 +3429,7 @@ bool DrumSamplerAudioProcessor::commitBrowserSample(int padIndex, int layerIndex
     fileManager.setActiveVariationIndex(padIndex, layerIndex, target);
     voiceManager.resetRoundRobin(padIndex, layerIndex);
     if (layerIndex == 0) pad.syncFlatFromLayer0();
-    syncParametersFromKit();
+    syncParametersForPad(padIndex);
     markKitDirty();
     return true;
 }

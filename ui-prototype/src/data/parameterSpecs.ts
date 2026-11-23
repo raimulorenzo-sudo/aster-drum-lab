@@ -96,7 +96,7 @@ export function automationPadLabel(index: number, pad: Pick<PadParams, 'padName'
   return `${bank}${String(index + 1).padStart(2, '0')} ${pad.padName} ${spec.label}`;
 }
 
-export function resettablePadSettings(_padIndex: number): Partial<PadParams> {
+export function resettablePadSettings(_padIndex: number, sampleLengthMs: number = defaultPadParam('endMs')): Partial<PadParams> {
   return {
     pan: defaultPadParam('pan'),
     pitch: defaultPadParam('pitch'),
@@ -106,7 +106,7 @@ export function resettablePadSettings(_padIndex: number): Partial<PadParams> {
     decay: defaultPadParam('decay'),
     release: defaultPadParam('release'),
     startMs: defaultPadParam('startMs'),
-    endMs: defaultPadParam('endMs'),
+    endMs: Number.isFinite(sampleLengthMs) && sampleLengthMs > 0 ? sampleLengthMs : defaultPadParam('endMs'),
     fadeInMs: defaultPadParam('fadeInMs'),
     fadeOutMs: defaultPadParam('fadeOutMs'),
     reverse: defaultPadParam('reverse'),

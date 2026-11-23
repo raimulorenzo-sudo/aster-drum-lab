@@ -147,6 +147,7 @@ struct DrumVoice
     bool  oneShotDecayEnabled { false };
     bool  attackComplete { false };
     bool  isReleasing  { false };
+    bool  isForcedRelease { false }; // Steal/choke tails no longer occupy a Pad hit slot.
 
     // ── Phase 2: ピッチ / リバース / フェード ────────────────────────────
     double playbackRatio { 1.0  };   // 再生速度比（2^(semitones/12)）ピッチシフト

@@ -11,6 +11,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { selectedLayerIndexOf } from '../../utils/layerView';
 import { padAutomationTarget } from '../../utils/automationTarget';
+import { usePointerDrag } from '../../utils/usePointerDrag';
 
 interface WaveformEditorProps {
   pad: PadParams;
@@ -62,6 +63,8 @@ function WaveformEditorComponent({
   const [draggingHandle, setDraggingHandle] = useState<WaveHandle | null>(null);
   const [isSampleDragOver, setIsSampleDragOver] = useState(false);
   const [sampleStockOpen, setSampleStockOpen] = useState(false);
+  const dragOwner = `${padIndex}:${selectedLayerIndexOf(pad)}:${pad.sampleFilePath}:${pad.activeSampleStockIndex ?? 0}`;
+  const beginPointerDrag = usePointerDrag(dragOwner);
   const [waveformDisplayMode, setWaveformDisplayMode] = useState<'stereo' | 'sum'>('stereo');
 
   // ── View state (一時的 / 表示専用 / 保存対象外) ─────────────────
@@ -76,7 +79,8 @@ function WaveformEditorComponent({
     setViewStartPct(0);
     setViewEndPct(1);
     setWaveformDisplayMode('stereo');
-  }, [padIndex, pad.sampleFilePath]);
+    setDraggingHandle(null);
+  }, [dragOwner]);
 
   // Preview playhead position is updated around 30fps by requestAnimationFrame.
   // Storing it in React state would re-render the entire SVG every frame
@@ -501,6 +505,7 @@ function WaveformEditorComponent({
   // ── View Range Bar (下部の細いバーで現在ビュー範囲を pan) ──────────
   const handleRangePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const track = e.currentTarget.parentElement as HTMLDivElement | null;
@@ -511,7 +516,6 @@ function WaveformEditorComponent({
       if (width >= 1) return; // fit 状態では pan 不要
       const startPointerPct = (e.clientX - rect.left) / rect.width;
       const startViewStart = viewStartPct;
-      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* noop */ }
 
       const onMove = (ev: PointerEvent) => {
         const pct = (ev.clientX - rect.left) / rect.width;
@@ -521,18 +525,14 @@ function WaveformEditorComponent({
         setViewStartPct(nextStart);
         setViewEndPct(nextStart + width);
       };
-      const onUp = () => {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      beginPointerDrag(e, onMove);
     },
-    [viewStartPct, viewEndPct],
+    [viewStartPct, viewEndPct, beginPointerDrag],
   );
 
   const startTrimDrag = useCallback(
     (e: ReactPointerEvent<SVGElement>, handle: WaveHandle) => {
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       const svg = e.currentTarget.ownerSVGElement ?? (e.currentTarget as SVGSVGElement);
@@ -587,14 +587,10 @@ function WaveformEditorComponent({
       const onUp = () => {
         if (latestPatch) onChange(latestPatch);
         setDraggingHandle(null);
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
       };
-
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      beginPointerDrag(e, onMove, onUp);
     },
-    [msFromPointer, onChange, trim.endMs, trim.fadeInMs, trim.fadeOutMs, trim.startMs],
+    [beginPointerDrag, msFromPointer, onChange, trim.endMs, trim.fadeInMs, trim.fadeOutMs, trim.startMs],
   );
 
   const resetHandle = useCallback(

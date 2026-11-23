@@ -106,11 +106,81 @@ int audibleOnsetPosition(const std::vector<float>& audio)
             return i;
     return static_cast<int>(audio.size());
 }
+
+bool checkStreamingTail()
+{
+    bool ok = true;
+    for (int rate : { 44100, 48000, 96000 })
+        for (int hostBlock : { 64, 256, 1024 })
+            for (int channels : { 1, 2 })
+                for (bool reverse : { false, true })
+                    for (float pitch : { -7.0f, 12.0f })
+                    {
+                        const int length = static_cast<int>(rate * 0.313) + 17;
+                        const int trim = 37;
+                        juce::AudioBuffer<float> source(channels, length + trim * 2);
+                        for (int c = 0; c < channels; ++c)
+                            for (int i = 0; i < source.getNumSamples(); ++i)
+                                source.setSample(c, i, 0.2f * std::sin(static_cast<float>(
+                                    2.0 * juce::MathConstants<double>::pi * (217.0 + c * 113.0) * i / rate)));
+
+                        // Compare host-sized streaming with the library's complete
+                        // terminal flush. A flush ends the stream; repeating one
+                        // small flush per callback used to discard most of the tail.
+                        signalsmith::stretch::SignalsmithStretch<float> reference(0x41535445L);
+                        reference.configure(2, static_cast<int>(rate * 0.040),
+                                             static_cast<int>(rate * 0.010), true);
+                        reference.setTransposeSemitones(pitch);
+                        const int seek = reference.outputSeekLength(1.0f);
+                        juce::AudioBuffer<float> timeline(2, length), expected(2, length);
+                        for (int c = 0; c < 2; ++c)
+                            for (int i = 0; i < length; ++i)
+                                timeline.setSample(c, i, source.getSample(juce::jmin(c, channels - 1),
+                                    trim + (reverse ? length - i - 1 : i)));
+                        std::array<const float*, 2> input { timeline.getReadPointer(0), timeline.getReadPointer(1) };
+                        reference.outputSeek(input, seek);
+                        for (auto& p : input) p += seek;
+                        reference.process(input, length - seek, expected.getArrayOfWritePointers(), length - seek);
+                        std::array<float*, 2> tail { expected.getWritePointer(0, length - seek),
+                                                     expected.getWritePointer(1, length - seek) };
+                        reference.flush(tail, seek, 1.0f);
+
+                        KeepLengthEngine engine;
+                        engine.prepare(rate, hostBlock);
+                        // Voices are reused: cached terminal output from the
+                        // preceding hit must be cleared by start().
+                        for (int trigger = 0; trigger < 2; ++trigger)
+                        {
+                            engine.start(trim, trim + length, 1.0, reverse, pitch);
+                            int position = 0;
+                            float error = 0.0f;
+                            while (const int count = engine.process(source, pitch, hostBlock))
+                            {
+                                for (int c = 0; c < 2; ++c)
+                                {
+                                    const float* actual = c == 0 ? engine.getLeft() : engine.getRight();
+                                    for (int i = 0; i < count; ++i)
+                                        error = juce::jmax(error, std::abs(actual[i] - expected.getSample(c, position + i)));
+                                }
+                                position += count;
+                            }
+                            if (position != length || error > 3.0e-6f)
+                            {
+                                std::cerr << "FAIL: streaming tail rate=" << rate << " block=" << hostBlock
+                                          << " channels=" << channels << " reverse=" << reverse
+                                          << " pitch=" << pitch << " maxError=" << error << '\n';
+                                ok = false;
+                            }
+                        }
+                    }
+    return ok;
+}
 }
 
 int main()
 {
     bool ok = true;
+    ok &= checkStreamingTail();
     const auto source = makeTone(sampleRate);
 
     KeepLengthEngine fixed;
@@ -139,6 +209,22 @@ int main()
         peak = juce::jmax(peak, std::abs(sample));
     }
     ok &= check(finite && peak > 0.01f, "automation produced invalid or silent audio");
+
+    KeepLengthEngine deferredTone;
+    deferredTone.prepare(sampleRate, blockSize);
+    deferredTone.start(0.0, source.getNumSamples(), 1.0, false, 0.0f);
+    std::vector<float> deferredAudio;
+    for (int position = 0; position < sampleRate;)
+    {
+        const float pitch = position < sampleRate / 2 ? 0.0f : 12.0f;
+        const int count = deferredTone.process(source, pitch, blockSize);
+        if (count <= 0) break;
+        deferredAudio.insert(deferredAudio.end(), deferredTone.getLeft(), deferredTone.getLeft() + count);
+        position += count;
+    }
+    ok &= check(deferredAudio.size() == static_cast<size_t>(source.getNumSamples()), "zero-to-pitched automation changed duration");
+    const double deferredFrequency = frequencyFromPositiveCrossings(deferredAudio, sampleRate * 7 / 10, sampleRate * 9 / 10);
+    ok &= check(std::abs(deferredFrequency - 440.0) < 12.0, "pitch automation after the dry path did not reach one octave");
 
     // Very short drum hits are shorter than the stretcher's analysis window.
     // They use the padded one-shot path and must still remain audible and keep
@@ -314,6 +400,41 @@ int main()
                                     std::abs(output.getSample(0, i) - source.getSample(0, i)));
     ok &= check(zeroPitchError < 1.0e-6f,
                 "zero Pitch no longer uses the transparent dry path");
+
+    // Pitch may stay at zero for most of a hit, then change near its end.
+    // A deferred FFT seek must start at the current timeline, never replay the
+    // source onset, and must also handle a hit shorter than the analysis window.
+    for (int length : { 1024, transientLength, sampleRate })
+        for (bool reverse : { false, true })
+        {
+            auto changingSource = makeTone(length, 900.0);
+            const int silentFrom = length / 2;
+            if (reverse) changingSource.clear(0, silentFrom);
+            else changingSource.clear(silentFrom, length - silentFrom);
+            KeepLengthEngine deferred;
+            deferred.prepare(sampleRate, blockSize);
+            deferred.start(0.0, length, 1.0, reverse, 0.0f);
+            int rendered = 0;
+            float tailPeak = 0;
+            bool dryExact = true, allFinite = true;
+            while (true)
+            {
+                const bool dry = rendered < length * 3 / 4;
+                const int count = deferred.process(changingSource, dry ? 0.0f : 12.0f, blockSize);
+                if (count <= 0) break;
+                for (int i = 0; i < count; ++i)
+                {
+                    const float actual = deferred.getLeft()[i];
+                    allFinite &= std::isfinite(actual);
+                    if (dry) dryExact &= actual == changingSource.getSample(0, reverse ? length - rendered - i - 1 : rendered + i);
+                    else tailPeak = juce::jmax(tailPeak, std::abs(actual));
+                }
+                rendered += count;
+            }
+            ok &= check(dryExact && allFinite && rendered == length, "deferred zero-pitch path changed dry audio or duration");
+            if (length == sampleRate)
+                ok &= check(tailPeak < 1.0e-5f, "late pitch automation replayed the source onset");
+        }
 
     DrumVoice invertedVoice;
     invertedVoice.prepare(sampleRate, blockSize);

@@ -7,6 +7,7 @@
 #include "PadParameterSpecs.h"
 #include "LayerParameterSpecs.h"
 #include "DemoMode.h"
+#include "KeepLengthRenderCache.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DrumSamplerAudioProcessor  ─  プラグインのメインクラス（バックエンド）
@@ -54,6 +55,16 @@ public:
     // ── Kit 保存 / 読み込み（DAW セッション保存に使われる） ───────────────
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
+    bool restorePadUndoStates(const juce::Array<juce::var>& states);
+    struct PreparedPadUndoState
+    {
+        struct Sample { std::shared_ptr<const juce::AudioBuffer<float>> audio; double rate = 44100.0; };
+        struct Entry { int index; PadData pad; std::vector<std::vector<Sample>> samples; };
+        std::vector<Entry> entries;
+        std::vector<std::shared_ptr<const juce::AudioBuffer<float>>> retiredAudio;
+    };
+    std::unique_ptr<PreparedPadUndoState> preparePadUndoStates(const juce::Array<juce::var>& states);
+    void applyPreparedPadUndoStates(PreparedPadUndoState& prepared);
 
     // ── UI から呼ばれる公開 API ───────────────────────────────────────────
 
@@ -168,9 +179,9 @@ public:
     {
         return voiceManager.getPadPlayheadPosition(padIndex, outPosition);
     }
-    bool isKitDirty() const noexcept { return kitDirty; }
-    void markKitDirty() noexcept { kitDirty = true; }
-    void clearKitDirty() noexcept { kitDirty = false; }
+    bool isKitDirty() const noexcept { return kitDirty.load(std::memory_order_acquire); }
+    void markKitDirty() noexcept { kitEditGeneration.fetch_add(1, std::memory_order_relaxed); kitDirty.store(true, std::memory_order_release); }
+    void clearKitDirty() noexcept { kitDirty.store(false, std::memory_order_release); }
 
     // ホストのサンプルレート
     double getHostSampleRate() const noexcept { return hostSampleRate; }
@@ -206,8 +217,9 @@ public:
     // マスター出力ボリュームを APVTS パラメータ経由で設定 (ホストに gesture / automation
     // を通知し、kit.masterVolume も同期)。UI ノブからはこれを通す。
     void setMasterVolumeParameter(float position, bool notifyHost = true);
-    void syncParametersFromKit();
-    void syncKitFromParameters();
+    void syncParametersFromKit(const std::array<bool, NUM_PADS>* changedPads = nullptr);
+    void syncParametersForPad(int padIndex);
+    void syncKitFromParameters(int changedPad = -1);
 
     // ── User-assignable DAW automation slots ─────────────────────────
     static constexpr int automationSlotCount = 24;
@@ -272,10 +284,17 @@ private:
     std::atomic<std::uint64_t> browserKitGeneration { 0 };
     KitData          kit;
     juce::AudioProcessorValueTreeState parameters;
+    // Fixed for this processor's lifetime. Snapshotting reads raw atomics;
+    // the much slower APVTS ValueTree copy can then happen outside the audio lock.
+    struct SaveParameter { juce::String id; std::atomic<float>* value; };
+    std::vector<SaveParameter> saveParameters;
     AudioFileManager fileManager;
+    std::unique_ptr<KeepLengthRenderCache> keepLengthCache;
     VoiceManager     voiceManager;
 
     double hostSampleRate { 44100.0 };
+    int hostBlockSize { 512 };
+    bool captureKeepLengthRequests(std::vector<KeepLengthRenderCache::Request>& requests);
 
     // MIDI ノート番号 → パッドインデックスのテーブル
     // midiNoteTopad[note] = padIndex (0〜47), または -1（未割り当て）
@@ -284,7 +303,8 @@ private:
     // ── Pad クリップボード（Copy/Paste 用） ────────────────────────────
     PadData padClipboard {};
     bool    clipboardValid { false };
-    bool    kitDirty { false };
+    std::atomic<bool> kitDirty { false };
+    std::atomic<std::uint64_t> kitEditGeneration { 0 };
     juce::File currentKitFile;
     juce::StringArray recentKitPaths;
 

@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "measure:fps": "node scripts/measure-ui-fps.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:regressions": "node scripts/regression-tests.cjs",
+    "test:controls": "node scripts/control-regression-tests.cjs",
+    "test:gestures": "node scripts/gesture-regression-tests.cjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -18,6 +21,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "react-test-renderer": "18.3.1",
     "typescript": "^5.5.3",
     "vite": "^5.4.10"
   }

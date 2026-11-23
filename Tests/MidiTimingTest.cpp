@@ -1,4 +1,5 @@
 #include "../Source/PluginProcessor.h"
+#include "RecentKitGuard.h"
 
 #include <array>
 #include <iostream>
@@ -548,6 +549,7 @@ bool layerVelocityRangeAndAutomationSlotsAreStable()
 int main()
 {
     juce::ScopedJuceInitialiser_GUI initialiseJuce;
+    RecentKitGuard recent;
     const auto sampleFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
         .getNonexistentChildFile("aster-midi-timing", ".wav", false);
 

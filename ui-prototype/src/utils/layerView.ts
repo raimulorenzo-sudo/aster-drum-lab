@@ -296,6 +296,8 @@ export function patchRemoveLayer(pad: PadParams, removeIndex: number): Partial<P
     patch.pitch = newLayer0.pitch;
     patch.fine = newLayer0.fine;
     patch.attack = newLayer0.attack;
+    patch.hold = newLayer0.hold;
+    patch.decay = newLayer0.decay;
     patch.release = newLayer0.release;
     patch.startMs = newLayer0.startMs;
     patch.endMs = newLayer0.endMs;

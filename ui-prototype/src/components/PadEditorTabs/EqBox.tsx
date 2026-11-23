@@ -4,7 +4,7 @@ import { Knob } from '../Knob/Knob';
 import { EqCurve } from './EqCurve';
 import type { PointId } from './EqCurve';
 import type { EqParams } from '../../types';
-import { parseNumericText } from '../../utils/numericInput';
+import { parseFrequencyInput, parseNumericText } from '../../utils/numericInput';
 import { layerAutomationTarget, type AutomationTarget } from '../../utils/automationTarget';
 
 interface Props {
@@ -50,6 +50,7 @@ function normToQ(n: number): number {
 export function EqBox({ eq, patchEq, onRemove, padIndex, layerIndex }: Props) {
   const [activeBand, setActiveBand] = useState<PointId>('lowMid');
   const band = eq[activeBand];
+  const ownerKey = `${padIndex ?? 'eq'}:${layerIndex ?? 0}:${activeBand}`;
   const edgeModeKey = activeBand === 'low' ? 'lowMode' : activeBand === 'high' ? 'highMode' : null;
   const isCutMode = edgeModeKey ? eq[edgeModeKey] === 'cut' : false;
   const target = (suffix: string, name: string): AutomationTarget | undefined =>
@@ -122,19 +123,21 @@ export function EqBox({ eq, patchEq, onRemove, padIndex, layerIndex }: Props) {
 
       <div className={`${styles.knobsRow} ${edgeModeKey ? styles.knobsRowWithMode : ''}`}>
         <Knob
+          ownerKey={ownerKey}
           size={32}
           label="FREQ"
           value={freqToNorm(band.freq)}
           defaultValue={freqToNorm(activeBand === 'low' ? 120 : activeBand === 'lowMid' ? 450 : activeBand === 'highMid' ? 2400 : 10000)}
           valueText={fmtFreq(band.freq)}
           parseInput={text => {
-            const v = parseNumericText(text);
+            const v = parseFrequencyInput(text);
             return v == null ? null : freqToNorm(v);
           }}
           onChange={v => patchEq(cur => ({ ...cur, [activeBand]: { ...cur[activeBand], freq: normToFreq(v) } }))}
           automationTarget={target(`${bandPrefix}Freq`, `${BANDS.find(item => item.id === activeBand)?.label} Frequency`)}
         />
         <Knob
+          ownerKey={ownerKey}
           size={32}
           label="GAIN"
           bipolar
@@ -148,6 +151,7 @@ export function EqBox({ eq, patchEq, onRemove, padIndex, layerIndex }: Props) {
           automationTarget={target(`${bandPrefix}Gain`, `${BANDS.find(item => item.id === activeBand)?.label} Gain`)}
         />
         <Knob
+          ownerKey={ownerKey}
           size={32}
           label="Q"
           value={qToNorm(band.q)}

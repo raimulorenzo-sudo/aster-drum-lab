@@ -36,6 +36,8 @@ public:
 
     bool installDecodedVariation(int padIndex, int layerIndex, int variationIndex,
                                  std::unique_ptr<juce::AudioBuffer<float>> audio, double sampleRate);
+    bool installSharedVariation(int padIndex, int layerIndex, int variationIndex,
+                                std::shared_ptr<const juce::AudioBuffer<float>> audio, double sampleRate);
 
     // ── レイヤー個別クリア ─────────────────────────────────────────────────
     void clearLayer(int padIndex, int layerIndex);
@@ -53,6 +55,8 @@ public:
     const juce::AudioBuffer<float>* getBufferNoLock(int padIndex, int layerIndex) const noexcept;
     const juce::AudioBuffer<float>* getBufferNoLock(int padIndex, int layerIndex,
                                                      int variationIndex) const noexcept;
+    std::shared_ptr<const juce::AudioBuffer<float>> getSharedBufferNoLock(
+        int padIndex, int layerIndex, int variationIndex) const noexcept;
     const juce::AudioBuffer<float>* getBufferNoLock(int padIndex) const noexcept
     {
         return getBufferNoLock(padIndex, 0);
@@ -77,9 +81,7 @@ public:
     bool hasSample(int padIndex) const noexcept { return hasSample(padIndex, 0); }
 
 private:
-    juce::AudioFormatManager formatManager;
-
-    using VariationBuffers = std::array<std::unique_ptr<juce::AudioBuffer<float>>,
+    using VariationBuffers = std::array<std::shared_ptr<const juce::AudioBuffer<float>>,
                                         MAX_SAMPLE_STOCK_PER_LAYER>;
     using VariationRates = std::array<double, MAX_SAMPLE_STOCK_PER_LAYER>;
 

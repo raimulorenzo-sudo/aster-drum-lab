@@ -4,13 +4,27 @@ export function parseNumericText(text: string): number | null {
     .toLowerCase()
     .replace(',', '.')
     .replace(/\s+/g, '')
-    .replace(/db|ms|%|st|semitones?|l|r|c/g, '');
+    .replace(/ct|db|ms|%|st|semitones?|l|r|c/g, '');
 
   if (normalized === '' || normalized === '+') return null;
   if (normalized === '-inf' || normalized === 'inf') return -Infinity;
 
   const value = Number(normalized);
   return Number.isFinite(value) || value === -Infinity ? value : null;
+}
+
+export function parseFrequencyInput(text: string): number | null {
+  const match = text.trim().match(/^([+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:e[+-]?\d+)?)\s*(k(?:hz)?|hz)?$/i);
+  if (!match) return null;
+  const value = Number(match[1].replace(',', '.')) * (/^k/i.test(match[2] ?? '') ? 1000 : 1);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function parseRatioInput(text: string): number | null {
+  const match = text.trim().match(/^([+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+))\s*(?::\s*1(?:\.0+)?)?$/);
+  if (!match) return null;
+  const value = Number(match[1].replace(',', '.'));
+  return Number.isFinite(value) ? value : null;
 }
 
 export function parsePercentInput(text: string): number | null {

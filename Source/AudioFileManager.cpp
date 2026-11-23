@@ -1,10 +1,9 @@
 #include "AudioFileManager.h"
+#include "SampleBrowserAudio.h"
+#include <cmath>
 
 AudioFileManager::AudioFileManager()
 {
-    // WAV / AIFF / その他の基本フォーマットを登録
-    formatManager.registerBasicFormats();
-
     // サンプルレートの初期値
     for (auto& padRates : sampleRates)
         for (auto& layerRates : padRates)
@@ -28,37 +27,9 @@ bool AudioFileManager::loadFileForPadVariation(int padIndex, int layerIndex,
 {
     if (! inRange(padIndex, layerIndex) || ! variationInRange(variationIndex)) return false;
 
-    std::unique_ptr<juce::AudioFormatReader> reader(
-        formatManager.createReaderFor(file));
-
-    if (reader == nullptr) return false;
-
-    const int    numSamples  = static_cast<int>(reader->lengthInSamples);
-    const int    numChannels = static_cast<int>(reader->numChannels);
-    const double sr          = reader->sampleRate;
-
-    if (numSamples <= 0) return false;
-
-    const int storeCh = std::min(numChannels, 2);
-    auto newBuffer = std::make_unique<juce::AudioBuffer<float>>(storeCh, numSamples);
-
-    reader->read(newBuffer.get(),
-                 0,
-                 numSamples,
-                 0,
-                 true,
-                 numChannels >= 2);
-
-    {
-        const auto p = static_cast<size_t>(padIndex);
-        const auto l = static_cast<size_t>(layerIndex);
-        const auto v = static_cast<size_t>(variationIndex);
-        juce::ScopedWriteLock wl(rwLock);
-        buffers[p][l][v]     = std::move(newBuffer);
-        sampleRates[p][l][v] = sr;
-    }
-
-    return true;
+    auto decoded = decodeSampleFile(file);
+    return installDecodedVariation(padIndex, layerIndex, variationIndex,
+                                   std::move(decoded.audio), decoded.sampleRate);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -178,6 +149,13 @@ const juce::AudioBuffer<float>* AudioFileManager::getBufferNoLock(
                   [static_cast<size_t>(variationIndex)].get();
 }
 
+std::shared_ptr<const juce::AudioBuffer<float>> AudioFileManager::getSharedBufferNoLock(
+    int padIndex, int layerIndex, int variationIndex) const noexcept
+{
+    if (!inRange(padIndex, layerIndex) || !variationInRange(variationIndex)) return {};
+    return buffers[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex];
+}
+
 double AudioFileManager::getSampleRate(int padIndex, int layerIndex) const noexcept
 {
     if (! inRange(padIndex, layerIndex)) return 44100.0;
@@ -249,11 +227,19 @@ bool AudioFileManager::hasSample(int padIndex, int layerIndex, int variationInde
 bool AudioFileManager::installDecodedVariation(int padIndex, int layerIndex, int variationIndex,
                                                std::unique_ptr<juce::AudioBuffer<float>> audio, double sampleRate)
 {
+    return installSharedVariation(padIndex, layerIndex, variationIndex, std::move(audio), sampleRate);
+}
+
+bool AudioFileManager::installSharedVariation(int padIndex, int layerIndex, int variationIndex,
+                                              std::shared_ptr<const juce::AudioBuffer<float>> audio, double sampleRate)
+{
     if (! inRange(padIndex, layerIndex) || ! variationInRange(variationIndex)
-        || ! audio || audio->getNumSamples() <= 0 || sampleRate <= 0.0) return false;
+        || ! audio || audio->getNumSamples() <= 0 || audio->getNumChannels() < 1
+        || ! std::isfinite(sampleRate) || sampleRate <= 0.0) return false;
+    auto installed = std::move(audio);
     {
         juce::ScopedWriteLock guard(rwLock);
-        buffers[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex].swap(audio);
+        buffers[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex].swap(installed);
         sampleRates[(size_t) padIndex][(size_t) layerIndex][(size_t) variationIndex] = sampleRate;
     }
     return true;

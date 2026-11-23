@@ -126,6 +126,7 @@ target_sources(DrumSampler
         Source/SampleBrowserBridge.cpp
         Source/AudioFileManager.cpp
         Source/KeepLengthEngine.cpp
+        Source/KeepLengthRenderCache.cpp
         Source/SamplerVoice.cpp
         Source/VoiceManager.cpp
         Source/SmartTrim.cpp
@@ -199,12 +200,33 @@ target_link_libraries(DrumSampler
 
 if(ASTER_BUILD_TESTS)
     enable_testing()
+    add_executable(DrumSamplerKeepLengthPreparedStateTests Tests/KeepLengthPreparedStateTest.cpp)
+    target_include_directories(DrumSamplerKeepLengthPreparedStateTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerKeepLengthPreparedStateTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerKeepLengthPreparedState COMMAND DrumSamplerKeepLengthPreparedStateTests)
+    add_executable(DrumSamplerKeepLengthCacheTests Tests/KeepLengthCacheTest.cpp)
+    target_include_directories(DrumSamplerKeepLengthCacheTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerKeepLengthCacheTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerKeepLengthCache COMMAND DrumSamplerKeepLengthCacheTests)
     add_executable(DrumSamplerBrowserTests Tests/SampleBrowserTest.cpp)
     target_include_directories(DrumSamplerBrowserTests PRIVATE
         "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
     target_link_libraries(DrumSamplerBrowserTests PRIVATE DrumSampler)
     add_test(NAME DrumSamplerBrowser COMMAND DrumSamplerBrowserTests)
 
+    add_executable(DrumSamplerStateRegressionTests Tests/StateRegressionTest.cpp)
+    target_include_directories(DrumSamplerStateRegressionTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerStateRegressionTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerStateRegression COMMAND DrumSamplerStateRegressionTests)
+
+    add_executable(DrumSamplerVoiceBehaviorTests Tests/VoiceBehaviorTest.cpp)
+    target_include_directories(DrumSamplerVoiceBehaviorTests PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/DrumSampler_artefacts/JuceLibraryCode" "${juce_SOURCE_DIR}/modules")
+    target_link_libraries(DrumSamplerVoiceBehaviorTests PRIVATE DrumSampler)
+    add_test(NAME DrumSamplerVoiceBehavior COMMAND DrumSamplerVoiceBehaviorTests)
 
     add_executable(DrumSamplerTimingTests
         Tests/MidiTimingTest.cpp
@@ -222,6 +244,8 @@ if(ASTER_BUILD_TESTS)
     )
 
     add_test(NAME DrumSamplerMidiTiming COMMAND DrumSamplerTimingTests)
+    set_tests_properties(DrumSamplerBrowser DrumSamplerStateRegression DrumSamplerMidiTiming DrumSamplerVoiceBehavior
+        PROPERTIES RESOURCE_LOCK ASTERRecentKitStore)
 
     add_executable(DrumSamplerKeepLengthTests
         Tests/KeepLengthTest.cpp

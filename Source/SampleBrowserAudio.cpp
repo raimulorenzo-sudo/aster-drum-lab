@@ -9,12 +9,23 @@ bool isBrowserAudioFile(const juce::File& file)
 
 BrowserSample decodeBrowserSample(const juce::File& file, const std::function<bool()>& cancelled)
 {
+    if (! isBrowserAudioFile(file))
+    {
+        BrowserSample result;
+        result.error = "File unavailable. Choose a WAV or AIFF file.";
+        return result;
+    }
+    return decodeSampleFile(file, cancelled, true);
+}
+
+BrowserSample decodeSampleFile(const juce::File& file, const std::function<bool()>& cancelled, bool analyzeTrim)
+{
     BrowserSample result;
     const auto aborted = [&] { return cancelled && cancelled(); };
     if (aborted()) return result;
-    if (! file.existsAsFile() || ! isBrowserAudioFile(file))
+    if (! file.existsAsFile())
     {
-        result.error = "File unavailable. Choose a WAV or AIFF file.";
+        result.error = "Audio file unavailable.";
         return result;
     }
     juce::AudioFormatManager formats;
@@ -26,12 +37,12 @@ BrowserSample decodeBrowserSample(const juce::File& file, const std::function<bo
         result.error = "This audio file could not be read.";
         return result;
     }
-    const auto channels = juce::jmin(2, static_cast<int>(reader->numChannels));
+    const auto channels = static_cast<int>(juce::jmin(2u, reader->numChannels));
     // Bound allocations, integer conversion, and decode time for corrupt/huge headers.
     constexpr juce::int64 maxDecodedBytes = 128 * 1024 * 1024;
     if (reader->lengthInSamples > maxDecodedBytes / (channels * static_cast<int>(sizeof(float))))
     {
-        result.error = "File too large for the browser (128 MB decoded audio limit).";
+        result.error = "File too large (128 MB decoded audio limit).";
         return result;
     }
     try
@@ -51,9 +62,12 @@ BrowserSample decodeBrowserSample(const juce::File& file, const std::function<bo
                     if (! std::isfinite(buffer->getSample(ch, i))) buffer->setSample(ch, i, 0.0f);
         }
         if (aborted()) return result;
-        const auto trim = SmartTrim::analyze(*buffer, reader->sampleRate);
-        result.trimStart = trim.startPosition;
-        result.trimEnd = trim.endPosition;
+        if (analyzeTrim)
+        {
+            const auto trim = SmartTrim::analyze(*buffer, reader->sampleRate);
+            result.trimStart = trim.startPosition;
+            result.trimEnd = trim.endPosition;
+        }
         result.sampleRate = reader->sampleRate;
         result.audio = std::move(buffer);
     }

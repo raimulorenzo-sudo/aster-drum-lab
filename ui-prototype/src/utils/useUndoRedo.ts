@@ -1,120 +1,69 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/**
- * 値のスナップショット履歴を保持し、Undo / Redo を提供するフック。
- *
- * - value の変化を debounce で監視し、debounceMs 以上連続変化がなければスナップ。
- *   (ノブ連続ドラッグや wheel スクロールで履歴を細切れにしないため)
- * - undo/redo の実行直後は次の自動スナップを 1 回スキップ。
- * - past / future の上限は max。古いほうから捨てる。
- */
+/** Debounced gesture history. Restores are emitted outside React state updaters. */
 export function useUndoRedo<T>(
   value: T,
   setValue: (v: T) => void,
-  options?: { debounceMs?: number; max?: number; onRestore?: (value: T) => void },
-): {
-  undo: () => void;
-  redo: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  clearHistory: () => void;
-} {
+  options?: { debounceMs?: number; max?: number; onRestore?: (value: T) => void; isEqual?: (a: T, b: T) => boolean },
+): { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean; clearHistory: (value?: T) => void } {
   const debounceMs = options?.debounceMs ?? 350;
-  const max        = options?.max        ?? 50;
-  const onRestoreRef = useRef(options?.onRestore);
-
-  const [past,   setPast]   = useState<T[]>([]);
-  const [future, setFuture] = useState<T[]>([]);
-  const lastSnapshotRef = useRef<T>(value);
-  const skipNextRef     = useRef(false);
-  const timerRef        = useRef<number | null>(null);
-
-  useEffect(() => {
-    onRestoreRef.current = options?.onRestore;
-  }, [options?.onRestore]);
+  const max = options?.max ?? 50;
+  const callbacks = useRef({ setValue, onRestore: options?.onRestore, equal: options?.isEqual ?? Object.is });
+  callbacks.current = { setValue, onRestore: options?.onRestore, equal: options?.isEqual ?? Object.is };
+  const latest = useRef(value); latest.current = value;
+  const history = useRef<{ past: T[]; future: T[]; snapshot: T }>({ past: [], future: [], snapshot: value });
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const [, refresh] = useState(0);
+  const cancelTimer = useCallback(() => { clearTimeout(timer.current); timer.current = undefined; }, []);
 
   useEffect(() => {
-    if (skipNextRef.current) {
-      // undo / redo 直後: スナップを取らず、最終スナップ値だけ更新
-      skipNextRef.current = false;
-      lastSnapshotRef.current = value;
+    const h = history.current;
+    if (callbacks.current.equal(value, h.snapshot)) {
+      h.snapshot = value;
       return;
     }
-    if (Object.is(value, lastSnapshotRef.current)) return;
-
-    if (timerRef.current != null) window.clearTimeout(timerRef.current);
-    const prevValue = lastSnapshotRef.current;
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      setPast(p => {
-        const next = [...p, prevValue];
-        return next.length > max ? next.slice(next.length - max) : next;
-      });
-      setFuture([]);
-      lastSnapshotRef.current = value;
+    h.future = [];
+    cancelTimer();
+    timer.current = setTimeout(() => {
+      timer.current = undefined;
+      h.past = [...h.past, h.snapshot].slice(-max);
+      h.snapshot = value;
+      refresh(n => n + 1);
     }, debounceMs);
+    return cancelTimer;
+  }, [value, debounceMs, max, cancelTimer]);
 
-    return () => {
-      // 値がさらに変わったら前回の timeout をキャンセル (debounce 再開)
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [value, debounceMs, max]);
-
+  const restore = useCallback((next: T) => {
+    history.current.snapshot = next;
+    latest.current = next;
+    callbacks.current.setValue(next);
+    callbacks.current.onRestore?.(next);
+    refresh(n => n + 1);
+  }, []);
   const undo = useCallback(() => {
-    setPast(p => {
-      if (p.length === 0) return p;
-      const prev = p[p.length - 1];
-      const current = lastSnapshotRef.current;
-      setFuture(f => [current, ...f]);
-      skipNextRef.current = true;
-      lastSnapshotRef.current = prev;
-      // 進行中の debounce snapshot を確定させない
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      setValue(prev);
-      onRestoreRef.current?.(prev);
-      return p.slice(0, -1);
-    });
-  }, [setValue]);
-
+    const h = history.current;
+    const current = latest.current;
+    const pending = !callbacks.current.equal(current, h.snapshot);
+    if (!pending && h.past.length === 0) return;
+    cancelTimer();
+    const previous = pending ? h.snapshot : h.past.pop()!;
+    h.future = pending ? [current] : [current, ...h.future];
+    restore(previous);
+  }, [cancelTimer, restore]);
   const redo = useCallback(() => {
-    setFuture(f => {
-      if (f.length === 0) return f;
-      const next = f[0];
-      const current = lastSnapshotRef.current;
-      setPast(p => [...p, current]);
-      skipNextRef.current = true;
-      lastSnapshotRef.current = next;
-      if (timerRef.current != null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      setValue(next);
-      onRestoreRef.current?.(next);
-      return f.slice(1);
-    });
-  }, [setValue]);
-
-  const clearHistory = useCallback(() => {
-    setPast([]);
-    setFuture([]);
-    lastSnapshotRef.current = value;
-    if (timerRef.current != null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, [value]);
-
-  return {
-    undo,
-    redo,
-    canUndo: past.length > 0,
-    canRedo: future.length > 0,
-    clearHistory,
-  };
+    const h = history.current;
+    if (!h.future.length || !callbacks.current.equal(latest.current, h.snapshot)) return;
+    cancelTimer();
+    h.past = [...h.past, latest.current].slice(-max);
+    restore(h.future.shift()!);
+  }, [cancelTimer, max, restore]);
+  const clearHistory = useCallback((next: T = latest.current) => {
+    cancelTimer();
+    history.current = { past: [], future: [], snapshot: next };
+    latest.current = next;
+    refresh(n => n + 1);
+  }, [cancelTimer]);
+  const pending = !callbacks.current.equal(value, history.current.snapshot);
+  return { undo, redo, canUndo: pending || history.current.past.length > 0,
+    canRedo: !pending && history.current.future.length > 0, clearHistory };
 }

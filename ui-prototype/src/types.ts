@@ -33,6 +33,8 @@ export interface SampleStockItem {
  *   Layer Vol/Pan/Pitch → Pad Vol/Pan → Output Routing → Main/Multi Out
  */
 export interface LayerParams {
+  /** Native layer snapshot follows this layer through optimistic add/remove. */
+  nativeUndoState?: string;
   // サンプル参照
   sampleFileName: string;
   sampleFilePath: string;
@@ -191,6 +193,8 @@ export function isEqNeutral(eq: EqParams): boolean {
 }
 
 export interface PadParams {
+  /** Complete native sample-bank state for Undo; never interpreted by the UI. */
+  nativeUndoState?: string;
   // 名前管理（最重要: padName は自動変更しない、JUCE 側と同じ仕様）
   padName: string;
   sampleFileName: string;

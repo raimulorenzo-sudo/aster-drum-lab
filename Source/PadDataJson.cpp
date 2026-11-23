@@ -10,6 +10,11 @@ namespace PadDataJson
     juce::var padToVar(const PadData& pad)
     {
         auto* obj = new juce::DynamicObject();
+        juce::MemoryBlock state;
+        juce::MemoryOutputStream stream(state, false);
+        pad.toValueTree().writeToStream(stream);
+        stream.flush();
+        obj->setProperty("nativeUndoState", state.toBase64Encoding());
 
         // 名前管理（重要: padName と sampleFileName は別物）
         obj->setProperty("padName",        pad.padName);
@@ -93,6 +98,11 @@ namespace PadDataJson
         for (const auto& L : pad.layers)
         {
             auto* lo = new juce::DynamicObject();
+            juce::MemoryBlock layerState;
+            juce::MemoryOutputStream layerStream(layerState, false);
+            L.toValueTree().writeToStream(layerStream);
+            layerStream.flush();
+            lo->setProperty("nativeUndoState", layerState.toBase64Encoding());
             lo->setProperty("sampleFileName", L.sampleFileName);
             lo->setProperty("sampleFilePath", L.sampleFilePath);
             lo->setProperty("sampleMissing",  L.sampleMissing);

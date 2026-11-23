@@ -117,10 +117,10 @@ void WebViewEditor::handleBrowserMessage(const juce::String& type, const juce::v
     }
     if (type == "browserChooseFolder")
     {
-        auto chooser = std::make_shared<juce::FileChooser>("Select sample folder", browserDirectory, "");
+        auto chooser = makeFileChooser("Select sample folder", browserDirectory, "");
         const juce::Component::SafePointer<WebViewEditor> safe(this);
-        chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-            [safe, chooser, request](const juce::FileChooser& result)
+        launchFileChooser(chooser, juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [safe, request](const juce::FileChooser& result)
             {
                 if (! safe || safe->activeWebTab != ActiveWebTab::Browser) return;
                 if (result.getResult().isDirectory()) safe->openBrowserDirectory(result.getResult(), request);
@@ -205,6 +205,7 @@ void WebViewEditor::handleBrowserMessage(const juce::String& type, const juce::v
                 if (error.isEmpty())
                 {
                     safe->audioProcessor.browserPreview.start(std::move(*decoded));
+                    safe->audioProcessor.updateHostDisplay();
                     safe->browserWasPlaying = true;
                 }
             }

@@ -18,7 +18,7 @@ export function TabBar({ active, onChange, missingCount = 0 }: TabBarProps) {
       {visibleTabs.map(t => (
         <button
           key={t}
-          className={`${styles.tab} ${active === t ? styles.tabActive : ''} ${active === 'BROWSER' && t === 'BROWSER' ? styles.browserActive : ''}`}
+          className={`${styles.tab} ${active === t ? styles.tabActive : ''}`}
           onClick={() => onChange(t)}
         >
           {t}

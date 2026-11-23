@@ -48,7 +48,64 @@ private:
     ActiveWebTab activeWebTab { ActiveWebTab::Pads };
 
     juce::WebBrowserComponent webView;
+    std::shared_ptr<juce::FileChooser> activeFileChooser;
+    bool embeddedFileChooser { false };
+    std::shared_ptr<juce::FileChooser> makeFileChooser(const char* title,
+        const juce::File& initial, const juce::String& filters)
+    { return makeFileChooser(juce::String::fromUTF8(title), initial, filters); }
+    std::shared_ptr<juce::FileChooser> makeFileChooser(const juce::String& title,
+        const juce::File& initial, const juce::String& filters)
+    {
+       #if JUCE_MAC
+        // Logic's remote AU service cannot make an NSOpenPanel key on some
+        // macOS versions. Keep its picker inside the hosted editor instead.
+        embeddedFileChooser = juce::File::getSpecialLocation(juce::File::hostApplicationPath)
+            .getFileName().startsWithIgnoreCase("AUHostingService");
+       #else
+        embeddedFileChooser = false;
+       #endif
+        return std::make_shared<juce::FileChooser>(title, initial, filters,
+            !embeddedFileChooser, false, embeddedFileChooser ? this : nullptr);
+    }
+    void launchFileChooser(const std::shared_ptr<juce::FileChooser>& chooser, int flags,
+        std::function<void(const juce::FileChooser&)> completed)
+    {
+        activeFileChooser = chooser;
+        const bool embedded = embeddedFileChooser;
+        if (embedded) webView.setVisible(false); // native WebViews cover JUCE child dialogs
+        const juce::Component::SafePointer<WebViewEditor> safe(this);
+        chooser->launchAsync(flags, [safe, embedded, completed = std::move(completed)](const auto& result) {
+            if (!safe || safe->activeFileChooser.get() != &result) return;
+            auto keepAlive = std::move(safe->activeFileChooser);
+            if (embedded) safe->webView.setVisible(true);
+            completed(result);
+        });
+    }
     bool initialKitSent { false };
+    bool applyingUndoRestore { false };
+    int kitMutationDepth { 0 };
+    bool pendingKitBroadcast { false };
+    std::array<bool, NUM_PADS> pendingPadBroadcasts {};
+    struct ScopedKitMutation
+    {
+        WebViewEditor& editor;
+        bool active;
+        ScopedKitMutation(WebViewEditor& e, bool enabled) : editor(e), active(enabled)
+        {
+            if (active) { editor.audioProcessor.getCallbackLock().enter(); ++editor.kitMutationDepth; }
+        }
+        ~ScopedKitMutation()
+        {
+            if (!active) return;
+            --editor.kitMutationDepth;
+            editor.audioProcessor.getCallbackLock().exit();
+            if (editor.kitMutationDepth != 0) return;
+            const auto full = std::exchange(editor.pendingKitBroadcast, false);
+            const auto pads = std::exchange(editor.pendingPadBroadcasts, {});
+            if (full) editor.broadcastKitState();
+            else for (int i = 0; i < NUM_PADS; ++i) if (pads[(size_t) i]) editor.broadcastPadUpdate(i);
+        }
+    };
     bool fastMeterTimerActive { false };
     bool metersWereActive { false };
     int fastTimerTick { 0 };
